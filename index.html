@@ -1,0 +1,189 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1.0">
+<title>BehaviorLog Pro — Sign In</title>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+:root{
+  --navy:#1e3a5f;
+  --teal:#2a8fa8;
+  --teal-light:#3bbcd4;
+  --bg:#f2f0ec;
+  --surface:#ffffff;
+  --text:#1c1c1c;
+  --muted:#88857e;
+  --border:#dedad3;
+}
+html,body{min-height:100vh;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI','Helvetica Neue',Arial,sans-serif}
+body{background:var(--navy);display:flex;align-items:center;justify-content:center;padding:20px;overflow:hidden}
+
+/* Animated background */
+.bg-particles{position:fixed;inset:0;overflow:hidden;z-index:0}
+.bg-particles div{position:absolute;border-radius:50%;opacity:.1}
+.bp1{width:400px;height:400px;background:radial-gradient(circle,#2a8fa8,transparent 70%);top:-100px;right:-100px;animation:bpFloat 6s ease-in-out infinite}
+.bp2{width:300px;height:300px;background:radial-gradient(circle,#3bbcd4,transparent 70%);bottom:-80px;left:-60px;animation:bpFloat 8s ease-in-out infinite reverse}
+.bp3{width:200px;height:200px;background:radial-gradient(circle,#2a8fa8,transparent 70%);top:50%;left:60%;animation:bpFloat 5s ease-in-out infinite}
+@keyframes bpFloat{0%,100%{transform:translate(0,0) scale(1)}50%{transform:translate(20px,-20px) scale(1.1)}}
+
+/* Login card */
+.login-card{
+  position:relative;z-index:1;
+  background:var(--surface);
+  border-radius:24px;
+  padding:48px 40px;
+  max-width:420px;
+  width:100%;
+  box-shadow:0 24px 80px rgba(0,0,0,.25);
+  text-align:center;
+  animation:cardIn .6s ease forwards;
+  opacity:0;
+  transform:translateY(20px);
+}
+@keyframes cardIn{to{opacity:1;transform:translateY(0)}}
+
+/* Logo */
+.logo-section{margin-bottom:32px}
+.logo-icon{margin:0 auto 16px;width:72px;height:72px;display:flex;align-items:center;justify-content:center}
+.logo-icon svg{width:72px;height:72px;filter:drop-shadow(0 4px 12px rgba(42,143,168,.3))}
+.logo-title{font-size:1.8rem;font-weight:900;letter-spacing:-.5px;color:var(--navy);line-height:1}
+.logo-title span{color:var(--teal)}
+.logo-sub{font-size:.82rem;font-weight:600;color:var(--muted);letter-spacing:2px;text-transform:uppercase;margin-top:8px}
+.logo-divider{width:60px;height:3px;background:linear-gradient(90deg,var(--teal),var(--teal-light));border-radius:2px;margin:20px auto 0}
+
+/* Description */
+.login-desc{font-size:.88rem;color:var(--muted);line-height:1.6;margin-bottom:28px;max-width:320px;margin-left:auto;margin-right:auto}
+
+/* Google button */
+.google-btn{
+  display:flex;align-items:center;justify-content:center;gap:12px;
+  width:100%;padding:14px 20px;
+  border-radius:12px;border:2px solid var(--border);
+  background:var(--surface);
+  cursor:pointer;font-family:inherit;font-size:.95rem;font-weight:700;
+  color:var(--text);
+  transition:all .2s;
+  box-shadow:0 2px 8px rgba(0,0,0,.06);
+}
+.google-btn:hover{border-color:var(--teal);background:#f8fafa;box-shadow:0 4px 16px rgba(42,143,168,.12);transform:translateY(-1px)}
+.google-btn:active{transform:translateY(0)}
+.google-btn svg{flex-shrink:0}
+
+/* Status */
+.status{margin-top:16px;font-size:.8rem;color:var(--muted);min-height:20px}
+.status.error{color:#c0392b}
+
+/* Footer */
+.login-footer{margin-top:28px;font-size:.72rem;color:var(--muted);line-height:1.5}
+.login-footer a{color:var(--teal);text-decoration:none}
+
+@media(max-width:480px){
+  .login-card{padding:36px 24px;border-radius:18px}
+  .logo-title{font-size:1.5rem}
+}
+</style>
+</head>
+<body>
+
+<div class="bg-particles">
+  <div class="bp1"></div>
+  <div class="bp2"></div>
+  <div class="bp3"></div>
+</div>
+
+<div class="login-card">
+  <div class="logo-section">
+    <div class="logo-icon">
+      <svg viewBox="0 0 72 72" xmlns="http://www.w3.org/2000/svg">
+        <defs>
+          <linearGradient id="g1" x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0%" stop-color="#3bbcd4"/>
+            <stop offset="100%" stop-color="#1a6fa8"/>
+          </linearGradient>
+          <linearGradient id="g2" x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0%" stop-color="#2aaac4"/>
+            <stop offset="100%" stop-color="#1558a0"/>
+          </linearGradient>
+        </defs>
+        <rect x="4" y="52" width="12" height="12" rx="2" fill="none" stroke="rgba(30,58,95,.3)" stroke-width="2"/>
+        <rect x="20" y="40" width="13" height="24" rx="3" fill="url(#g1)"/>
+        <rect x="37" y="24" width="13" height="40" rx="3" fill="url(#g2)"/>
+        <rect x="54" y="8" width="13" height="56" rx="3" fill="url(#g1)"/>
+        <path d="M30 16 L62 4" stroke="rgba(42,143,168,.6)" stroke-width="3" stroke-linecap="round"/>
+      </svg>
+    </div>
+    <div class="logo-title">BehaviorLog<span> Pro</span></div>
+    <div class="logo-sub">Sure Step Education</div>
+    <div class="logo-divider"></div>
+  </div>
+
+  <p class="login-desc">Behavior tracking and analysis for special education professionals. Sign in to access your caseload and session data.</p>
+
+  <button class="google-btn" onclick="signIn()">
+    <svg width="20" height="20" viewBox="0 0 48 48"><path fill="#4285F4" d="M24 9.5c3.54 0 6.71 1.22 9.21 3.6l6.85-6.85C35.9 2.38 30.47 0 24 0 14.62 0 6.51 5.38 2.56 13.22l7.98 6.19C12.43 13.72 17.74 9.5 24 9.5z"/><path fill="#34A853" d="M46.98 24.55c0-1.57-.15-3.09-.38-4.55H24v9.02h12.94c-.58 2.96-2.26 5.48-4.78 7.18l7.73 6c4.51-4.18 7.09-10.36 7.09-17.65z"/><path fill="#FBBC05" d="M10.53 28.59c-.48-1.45-.76-2.99-.76-4.59s.27-3.14.76-4.59l-7.98-6.19C.92 16.46 0 20.12 0 24c0 3.88.92 7.54 2.56 10.78l7.97-6.19z"/><path fill="#EA4335" d="M24 48c6.48 0 11.93-2.13 15.89-5.81l-7.73-6c-2.15 1.45-4.92 2.3-8.16 2.3-6.26 0-11.57-4.22-13.47-9.91l-7.98 6.19C6.51 42.62 14.62 48 24 48z"/></svg>
+    Sign in with Google
+  </button>
+
+  <div class="status" id="status"></div>
+
+  <div class="login-footer">
+    By signing in you agree to Sure Step Education's<br>
+    terms of use and privacy policy.
+  </div>
+</div>
+
+<script>
+const SUPABASE_URL  = 'https://jroporggvvmgrczdhnme.supabase.co';
+const SUPABASE_ANON = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Impyb3BvcmdndnZtZ3JjemRobm1lIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzQ4MjA1MjMsImV4cCI6MjA5MDM5NjUyM30.iLEM2Lh4Ob0H6qua9kqGArspnkXu8cbSBe5WFj8fT20';
+const sb = supabase.createClient(SUPABASE_URL, SUPABASE_ANON);
+
+// Check if already logged in
+(async function(){
+  const {data:{session}} = await sb.auth.getSession();
+  if(session){
+    // Already authenticated — pass invite code if present
+    const params = new URLSearchParams(window.location.search);
+    const invite = params.get('invite');
+    window.location.href = invite ? 'app.html?invite='+invite : 'app.html';
+    return;
+  }
+  // Check for OAuth callback
+  const hash = window.location.hash;
+  if(hash && hash.includes('access_token')){
+    document.getElementById('status').textContent = 'Signing in…';
+    const {data:{session:s}} = await sb.auth.getSession();
+    if(s){
+      const params = new URLSearchParams(window.location.search);
+      const invite = params.get('invite');
+      window.location.href = invite ? 'app.html?invite='+invite : 'app.html';
+    }
+  }
+})();
+
+async function signIn(){
+  const status = document.getElementById('status');
+  status.textContent = 'Redirecting to Google…';
+  status.className = 'status';
+
+  // Preserve invite code through OAuth redirect
+  const params = new URLSearchParams(window.location.search);
+  const invite = params.get('invite');
+  const redirectUrl = window.location.origin + (invite ? '/app.html?invite='+invite : '/app.html');
+
+  const {data, error} = await sb.auth.signInWithOAuth({
+    provider: 'google',
+    options: {
+      redirectTo: redirectUrl
+    }
+  });
+
+  if(error){
+    status.textContent = 'Error: ' + error.message;
+    status.className = 'status error';
+  }
+}
+</script>
+</body>
+</html>

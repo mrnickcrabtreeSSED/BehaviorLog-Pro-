@@ -1,0 +1,293 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>QABF — Questions About Behavioral Function</title>
+<link href="https://fonts.googleapis.com/css2?family=DM+Sans:ital,wght@0,400;0,500;0,600;0,700&family=Fraunces:wght@600;700;800&display=swap" rel="stylesheet">
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+:root{
+  --navy:#1a3a5c;--teal:#2b7a78;--teal-light:#3aafa9;
+  --warm:#f8f4ef;--white:#fff;--sand:#ede8e1;
+  --text:#2d2d2d;--text-light:#6b6b6b;
+  --att:#4a90d9;--esc:#e67e22;--non:#27ae60;--phy:#e74c3c;--tan:#9b59b6;
+  --radius:12px;--shadow:0 2px 12px rgba(0,0,0,.08);
+}
+html{scroll-behavior:smooth}
+body{font-family:'DM Sans',sans-serif;background:var(--warm);color:var(--text);line-height:1.6;-webkit-font-smoothing:antialiased}
+
+/* Header */
+.header{background:var(--navy);padding:24px 20px;position:sticky;top:0;z-index:100;box-shadow:0 4px 20px rgba(0,0,0,.15)}
+.header-inner{max-width:720px;margin:0 auto;display:flex;align-items:center;gap:16px}
+.header .logo{width:48px;height:48px;border-radius:10px;background:linear-gradient(135deg,var(--teal),var(--teal-light));display:flex;align-items:center;justify-content:center;font-family:'Fraunces',serif;font-size:20px;color:#fff;font-weight:800;flex-shrink:0}
+.header h1{font-family:'Fraunces',serif;color:#fff;font-size:1.3rem;font-weight:700;line-height:1.2}
+.header p{color:rgba(255,255,255,.65);font-size:.8rem;margin-top:2px}
+
+/* Progress */
+.progress-wrap{background:var(--sand);padding:12px 20px;border-bottom:1px solid rgba(0,0,0,.06);position:sticky;top:96px;z-index:99}
+.progress-inner{max-width:720px;margin:0 auto}
+.progress-bar{height:6px;background:rgba(0,0,0,.08);border-radius:3px;overflow:hidden}
+.progress-fill{height:100%;background:linear-gradient(90deg,var(--teal),var(--teal-light));border-radius:3px;transition:width .4s ease}
+.progress-text{font-size:.75rem;color:var(--text-light);margin-top:6px;display:flex;justify-content:space-between}
+
+/* Container */
+.container{max-width:720px;margin:0 auto;padding:20px 20px 120px}
+
+/* Info Section */
+.info-section{background:var(--white);border-radius:var(--radius);padding:28px 24px;margin-bottom:20px;box-shadow:var(--shadow)}
+.info-section h2{font-family:'Fraunces',serif;font-size:1.15rem;color:var(--navy);margin-bottom:16px;display:flex;align-items:center;gap:10px}
+.info-section h2 .icon{width:32px;height:32px;border-radius:8px;background:var(--navy);color:#fff;display:flex;align-items:center;justify-content:center;font-size:14px;flex-shrink:0}
+.field-grid{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+@media(max-width:500px){.field-grid{grid-template-columns:1fr}}
+.field label{display:block;font-size:.75rem;font-weight:600;color:var(--text-light);text-transform:uppercase;letter-spacing:.5px;margin-bottom:4px}
+.field input{width:100%;padding:10px 12px;border:1.5px solid var(--sand);border-radius:8px;font:inherit;font-size:.95rem;background:var(--warm);transition:border-color .2s}
+.field input:focus{outline:none;border-color:var(--teal)}
+
+/* Instructions */
+.instructions{background:linear-gradient(135deg,#e8f6f5,#eef5e8);border-radius:var(--radius);padding:20px 24px;margin-bottom:20px;border-left:4px solid var(--teal)}
+.instructions p{font-size:.88rem;color:var(--text)}
+.instructions .scale{display:flex;flex-wrap:wrap;gap:8px;margin-top:12px}
+.instructions .scale span{background:var(--white);padding:6px 12px;border-radius:20px;font-size:.8rem;font-weight:600;white-space:nowrap}
+
+/* Question Card */
+.q-card{background:var(--white);border-radius:var(--radius);padding:20px 24px;margin-bottom:12px;box-shadow:var(--shadow);transition:transform .2s,box-shadow .2s;border-left:4px solid transparent}
+.q-card:hover{transform:translateY(-1px);box-shadow:0 4px 16px rgba(0,0,0,.1)}
+.q-card.answered{border-left-color:var(--teal);opacity:.85}
+.q-card.answered:hover{opacity:1}
+.q-num{font-family:'Fraunces',serif;font-size:.85rem;color:var(--teal);font-weight:700;margin-bottom:6px}
+.q-text{font-size:.95rem;line-height:1.5;margin-bottom:14px;color:var(--text)}
+.q-plain{font-size:.82rem;color:var(--text-light);margin-top:-8px;margin-bottom:14px;font-style:italic}
+.rating-row{display:flex;gap:6px}
+.rating-btn{flex:1;padding:10px 4px;border:2px solid var(--sand);border-radius:8px;background:var(--white);cursor:pointer;text-align:center;font:inherit;font-size:.8rem;font-weight:600;color:var(--text-light);transition:all .2s}
+.rating-btn:hover{border-color:var(--teal);color:var(--teal);background:#f0faf9}
+.rating-btn.active{border-color:var(--teal);background:var(--teal);color:#fff}
+.rating-btn .val{display:block;font-size:1.1rem;margin-bottom:2px}
+
+/* Section Divider */
+.section-divider{text-align:center;padding:28px 0 16px;font-family:'Fraunces',serif;font-size:1rem;color:var(--navy);font-weight:700}
+
+/* Results */
+.results{display:none;background:var(--white);border-radius:var(--radius);padding:28px 24px;margin-top:24px;box-shadow:0 4px 24px rgba(0,0,0,.12)}
+.results h2{font-family:'Fraunces',serif;font-size:1.3rem;color:var(--navy);margin-bottom:20px;text-align:center}
+.result-row{margin-bottom:16px}
+.result-label{display:flex;justify-content:space-between;align-items:center;margin-bottom:6px}
+.result-label .name{font-weight:600;font-size:.9rem}
+.result-label .score{font-weight:700;font-size:.95rem;padding:2px 10px;border-radius:12px;color:#fff}
+.result-bar{height:24px;background:rgba(0,0,0,.06);border-radius:12px;overflow:hidden;position:relative}
+.result-bar-fill{height:100%;border-radius:12px;transition:width .8s ease;position:relative}
+.result-bar-fill.highest::after{content:'★ PRIMARY';position:absolute;right:8px;top:50%;transform:translateY(-50%);font-size:.65rem;font-weight:700;color:rgba(255,255,255,.9);letter-spacing:.5px}
+.result-interpretation{margin-top:20px;padding:16px;background:var(--warm);border-radius:8px;font-size:.88rem;line-height:1.6}
+.result-interpretation strong{color:var(--navy)}
+
+/* Buttons */
+.btn-row{display:flex;gap:12px;justify-content:center;margin-top:24px;flex-wrap:wrap}
+.btn{padding:12px 28px;border-radius:8px;border:none;font:inherit;font-weight:600;font-size:.95rem;cursor:pointer;transition:all .2s}
+.btn-primary{background:var(--teal);color:#fff}
+.btn-primary:hover{background:var(--navy)}
+.btn-outline{background:transparent;border:2px solid var(--navy);color:var(--navy)}
+.btn-outline:hover{background:var(--navy);color:#fff}
+.btn:disabled{opacity:.4;cursor:not-allowed}
+
+/* Submit floating */
+.submit-bar{position:fixed;bottom:0;left:0;right:0;background:var(--white);border-top:1px solid var(--sand);padding:14px 20px;z-index:100;display:none;box-shadow:0 -4px 20px rgba(0,0,0,.08)}
+.submit-inner{max-width:720px;margin:0 auto;display:flex;align-items:center;justify-content:space-between;gap:12px}
+.submit-count{font-size:.85rem;color:var(--text-light)}
+.submit-count strong{color:var(--teal)}
+
+/* Print */
+@media print{
+  .header,.progress-wrap,.submit-bar,.btn-row,.instructions{display:none!important}
+  .results{display:block!important;box-shadow:none;border:2px solid var(--navy)}
+  .q-card{break-inside:avoid;box-shadow:none;border:1px solid #ddd}
+  body{background:#fff}
+}
+</style>
+</head>
+<body>
+
+<div class="header">
+  <div class="header-inner">
+    <div class="logo">Q</div>
+    <div>
+      <h1>Questions About Behavioral Function</h1>
+      <p>QABF Assessment Tool — Sure Step Education</p>
+    </div>
+  </div>
+</div>
+
+<div class="progress-wrap">
+  <div class="progress-inner">
+    <div class="progress-bar"><div class="progress-fill" id="progressFill" style="width:0%"></div></div>
+    <div class="progress-text"><span id="progressText">0 of 25 answered</span><span id="progressPct">0%</span></div>
+  </div>
+</div>
+
+<div class="container">
+
+  <!-- Student Info -->
+  <div class="info-section">
+    <h2><span class="icon">📋</span> Student & Respondent Info</h2>
+    <div class="field-grid">
+      <div class="field"><label>Student Name</label><input type="text" id="studentName" placeholder="Enter student's name"></div>
+      <div class="field"><label>Date</label><input type="date" id="assessDate"></div>
+      <div class="field"><label>Behavior Being Assessed</label><input type="text" id="behavior" placeholder="e.g. hitting, screaming"></div>
+      <div class="field"><label>Your Name (Respondent)</label><input type="text" id="respondent" placeholder="Who is filling this out?"></div>
+      <div class="field"><label>Your Role</label><input type="text" id="role" placeholder="e.g. Parent, Teacher, Aide"></div>
+    </div>
+  </div>
+
+  <!-- Instructions -->
+  <div class="instructions">
+    <p>Rate how often the student does each behavior <strong>in situations where it might happen</strong>. Be honest — there are no right or wrong answers.</p>
+    <div class="scale">
+      <span>✕ Doesn't Apply</span>
+      <span>0 = Never</span>
+      <span>1 = Rarely</span>
+      <span>2 = Sometimes</span>
+      <span>3 = Often</span>
+    </div>
+  </div>
+
+  <!-- Questions -->
+  <div id="questionsContainer"></div>
+
+  <!-- Thank You -->
+  <div class="thank-you" id="thankYou" style="display:none;text-align:center;padding:60px 24px;background:var(--white);border-radius:var(--radius);box-shadow:var(--shadow);margin-top:20px">
+    <div style="width:80px;height:80px;border-radius:50%;background:#27ae60;color:#fff;display:inline-flex;align-items:center;justify-content:center;font-size:40px;margin-bottom:20px">✓</div>
+    <h2 style="font-family:'Fraunces',serif;color:var(--navy);font-size:1.5rem;margin-bottom:12px">Thank You!</h2>
+    <p style="color:var(--text-light);font-size:.95rem;max-width:400px;margin:0 auto">Your responses have been submitted successfully. The behavior specialist will review your input as part of the assessment process. You may close this page.</p>
+  </div>
+</div>
+
+<!-- Floating submit bar -->
+<div class="submit-bar" id="submitBar">
+  <div class="submit-inner">
+    <div class="submit-count"><strong id="answeredCount">0</strong> of 25 answered</div>
+    <button class="btn btn-primary" id="scoreBtn" onclick="submitForm()" disabled>Submit Responses →</button>
+  </div>
+</div>
+
+<script>
+const questions = [
+  {n:1,  text:"Engages in the behavior to get attention.", plain:"Does the behavior seem like a way to get you to notice them?", cat:"att"},
+  {n:2,  text:"Engages in the behavior to escape work or learning situations.", plain:"Does it happen to get out of doing something?", cat:"esc"},
+  {n:3,  text:"Engages in the behavior as a form of self-stimulation.", plain:"Does it seem like they do it because it feels good or is stimulating?", cat:"non"},
+  {n:4,  text:"Engages in the behavior because he/she is in pain.", plain:"Could they be doing this because something hurts?", cat:"phy"},
+  {n:5,  text:"Engages in the behavior to get access to preferred items.", plain:"Are they trying to get a toy, food, or something they want?", cat:"tan"},
+  {n:6,  text:"Engages in the behavior because he/she likes to be reprimanded.", plain:"Do they seem to enjoy getting a reaction, even a negative one?", cat:"att"},
+  {n:7,  text:"Engages in the behavior when asked to do something.", plain:"Does it happen when you ask them to get dressed, do work, brush teeth, etc.?", cat:"esc"},
+  {n:8,  text:"Engages in the behavior even if no one is in the room.", plain:"Does it happen when they think they're alone?", cat:"non"},
+  {n:9,  text:"Engages in the behavior more frequently when ill.", plain:"Does it get worse when they're sick?", cat:"phy"},
+  {n:10, text:"Engages in the behavior when you take something away.", plain:"Does it happen when you remove an item they had?", cat:"tan"},
+  {n:11, text:"Engages in the behavior to draw attention to himself/herself.", plain:"Does it seem like a 'look at me' behavior?", cat:"att"},
+  {n:12, text:"Engages in the behavior when he/she doesn't want to do something.", plain:"Is it a way of saying 'I don't want to do this'?", cat:"esc"},
+  {n:13, text:"Engages in the behavior because there is nothing else to do.", plain:"Does it happen mostly when they're bored or unoccupied?", cat:"non"},
+  {n:14, text:"Engages in the behavior when something is physically bothering them.", plain:"Could there be a physical discomfort triggering this?", cat:"phy"},
+  {n:15, text:"Engages in the behavior when you have something they want.", plain:"Does it happen when they see you with something desirable?", cat:"tan"},
+  {n:16, text:"Engages in the behavior to try to get a reaction from you.", plain:"Are they trying to provoke a response from you?", cat:"att"},
+  {n:17, text:"Engages in the behavior to get people to leave them alone.", plain:"Is it a way of pushing people away?", cat:"esc"},
+  {n:18, text:"Engages in the behavior in a repetitive manner, ignoring surroundings.", plain:"Do they get 'locked in' to doing it over and over?", cat:"non"},
+  {n:19, text:"Engages in the behavior because he/she is physically uncomfortable.", plain:"Does general physical discomfort seem to trigger it?", cat:"phy"},
+  {n:20, text:"Engages in the behavior when a peer has something they want.", plain:"Does it happen when another kid has a desired item?", cat:"tan"},
+  {n:21, text:'Seems to be saying "come see me" or "look at me."', plain:"Does the behavior feel like a bid for your attention?", cat:"att"},
+  {n:22, text:'Seems to be saying "leave me alone" or "stop asking me to do this."', plain:"Does the behavior feel like a demand to be left alone?", cat:"esc"},
+  {n:23, text:"Seems to enjoy the behavior, even if no one is around.", plain:"Do they appear to find the behavior itself enjoyable?", cat:"non"},
+  {n:24, text:"Behavior seems to indicate they are not feeling well.", plain:"Does the behavior serve as a signal that they're unwell?", cat:"phy"},
+  {n:25, text:'Seems to be saying "give me that (toy, food, item)."', plain:"Does the behavior feel like a demand for a specific thing?", cat:"tan"}
+];
+
+const catMeta = {
+  att:{name:"Attention",color:"var(--att)",desc:"The behavior may be maintained by social attention — reactions from adults or peers."},
+  esc:{name:"Escape / Avoidance",color:"var(--esc)",desc:"The behavior may serve to avoid or escape demands, tasks, or situations."},
+  non:{name:"Non-Social / Sensory",color:"var(--non)",desc:"The behavior may be self-reinforcing — it produces its own sensory feedback."},
+  phy:{name:"Physical / Pain",color:"var(--phy)",desc:"The behavior may be related to physical discomfort, illness, or pain."},
+  tan:{name:"Tangible / Access",color:"var(--tan)",desc:"The behavior may be a way to gain access to preferred items or activities."}
+};
+
+const answers = {};
+const ratings = [
+  {val:"X", label:"N/A", score:null},
+  {val:"0", label:"Never", score:0},
+  {val:"1", label:"Rarely", score:1},
+  {val:"2", label:"Some", score:2},
+  {val:"3", label:"Often", score:3}
+];
+
+function buildQuestions(){
+  const c = document.getElementById('questionsContainer');
+  let html = '';
+  questions.forEach((q,i)=>{
+    html += `<div class="q-card" id="qcard${q.n}">
+      <div class="q-num">Question ${q.n} of 25</div>
+      <div class="q-text">${q.text}</div>
+      <div class="q-plain">💬 In plain language: ${q.plain}</div>
+      <div class="rating-row">
+        ${ratings.map(r=>`<button class="rating-btn" data-q="${q.n}" data-val="${r.val}" onclick="rate(${q.n},'${r.val}',${r.score})">
+          <span class="val">${r.val}</span>${r.label}
+        </button>`).join('')}
+      </div>
+    </div>`;
+  });
+  c.innerHTML = html;
+}
+
+function rate(qNum, val, score){
+  answers[qNum] = {val, score};
+  // Highlight button
+  document.querySelectorAll(`[data-q="${qNum}"]`).forEach(b=>b.classList.remove('active'));
+  document.querySelector(`[data-q="${qNum}"][data-val="${val}"]`).classList.add('active');
+  document.getElementById(`qcard${qNum}`).classList.add('answered');
+  updateProgress();
+}
+
+function updateProgress(){
+  const count = Object.keys(answers).length;
+  const pct = Math.round((count/25)*100);
+  document.getElementById('progressFill').style.width = pct+'%';
+  document.getElementById('progressText').textContent = `${count} of 25 answered`;
+  document.getElementById('progressPct').textContent = pct+'%';
+  document.getElementById('answeredCount').textContent = count;
+
+  const bar = document.getElementById('submitBar');
+  bar.style.display = count > 0 ? 'block' : 'none';
+  document.getElementById('scoreBtn').disabled = count < 25;
+}
+
+function submitForm(){
+  const data = {
+    studentName: document.getElementById('studentName').value,
+    date: document.getElementById('assessDate').value,
+    behavior: document.getElementById('behavior').value,
+    respondent: document.getElementById('respondent').value,
+    role: document.getElementById('role').value,
+    answers: {...answers},
+    submittedAt: new Date().toISOString(),
+    id: 'QABF-' + Date.now()
+  };
+
+  // In production: POST to server
+  const submissions = JSON.parse(localStorage.getItem('qabf_submissions') || '[]');
+  submissions.push(data);
+  localStorage.setItem('qabf_submissions', JSON.stringify(submissions));
+  console.log('QABF Submission:', JSON.stringify(data, null, 2));
+
+  // Show thank you
+  document.querySelectorAll('.info-section,.instructions,.q-card,.section-divider').forEach(el=>el.style.display='none');
+  document.getElementById('thankYou').style.display = 'block';
+  document.getElementById('submitBar').style.display = 'none';
+  window.scrollTo({top:0,behavior:'smooth'});
+}
+
+// Init
+document.getElementById('assessDate').valueAsDate = new Date();
+buildQuestions();
+
+// Pre-fill from URL params (when sent via email link)
+const urlParams = new URLSearchParams(window.location.search);
+if(urlParams.get('student')) document.getElementById('studentName').value = urlParams.get('student');
+if(urlParams.get('respondent')) document.getElementById('respondent').value = urlParams.get('respondent');
+if(urlParams.get('behavior')) document.getElementById('behavior').value = urlParams.get('behavior');
+</script>
+</body>
+</html>

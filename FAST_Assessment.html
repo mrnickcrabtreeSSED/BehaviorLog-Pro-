@@ -1,0 +1,330 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>FAST — Functional Assessment Screening Tool</title>
+<link href="https://fonts.googleapis.com/css2?family=DM+Sans:ital,wght@0,400;0,500;0,600;0,700&family=Fraunces:wght@600;700;800&display=swap" rel="stylesheet">
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+:root{
+  --navy:#1a3a5c;--teal:#2b7a78;--teal-light:#3aafa9;
+  --warm:#f8f4ef;--white:#fff;--sand:#ede8e1;
+  --text:#2d2d2d;--text-light:#6b6b6b;
+  --green:#27ae60;--red:#e74c3c;
+  --radius:12px;--shadow:0 2px 12px rgba(0,0,0,.08);
+}
+html{scroll-behavior:smooth}
+body{font-family:'DM Sans',sans-serif;background:var(--warm);color:var(--text);line-height:1.6;-webkit-font-smoothing:antialiased}
+
+.header{background:var(--navy);padding:24px 20px;position:sticky;top:0;z-index:100;box-shadow:0 4px 20px rgba(0,0,0,.15)}
+.header-inner{max-width:720px;margin:0 auto;display:flex;align-items:center;gap:16px}
+.header .logo{width:48px;height:48px;border-radius:10px;background:linear-gradient(135deg,var(--teal),var(--teal-light));display:flex;align-items:center;justify-content:center;font-family:'Fraunces',serif;font-size:20px;color:#fff;font-weight:800;flex-shrink:0}
+.header h1{font-family:'Fraunces',serif;color:#fff;font-size:1.3rem;font-weight:700;line-height:1.2}
+.header p{color:rgba(255,255,255,.65);font-size:.8rem;margin-top:2px}
+
+.progress-wrap{background:var(--sand);padding:12px 20px;border-bottom:1px solid rgba(0,0,0,.06);position:sticky;top:96px;z-index:99}
+.progress-inner{max-width:720px;margin:0 auto}
+.progress-bar{height:6px;background:rgba(0,0,0,.08);border-radius:3px;overflow:hidden}
+.progress-fill{height:100%;background:linear-gradient(90deg,var(--teal),var(--teal-light));border-radius:3px;transition:width .4s ease}
+.progress-text{font-size:.75rem;color:var(--text-light);margin-top:6px;display:flex;justify-content:space-between}
+
+.container{max-width:720px;margin:0 auto;padding:20px 20px 120px}
+
+.info-section{background:var(--white);border-radius:var(--radius);padding:28px 24px;margin-bottom:20px;box-shadow:var(--shadow)}
+.info-section h2{font-family:'Fraunces',serif;font-size:1.15rem;color:var(--navy);margin-bottom:16px;display:flex;align-items:center;gap:10px}
+.info-section h2 .icon{width:32px;height:32px;border-radius:8px;background:var(--navy);color:#fff;display:flex;align-items:center;justify-content:center;font-size:14px;flex-shrink:0}
+.field-grid{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+@media(max-width:500px){.field-grid{grid-template-columns:1fr}}
+.field label{display:block;font-size:.75rem;font-weight:600;color:var(--text-light);text-transform:uppercase;letter-spacing:.5px;margin-bottom:4px}
+.field input,.field select{width:100%;padding:10px 12px;border:1.5px solid var(--sand);border-radius:8px;font:inherit;font-size:.95rem;background:var(--warm);transition:border-color .2s;appearance:none;-webkit-appearance:none}
+.field input:focus,.field select:focus{outline:none;border-color:var(--teal)}
+.field select{background:var(--warm) url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'%3E%3Cpath d='M6 8L1 3h10z' fill='%236b6b6b'/%3E%3C/svg%3E") no-repeat right 12px center}
+.field-full{grid-column:1/-1}
+
+.checkbox-group{display:flex;flex-wrap:wrap;gap:8px;margin-top:4px}
+.checkbox-group label{display:flex;align-items:center;gap:6px;font-size:.88rem;font-weight:400;text-transform:none;letter-spacing:0;background:var(--warm);padding:8px 14px;border-radius:8px;cursor:pointer;border:1.5px solid transparent;transition:all .2s}
+.checkbox-group label:hover{border-color:var(--teal)}
+.checkbox-group input[type=checkbox]{width:16px;height:16px;accent-color:var(--teal)}
+.checkbox-group label.checked{background:#e8f6f5;border-color:var(--teal)}
+
+.instructions{background:linear-gradient(135deg,#e8f6f5,#eef5e8);border-radius:var(--radius);padding:20px 24px;margin-bottom:20px;border-left:4px solid var(--teal)}
+.instructions p{font-size:.88rem;color:var(--text)}
+
+/* Part divider */
+.part-divider{background:var(--navy);color:#fff;padding:16px 24px;border-radius:var(--radius);margin:24px 0 16px;font-family:'Fraunces',serif;font-size:1.05rem;font-weight:700}
+.part-divider span{display:block;font-family:'DM Sans',sans-serif;font-size:.8rem;font-weight:400;opacity:.7;margin-top:4px}
+
+/* Question Card */
+.q-card{background:var(--white);border-radius:var(--radius);padding:20px 24px;margin-bottom:12px;box-shadow:var(--shadow);transition:transform .2s,box-shadow .2s;border-left:4px solid transparent}
+.q-card:hover{transform:translateY(-1px);box-shadow:0 4px 16px rgba(0,0,0,.1)}
+.q-card.answered{border-left-color:var(--teal);opacity:.85}
+.q-card.answered:hover{opacity:1}
+.q-num{font-family:'Fraunces',serif;font-size:.85rem;color:var(--teal);font-weight:700;margin-bottom:6px}
+.q-text{font-size:.95rem;line-height:1.5;margin-bottom:6px;color:var(--text)}
+.q-plain{font-size:.82rem;color:var(--text-light);margin-bottom:14px;font-style:italic}
+.q-identify{margin-top:10px;display:none}
+.q-identify.show{display:block}
+.q-identify input{width:100%;padding:8px 12px;border:1.5px solid var(--sand);border-radius:8px;font:inherit;font-size:.88rem;background:var(--warm)}
+.q-identify input:focus{outline:none;border-color:var(--teal)}
+.q-identify label{font-size:.78rem;color:var(--text-light);margin-bottom:4px;display:block}
+
+.yn-row{display:flex;gap:8px}
+.yn-btn{flex:1;max-width:120px;padding:12px;border:2px solid var(--sand);border-radius:8px;background:var(--white);cursor:pointer;text-align:center;font:inherit;font-size:.95rem;font-weight:600;color:var(--text-light);transition:all .2s}
+.yn-btn:hover{border-color:var(--teal);color:var(--teal)}
+.yn-btn.yes.active{border-color:var(--green);background:var(--green);color:#fff}
+.yn-btn.no.active{border-color:#bbb;background:#eee;color:var(--text)}
+
+/* Submit bar */
+.submit-bar{position:fixed;bottom:0;left:0;right:0;background:var(--white);border-top:1px solid var(--sand);padding:14px 20px;z-index:100;display:none;box-shadow:0 -4px 20px rgba(0,0,0,.08)}
+.submit-inner{max-width:720px;margin:0 auto;display:flex;align-items:center;justify-content:space-between;gap:12px}
+.submit-count{font-size:.85rem;color:var(--text-light)}
+.submit-count strong{color:var(--teal)}
+.btn{padding:12px 28px;border-radius:8px;border:none;font:inherit;font-weight:600;font-size:.95rem;cursor:pointer;transition:all .2s}
+.btn-primary{background:var(--teal);color:#fff}
+.btn-primary:hover{background:var(--navy)}
+.btn:disabled{opacity:.4;cursor:not-allowed}
+
+/* Thank you screen */
+.thank-you{display:none;text-align:center;padding:60px 24px;background:var(--white);border-radius:var(--radius);box-shadow:var(--shadow);margin-top:20px}
+.thank-you .check{width:80px;height:80px;border-radius:50%;background:var(--green);color:#fff;display:inline-flex;align-items:center;justify-content:center;font-size:40px;margin-bottom:20px}
+.thank-you h2{font-family:'Fraunces',serif;color:var(--navy);font-size:1.5rem;margin-bottom:12px}
+.thank-you p{color:var(--text-light);font-size:.95rem;max-width:400px;margin:0 auto}
+</style>
+</head>
+<body>
+
+<div class="header">
+  <div class="header-inner">
+    <div class="logo">F</div>
+    <div>
+      <h1>Functional Assessment Screening Tool</h1>
+      <p>FAST — Sure Step Education</p>
+    </div>
+  </div>
+</div>
+
+<div class="progress-wrap">
+  <div class="progress-inner">
+    <div class="progress-bar"><div class="progress-fill" id="progressFill" style="width:0%"></div></div>
+    <div class="progress-text"><span id="progressText">0 of 27 answered</span><span id="progressPct">0%</span></div>
+  </div>
+</div>
+
+<div class="container" id="mainContent">
+
+  <!-- Respondent Info -->
+  <div class="info-section">
+    <h2><span class="icon">📋</span> Respondent Information</h2>
+    <div class="field-grid">
+      <div class="field"><label>Student Name</label><input type="text" id="studentName"></div>
+      <div class="field"><label>Student Age</label><input type="number" id="studentAge" min="1" max="30"></div>
+      <div class="field"><label>Date</label><input type="date" id="assessDate"></div>
+      <div class="field"><label>Behavior Problem</label><input type="text" id="behavior" placeholder="e.g. hitting, self-injury"></div>
+      <div class="field"><label>Your Name (Informant)</label><input type="text" id="informant"></div>
+      <div class="field">
+        <label>Your Relationship</label>
+        <select id="relationship">
+          <option value="">Select…</option>
+          <option>Parent</option>
+          <option>Teacher / Instructor</option>
+          <option>Residential Staff</option>
+          <option>Aide / Paraprofessional</option>
+          <option>Other</option>
+        </select>
+      </div>
+      <div class="field"><label>How long have you known the student?</label><input type="text" id="howLong" placeholder="e.g. 2 years, 6 months"></div>
+      <div class="field"><label>Hours per day you interact</label><input type="number" id="hoursDay" min="0" max="24" placeholder="Approximate"></div>
+      <div class="field field-full">
+        <label>When do you typically observe the student? (check all that apply)</label>
+        <div class="checkbox-group" id="observeContexts">
+          <label><input type="checkbox" value="Self-care routines">Self-care</label>
+          <label><input type="checkbox" value="Academic training">Academics</label>
+          <label><input type="checkbox" value="Work/vocational">Work / Vocational</label>
+          <label><input type="checkbox" value="Leisure activities">Leisure</label>
+          <label><input type="checkbox" value="Meals">Meals</label>
+          <label><input type="checkbox" value="Evenings">Evenings</label>
+          <label><input type="checkbox" value="Unstructured time">Unstructured time</label>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Instructions -->
+  <div class="instructions">
+    <p>Read each statement carefully. If it <strong>accurately describes</strong> the student's behavior, tap <strong>Yes</strong>. If not, tap <strong>No</strong>. Answer based on what you've personally observed — there are no right or wrong answers.</p>
+  </div>
+
+  <div id="questionsContainer"></div>
+
+  <!-- Thank You -->
+  <div class="thank-you" id="thankYou">
+    <div class="check">✓</div>
+    <h2>Thank You!</h2>
+    <p>Your responses have been submitted successfully. The behavior specialist will review your input as part of the assessment process. You may close this page.</p>
+  </div>
+</div>
+
+<!-- Submit bar -->
+<div class="submit-bar" id="submitBar">
+  <div class="submit-inner">
+    <div class="submit-count"><strong id="answeredCount">0</strong> of <span id="totalQs">27</span> answered</div>
+    <button class="btn btn-primary" id="scoreBtn" onclick="submitForm()" disabled>Submit Responses →</button>
+  </div>
+</div>
+
+<script>
+const questions = [
+  // Part I - Social Influences (1-3)
+  {n:1, part:"I", text:"The behavior usually occurs in your presence or in the presence of others.", plain:"Does it mostly happen when people are around?"},
+  {n:2, part:"I", text:"The behavior usually occurs soon after you or others interact with the student — such as giving an instruction, walking away, taking something away, or changing activities.", plain:"Does the behavior tend to follow an interaction with someone?"},
+  {n:3, part:"I", text:"The behavior is often accompanied by emotional responses such as yelling or crying.", plain:"Does the student often seem upset (yelling, crying) when this behavior happens?"},
+
+  // Part II - Social Reinforcement (4-18)
+  {n:4, part:"II", text:"The behavior often occurs when the student has not received much attention.", plain:"Does it happen more when the student is being ignored or not getting attention?"},
+  {n:5, part:"II", text:"When the behavior occurs, you or others usually respond by interacting with the student (comforting, correcting, redirecting, etc.).", plain:"When it happens, do adults typically respond by paying attention to the student?"},
+  {n:6, part:"II", text:"The student often engages in other annoying behaviors that produce attention.", plain:"Does the student do other things that seem designed to get a reaction?"},
+  {n:7, part:"II", text:"The student frequently approaches you or others and/or initiates social interaction.", plain:"Is the student generally social and seeks people out?"},
+  {n:8, part:"II", text:"The behavior rarely occurs when you give the student lots of attention.", plain:"Does giving extra attention seem to prevent the behavior?"},
+  {n:9, part:"II", text:"The behavior often occurs when you take a particular item away or end a preferred activity.", plain:"Does it happen when something enjoyable is taken away or stopped?", identify:"What item or activity?"},
+  {n:10, part:"II", text:"The behavior often occurs when the student is told they cannot have a certain item or do a certain activity.", plain:"Does it happen when you say 'no' to something they want?", identify:"What item or activity?"},
+  {n:11, part:"II", text:"When the behavior occurs, you often give the student a specific item like a toy, food, or preferred thing.", plain:"Do you typically give the student something to calm them down?", identify:"What do you usually give?"},
+  {n:12, part:"II", text:"The student often engages in other behaviors that produce access to preferred items or activities.", plain:"Does the student do other things to try to get what they want?"},
+  {n:13, part:"II", text:"The behavior rarely occurs during training or when demands are placed on the student.", plain:"Does the behavior mostly NOT happen when the student is busy with tasks?", identify:"Which activities? (self-care, academic, work, other)"},
+  {n:14, part:"II", text:"The behavior often occurs during training activities or when asked to complete tasks.", plain:"Does it tend to happen when the student is asked to do work or follow instructions?"},
+  {n:15, part:"II", text:"The student is often noncompliant during training or when asked to complete tasks.", plain:"Does the student generally resist doing tasks or following directions?"},
+  {n:16, part:"II", text:"The behavior often occurs when the environment is very noisy or crowded.", plain:"Does a loud or chaotic environment seem to trigger the behavior?"},
+  {n:17, part:"II", text:"When the behavior occurs, you often give the student a brief break from the task.", plain:"When it happens during a task, do you usually let them take a break?"},
+  {n:18, part:"II", text:"The behavior rarely occurs when few demands are placed on the student or when left alone.", plain:"When there are no expectations on the student, does the behavior mostly stop?"},
+
+  // Part III - Nonsocial / Automatic (19-27)
+  {n:19, part:"III", text:"The behavior occurs frequently when the student is alone or unoccupied.", plain:"Does it happen a lot when the student has nothing to do and no one is around?"},
+  {n:20, part:"III", text:"The behavior occurs at high rates regardless of what is going on around them.", plain:"Does it seem to happen no matter what's happening in the environment?"},
+  {n:21, part:"III", text:"The student seems to have few known reinforcers or rarely plays appropriately with objects.", plain:"Does the student have very few things they enjoy or rarely play with toys/items?"},
+  {n:22, part:"III", text:"The student is generally unresponsive to social stimulation.", plain:"Does the student mostly not respond when people try to engage them socially?"},
+  {n:23, part:"III", text:"The student often engages in repetitive, stereotyped behaviors (body rocking, hand waving, mouthing, etc.).", plain:"Does the student often do repetitive movements like rocking, hand flapping, or mouthing?"},
+  {n:24, part:"III", text:"When the behavior occurs, you and others usually do nothing — you never or rarely attend to it.", plain:"Is this a behavior that adults typically just ignore?"},
+  {n:25, part:"III", text:"The behavior seems to occur in cycles — very frequent during 'high' cycles and rare during 'low' cycles.", plain:"Does the behavior seem to come and go in waves?"},
+  {n:26, part:"III", text:"The behavior seems to occur more often when the student is ill.", plain:"Does it get worse when the student is sick?"},
+  {n:27, part:"III", text:"The student has a history of recurrent illness (ear/sinus infections, allergies, skin conditions, etc.).", plain:"Does the student have ongoing health issues?"}
+];
+
+const partLabels = {
+  "I": {title:"Part I — Social Influences on Behavior", desc:"These questions help determine if the behavior is related to social interactions."},
+  "II":{title:"Part II — Social Reinforcement", desc:"These questions explore whether social consequences maintain the behavior."},
+  "III":{title:"Part III — Nonsocial / Automatic Reinforcement", desc:"These questions explore whether the behavior happens independently of social interaction."}
+};
+
+const answers = {};
+const totalQ = questions.length;
+
+function buildQuestions(){
+  const c = document.getElementById('questionsContainer');
+  let html = '';
+  let currentPart = '';
+
+  questions.forEach((q,i)=>{
+    if(q.part !== currentPart){
+      currentPart = q.part;
+      const pl = partLabels[currentPart];
+      html += `<div class="part-divider">${pl.title}<span>${pl.desc}</span></div>`;
+    }
+    html += `<div class="q-card" id="qcard${q.n}">
+      <div class="q-num">Question ${q.n}</div>
+      <div class="q-text">${q.text}</div>
+      <div class="q-plain">💬 ${q.plain}</div>
+      <div class="yn-row">
+        <button class="yn-btn yes" data-q="${q.n}" data-val="yes" onclick="answer(${q.n},'yes')">Yes</button>
+        <button class="yn-btn no" data-q="${q.n}" data-val="no" onclick="answer(${q.n},'no')">No</button>
+      </div>
+      ${q.identify ? `<div class="q-identify" id="identify${q.n}"><label>${q.identify}</label><input type="text" id="identifyInput${q.n}" placeholder="Please specify…"></div>` : ''}
+    </div>`;
+  });
+  c.innerHTML = html;
+
+  // Checkbox styling
+  document.querySelectorAll('.checkbox-group input').forEach(cb=>{
+    cb.addEventListener('change',()=>{cb.closest('label').classList.toggle('checked',cb.checked)});
+  });
+}
+
+function answer(qNum, val){
+  answers[qNum] = val;
+  document.querySelectorAll(`[data-q="${qNum}"]`).forEach(b=>b.classList.remove('active'));
+  document.querySelector(`[data-q="${qNum}"][data-val="${val}"]`).classList.add('active');
+  document.getElementById(`qcard${qNum}`).classList.add('answered');
+
+  // Show identify field if yes and exists
+  const idField = document.getElementById(`identify${qNum}`);
+  if(idField) idField.classList.toggle('show', val === 'yes');
+
+  updateProgress();
+}
+
+function updateProgress(){
+  const count = Object.keys(answers).length;
+  const pct = Math.round((count/totalQ)*100);
+  document.getElementById('progressFill').style.width = pct+'%';
+  document.getElementById('progressText').textContent = `${count} of ${totalQ} answered`;
+  document.getElementById('progressPct').textContent = pct+'%';
+  document.getElementById('answeredCount').textContent = count;
+
+  const bar = document.getElementById('submitBar');
+  bar.style.display = count > 0 ? 'block' : 'none';
+  document.getElementById('scoreBtn').disabled = count < totalQ;
+}
+
+function submitForm(){
+  // Gather all data
+  const data = {
+    studentName: document.getElementById('studentName').value,
+    studentAge: document.getElementById('studentAge').value,
+    date: document.getElementById('assessDate').value,
+    behavior: document.getElementById('behavior').value,
+    informant: document.getElementById('informant').value,
+    relationship: document.getElementById('relationship').value,
+    howLong: document.getElementById('howLong').value,
+    hoursDay: document.getElementById('hoursDay').value,
+    observeContexts: [...document.querySelectorAll('#observeContexts input:checked')].map(c=>c.value),
+    answers: {...answers},
+    identifyFields: {}
+  };
+
+  // Gather identify inputs
+  questions.forEach(q=>{
+    if(q.identify){
+      const inp = document.getElementById(`identifyInput${q.n}`);
+      if(inp && inp.value) data.identifyFields[q.n] = inp.value;
+    }
+  });
+
+  // In production: POST to server / store in database
+  // For now: save to localStorage for behaviorist retrieval
+  const submissions = JSON.parse(localStorage.getItem('fast_submissions') || '[]');
+  data.submittedAt = new Date().toISOString();
+  data.id = 'FAST-' + Date.now();
+  submissions.push(data);
+  localStorage.setItem('fast_submissions', JSON.stringify(submissions));
+
+  console.log('FAST Submission:', JSON.stringify(data, null, 2));
+
+  // Show thank you
+  document.getElementById('mainContent').querySelectorAll('.info-section,.instructions,.part-divider,.q-card').forEach(el=>el.style.display='none');
+  document.getElementById('thankYou').style.display = 'block';
+  document.getElementById('submitBar').style.display = 'none';
+  window.scrollTo({top:0,behavior:'smooth'});
+}
+
+// Init
+document.getElementById('assessDate').valueAsDate = new Date();
+document.getElementById('totalQs').textContent = totalQ;
+buildQuestions();
+
+// Pre-fill from URL params (when sent via email link)
+const urlParams = new URLSearchParams(window.location.search);
+if(urlParams.get('student')) document.getElementById('studentName').value = urlParams.get('student');
+if(urlParams.get('respondent')) document.getElementById('informant').value = urlParams.get('respondent');
+if(urlParams.get('behavior')) document.getElementById('behavior').value = urlParams.get('behavior');
+</script>
+</body>
+</html>
