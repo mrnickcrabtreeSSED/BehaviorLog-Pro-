@@ -1,0 +1,18 @@
+{
+  "name": "BehaviorLog Pro",
+  "short_name": "BehaviorLog",
+  "description": "Behavior tracking and analysis for special education professionals",
+  "start_url": "/app.html",
+  "display": "standalone",
+  "background_color": "#1e3a5f",
+  "theme_color": "#1e3a5f",
+  "orientation": "any",
+  "icons": [
+    {
+      "src": "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 512 512'%3E%3Crect width='512' height='512' rx='96' fill='%231e3a5f'/%3E%3Crect x='80' y='300' width='80' height='120' rx='12' fill='%232a8fa8'/%3E%3Crect x='180' y='200' width='80' height='220' rx='12' fill='%233bbcd4'/%3E%3Crect x='280' y='120' width='80' height='300' rx='12' fill='%232a8fa8'/%3E%3Crect x='380' y='60' width='80' height='360' rx='12' fill='%233bbcd4'/%3E%3C/svg%3E",
+      "sizes": "512x512",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ]
+}

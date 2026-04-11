@@ -2,8 +2,13 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8"/>
-<meta name="viewport" content="width=device-width,initial-scale=1.0"/>
-<title>Behavior Tracking — Sure Step Education</title>
+<meta name="viewport" content="width=device-width,initial-scale=1.0,viewport-fit=cover"/>
+<meta name="apple-mobile-web-app-capable" content="yes"/>
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent"/>
+<meta name="apple-mobile-web-app-title" content="BehaviorLog"/>
+<meta name="theme-color" content="#1e3a5f"/>
+<link rel="manifest" href="/manifest.json"/>
+<title>BehaviorLog Pro — Sure Step Education</title>
 <style>
 *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
 :root{
@@ -326,12 +331,182 @@ select.input{cursor:pointer}
   color:var(--pmuted);margin-bottom:10px}
 
 /* ── Responsive ──────────────────────────────────────────────── */
-@media(max-width:600px){
+/* ── RESPONSIVE — Tablet (768px and below) ───────────────────── */
+@media(max-width:768px){
+  .app{padding:0 0 80px}
+  .page-body{padding:18px 16px 0}
+  .sub-view{padding:18px 16px 0}
+  .grid2{grid-template-columns:1fr}
+  .grid3{grid-template-columns:1fr 1fr}
   .grid4{grid-template-columns:repeat(3,1fr)}
-  .client-actions{gap:4px}
-  .btn-sm{padding:4px 9px;font-size:.72rem}
-  .app-header{padding:0 14px}
-  .page-body{padding:16px 14px 0}
+  .beh-grid{grid-template-columns:repeat(3,1fr);gap:8px}
+  .modal{max-width:90vw;padding:22px 18px}
+  .client-card{padding:14px}
+  .client-actions{gap:5px}
+  h2{font-size:1.1rem}
+  .timer{font-size:1.8rem}
+  .stat-box{padding:10px}
+  .stat-n{font-size:1.3rem}
+  /* Admin tables scroll */
+  table{display:block;overflow-x:auto;-webkit-overflow-scrolling:touch}
+}
+
+/* ── RESPONSIVE — Phone (520px and below) ────────────────────── */
+@media(max-width:520px){
+  .app{padding:0 0 72px}
+  .page-body{padding:14px 12px 0}
+  .sub-view{padding:14px 12px 0}
+
+  /* Nav bar compact */
+  .app-header{padding:0 10px;height:54px}
+  .nav-logo-svg{height:30px}
+  .nav-logo-text .sse-name{font-size:.88rem}
+  .nav-logo-text .sse-sub{font-size:.52rem;letter-spacing:1px}
+  .nav-actions{gap:4px}
+  .nav-actions .btn-sm{padding:4px 7px;font-size:.68rem}
+  .nav-actions .btn-amber{padding:4px 7px;font-size:.68rem}
+
+  /* Grids go simpler */
+  .grid2{grid-template-columns:1fr}
+  .grid3{grid-template-columns:1fr}
+  .grid4{grid-template-columns:repeat(2,1fr)}
+  .beh-grid{grid-template-columns:repeat(2,1fr);gap:6px}
+
+  /* Student cards — stack actions below */
+  .client-card{padding:12px}
+  .client-card .row.between.mb3{flex-direction:column;align-items:stretch;gap:10px}
+  .client-actions{justify-content:flex-start;gap:4px;flex-wrap:wrap}
+  .client-avatar{width:36px;height:36px;font-size:.85rem}
+
+  /* Buttons */
+  .btn{padding:7px 12px;font-size:.78rem}
+  .btn-sm{padding:4px 8px;font-size:.7rem;border-radius:6px}
+  .btn-xs{padding:2px 6px;font-size:.65rem}
+  .btn-primary{padding:10px 16px;font-size:.85rem}
+
+  /* Behavior buttons — bigger tap targets */
+  .beh-btn{padding:16px 8px;min-height:80px;border-radius:12px}
+  .beh-icon{font-size:1.5rem}
+  .beh-label{font-size:.72rem}
+
+  /* Timer — prominent */
+  .timer{font-size:1.6rem;letter-spacing:2px}
+  .live-banner{flex-direction:column;gap:8px;text-align:center;padding:10px 12px}
+
+  /* Modals — full screen on phones */
+  .modal-overlay{padding:0;align-items:flex-end}
+  .modal{max-width:100%;width:100%;max-height:92vh;border-radius:18px 18px 0 0;
+    padding:20px 16px;animation:modalSlideUp .25s ease}
+  @keyframes modalSlideUp{from{transform:translateY(100%)}to{transform:translateY(0)}}
+
+  /* Settings type selector stacks */
+  .sess-type-card{padding:12px}
+  .sess-type-icon{font-size:1.8rem;margin-bottom:4px}
+  .sess-type-title{font-size:.85rem}
+  .sess-type-desc{font-size:.7rem}
+
+  /* Inputs slightly larger for touch */
+  .input{padding:10px 12px;font-size:.88rem;border-radius:10px}
+  select.input{padding:10px 12px;font-size:.88rem}
+  textarea.input{min-height:60px}
+
+  /* Intensity pips — taller for thumb tapping */
+  .int-pip{height:44px;font-size:.72rem;border-radius:10px}
+
+  /* Event feed compact */
+  .ev-row{padding:6px 0}
+  .ev-badge{font-size:.58rem;padding:2px 5px}
+
+  /* Card padding */
+  .card{padding:14px;border-radius:10px}
+
+  /* Empty state */
+  .empty{padding:32px 16px}
+  .empty-icon{font-size:2.2rem}
+
+  /* Stats compact */
+  .stat-box{padding:8px}
+  .stat-n{font-size:1.2rem}
+  .stat-l{font-size:.62rem}
+
+  /* Section labels */
+  .slabel{font-size:.58rem;letter-spacing:1.5px;margin-bottom:6px}
+
+  /* Tags */
+  .tag{padding:2px 7px;font-size:.65rem}
+
+  /* Mode bar */
+  .mode-bar{border-radius:8px;padding:2px}
+  .mode-btn{padding:6px 8px;font-size:.75rem}
+
+  /* Goal cards */
+  .goal-card{padding:12px}
+
+  /* Back button */
+  .back-btn{font-size:.78rem;margin-bottom:12px}
+
+  /* Typography */
+  h1{font-size:1.3rem}
+  h2{font-size:1.05rem}
+  h3{font-size:.88rem}
+  .muted{font-size:.78rem}
+
+  /* Scrollable containers */
+  .scroll{max-height:220px}
+
+  /* A-Z letter buttons */
+  [onclick^="scrollToLetter"]{width:22px!important;height:22px!important;font-size:.6rem!important}
+}
+
+/* ── RESPONSIVE — Small phones (380px and below) ─────────────── */
+@media(max-width:380px){
+  .beh-grid{grid-template-columns:1fr 1fr;gap:5px}
+  .beh-btn{padding:12px 6px;min-height:70px}
+  .beh-icon{font-size:1.3rem}
+  .beh-label{font-size:.65rem}
+  .timer{font-size:1.3rem}
+  .app-header{height:48px}
+  .nav-logo-svg{height:26px}
+  .nav-logo-text .sse-name{font-size:.78rem}
+  .nav-logo-text .sse-sub{display:none}
+  .nav-actions .btn-sm,.nav-actions .btn-amber{font-size:.62rem;padding:3px 6px}
+  .client-avatar{width:32px;height:32px;font-size:.75rem}
+  .modal{padding:16px 12px}
+  .input{font-size:.84rem;padding:9px 10px}
+}
+
+/* ── Touch device optimizations ──────────────────────────────── */
+@media(hover:none) and (pointer:coarse){
+  /* Remove hover effects that cause sticky states on touch */
+  .btn:hover:not(:disabled){transform:none}
+  .client-card:hover{box-shadow:var(--shadow);border-color:var(--border)}
+  .chip:hover{border-color:var(--border);background:var(--surface)}
+  .beh-btn:hover{border-color:var(--border);background:var(--surface2)}
+  /* Active states instead */
+  .btn:active:not(:disabled){transform:scale(.97);opacity:.85}
+  .beh-btn:active{border-color:var(--accent);background:var(--accent-soft);transform:scale(.96)}
+  .client-card:active{border-color:var(--border2)}
+  /* Larger touch targets */
+  .beh-btn{min-height:72px}
+  .int-pip{min-height:44px}
+  /* Prevent text selection on rapid taps */
+  .beh-btn,.btn,.int-pip,.client-card{-webkit-user-select:none;user-select:none;-webkit-tap-highlight-color:transparent}
+  /* Smooth scrolling */
+  .scroll{-webkit-overflow-scrolling:touch}
+}
+
+/* ── Safe area for devices with notch/gesture bar ────────────── */
+@supports(padding-bottom: env(safe-area-inset-bottom)){
+  .app{padding-bottom:calc(72px + env(safe-area-inset-bottom))}
+  .modal{padding-bottom:calc(20px + env(safe-area-inset-bottom))}
+}
+
+/* ── Print ───────────────────────────────────────────────────── */
+@media print{
+  .app-header,.nav-actions,.back-btn,.btn-primary,.btn-danger{display:none!important}
+  .app{padding:0}
+  .modal-overlay{position:static;background:none;padding:0}
+  .modal{max-width:100%;box-shadow:none;border:none}
 }
 </style>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
@@ -409,10 +584,26 @@ const sb = supabase.createClient(SUPABASE_URL, SUPABASE_ANON);
 // ── Auth guard — redirect to login if not signed in ────────────────────────
 let _currentUser = null;
 async function initAuth(){
-  const {data:{session}} = await sb.auth.getSession();
-  if(!session){ window.location.href='index.html'; return false; }
-  _currentUser = session.user;
-  return true;
+  try{
+    const {data:{session}} = await sb.auth.getSession();
+    if(!session){ window.location.href='index.html'; return false; }
+    _currentUser = session.user;
+    return true;
+  }catch(e){
+    console.error('Auth error (possibly offline):',e);
+    // If offline, check if we have cached user data
+    try{
+      const local=localStorage.getItem(KEY);
+      if(local){
+        S._offline=true;
+        _currentUser={id:'offline',email:'offline'};
+        updateOfflineBanner();
+        return true;
+      }
+    }catch(le){}
+    window.location.href='index.html';
+    return false;
+  }
 }
 
 // ── Storage — Supabase cloud sync ──────────────────────────────────────────
@@ -423,26 +614,88 @@ async function loadFromCloud(){
   try{
     const {data,error}=await sb.from('user_data').select('data').eq('user_id',_currentUser.id).single();
     if(error&&error.code!=='PGRST116') throw error;
-    if(data&&data.data) return data.data;
+    if(data&&data.data){
+      // Keep local backup
+      try{localStorage.setItem(KEY,JSON.stringify(data.data));}catch(e){}
+      return data.data;
+    }
     // Try migrating from localStorage on first cloud load
     const local=localStorage.getItem(KEY);
     if(local){ const parsed=JSON.parse(local); await saveToCloud(parsed); return parsed; }
     return {};
-  }catch(e){ console.error('Cloud load error:',e); return {}; }
+  }catch(e){
+    console.error('Cloud load error:',e);
+    // Offline fallback — load from localStorage
+    try{
+      const local=localStorage.getItem(KEY);
+      if(local){
+        S._offline=true;
+        console.log('Loaded from local backup (offline)');
+        return JSON.parse(local);
+      }
+    }catch(le){}
+    return {};
+  }
 }
 
 async function saveToCloud(d){
   try{
     await sb.from('user_data').upsert({user_id:_currentUser.id,data:d},{onConflict:'user_id'});
-  }catch(e){ console.error('Cloud save error:',e); }
+    if(S._offline){S._offline=false;updateOfflineBanner();}
+  }catch(e){
+    console.error('Cloud save error:',e);
+    S._offline=true;
+    updateOfflineBanner();
+  }
 }
 
 function load(){ return {}; } // stub — real data loaded async in boot()
 function save(d){
+  // Always save locally for offline backup
+  try{localStorage.setItem(KEY,JSON.stringify(d));}catch(e){}
   // Debounce — save 1.5s after last change to avoid hammering DB
   clearTimeout(_saveTimer);
   _saveTimer=setTimeout(()=>saveToCloud(d),1500);
 }
+
+function updateOfflineBanner(){
+  let banner=document.getElementById('offline-banner');
+  if(S._offline){
+    if(!banner){
+      banner=document.createElement('div');
+      banner.id='offline-banner';
+      banner.style.cssText='position:fixed;top:0;left:0;right:0;z-index:200;background:#e06018;color:#fff;text-align:center;padding:6px 12px;font-size:.78rem;font-weight:700;font-family:inherit;transition:transform .3s ease';
+      banner.innerHTML='📡 Offline — data saving locally, will sync when reconnected';
+      document.body.appendChild(banner);
+      // Push header down
+      const hdr=document.querySelector('.app-header');
+      if(hdr) hdr.style.top='32px';
+    }
+  } else {
+    if(banner){
+      banner.innerHTML='✅ Back online — syncing...';
+      banner.style.background='#067a5f';
+      setTimeout(()=>{
+        banner.remove();
+        const hdr=document.querySelector('.app-header');
+        if(hdr) hdr.style.top='0';
+      },2000);
+    }
+  }
+}
+
+// Listen for online/offline events
+window.addEventListener('online',function(){
+  if(S._offline){
+    S._offline=false;
+    updateOfflineBanner();
+    persist(); // sync pending data
+  }
+});
+window.addEventListener('offline',function(){
+  S._offline=true;
+  updateOfflineBanner();
+});
 
 // ── Constants ──────────────────────────────────────────────────────────────
 const PRESETS=[
@@ -520,6 +773,7 @@ let S={
   _adminInvites:[],    // loaded invites for admin
   _selectMode:false,   // bulk select mode for students
   _selected:{},        // student IDs selected for bulk action
+  _offline:false,      // true when no network connection
 };
 
 // helpers to get/set the focused client session slot
@@ -4965,7 +5219,14 @@ async function boot(){
         S._role='teacher';
       }
     }
-  }catch(e){console.error('Role load error:',e);S._role='teacher';}
+  }catch(e){
+    console.error('Role load error:',e);
+    // Try cached role from localStorage
+    try{ const cachedRole=localStorage.getItem('bl_role'); if(cachedRole) S._role=cachedRole; else S._role='teacher'; }
+    catch(le){S._role='teacher';}
+  }
+  // Cache role for offline use
+  try{localStorage.setItem('bl_role',S._role);}catch(e){}
 
   // Load cloud data
   stored = await loadFromCloud();
@@ -5022,6 +5283,17 @@ async function signOut(){
   if(!confirm('Sign out of BehaviorLog Pro?')) return;
   await sb.auth.signOut();
   window.location.href='index.html';
+}
+
+// ── Register Service Worker (PWA / offline) ───────────────────────────────
+if('serviceWorker' in navigator){
+  navigator.serviceWorker.register('/sw.js').then(function(reg){
+    console.log('Service worker registered');
+    // Check for updates periodically
+    setInterval(function(){ reg.update(); }, 60*60*1000); // hourly
+  }).catch(function(err){
+    console.log('Service worker registration failed:', err);
+  });
 }
 
 boot();
