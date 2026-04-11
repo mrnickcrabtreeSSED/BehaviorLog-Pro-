@@ -989,6 +989,9 @@ function buildModal(){
       {id:'general', icon:'📋', label:'General Tracking',
        desc:'Track the student\'s configured behaviors in a structured observation — no goal pressure, pure data collection.',
        color:'var(--amber)', soft:'var(--amber-soft)', always:true},
+      {id:'manual', icon:'📝', label:'Manual Entry',
+       desc:'Enter observation data from a paper tracking sheet — date, time, location, and behavior counts.',
+       color:'var(--orange)', soft:'var(--orange-soft)', always:true, isManual:true},
       {id:'fba', icon:'🧠', label:'Behaviorist Observation',
        desc:isBehaviorist()?'Structured behavioral observation with setting events, antecedent categories, and hypothesis tools. Requires licensed behaviorist affirmation.':'Behaviorist observations can only be started by a licensed behaviorist. Contact your behavior support specialist.',
        color:'var(--fba-green)', soft:'var(--fba-soft)', always:true, blocked:!isBehaviorist()},
@@ -1668,7 +1671,7 @@ function buildHome(){
           </div>
           ${S._selectMode?'':'<div class="client-actions">'}
           ${S._selectMode?'':`<button class="btn btn-ghost btn-sm" onclick="goAnalytics('${c.id}','charts')">📊 Data</button>`}
-          ${S._selectMode?'':isBehaviorist()?`<button class="btn btn-ghost btn-sm desktop-only" onclick="openManualEntry('${c.id}')" title="Manual data entry" style="color:var(--purple)">📝 Enter</button>`:''}
+          ${S._selectMode?'':`<button class="btn btn-ghost btn-sm" onclick="openManualEntry('${c.id}')" title="Manual data entry" style="color:var(--purple)">📝 Enter</button>`}
             ${S._selectMode?'':`<button class="btn btn-ghost btn-sm desktop-only" title="Link behaviorist" onclick="linkBehaviorist('${c.id}')" style="color:var(--purple)">🧠</button>`}
             ${S._selectMode?'':`<button class="btn btn-ghost btn-sm desktop-only" title="Student settings" onclick="openClientSettings('${c.id}')">⚙️</button>`}
             ${S._selectMode?'':`<button class="btn btn-ghost btn-sm desktop-only" title="Delete student" style="color:var(--red);border:1.5px solid #fca5a5;background:#fff5f5" onclick="confirmDeleteClient('${c.id}')">🗑</button>`}
@@ -1828,8 +1831,8 @@ function buildRecord(){
 
   const addBehOnFly=isInitial?'<div style="display:flex;gap:6px;margin-bottom:12px;align-items:center"><input class="input" id="live-add-beh" placeholder="Add new behavior on the fly…" style="flex:1;font-size:.82rem;padding:8px 10px" onkeydown="if(event.key===\'Enter\')liveAddBeh()"/><button class="btn btn-primary btn-xs" onclick="liveAddBeh()" style="white-space:nowrap">+ Add</button></div>':'';
 
-  return `<div class="live-banner" style="${isFba?fbaBannerStyle:overTime?'background:linear-gradient(135deg,#fff1f2,#ffe4e6);border-color:#fca5a5':''}"><div class="row gap2"><span class="live-dot" style="${overTime?'background:var(--red)':isFba?'background:var(--fba-green)':''}"></span><div><div style="font-weight:800;color:${isFba?'var(--fba-dark)':overTime?'var(--red)':'var(--green)'}">Live${isFba?' FBA':''} Session — ${esc(S.selClient.name)}${isFba&&sess.behavioristName?' <span style="font-size:.72rem;font-weight:600;color:var(--fba-green)">· '+esc(sess.behavioristName)+'</span>':''}</div>
-          ${sess.location?`<div style="font-size:.74rem;color:var(--muted);margin-top:1px">📍 ${esc(sess.location)} · ${new Date(sess.startedAt).toLocaleTimeString('en-US',{hour:'numeric',minute:'2-digit',hour12:true})}</div>`:`<div style="font-size:.74rem;color:var(--muted);margin-top:1px">${new Date(sess.startedAt).toLocaleTimeString('en-US',{hour:'numeric',minute:'2-digit',hour12:true})}</div>`}<div class="row gap2 mt1" style="flex-wrap:wrap"><span class="muted mono" id="sess-elapsed" style="font-size:.8rem">${fmt(elapsedNow)} elapsed</span>${plannedMs?`<span id="sess-remain" class="mono" style="font-size:.8rem;font-weight:700;color:${overTime?'var(--red)':'var(--muted)'}">${overTime?'⚠ +'+fmt(elapsedNow-plannedMs)+' over':'⏱ '+fmt(remainMs)+' left'}</span>`:''}</div></div></div><div class="row gap2">${sessionTypeBadge}<button class="btn btn-danger btn-sm" onclick="endSession()">⏹ End</button></div></div>${liveGoals}<div class="slabel" style="margin-bottom:10px">${isGoalSpec?'IEP Goal Behaviors':isGeneral?'Configured Behaviors':isFba?'All Behaviors — Behaviorist Observation':isInitial?'Assessment Behaviors':'All Behaviors'}</div>${abcPanel}<div class="beh-grid mb3">${behGrid}</div>${addBehOnFly}${activeCards}${evFeed}${fbaHypField||''}`;
+  return `<div class="sub-view"><div class="live-banner" style="${isFba?fbaBannerStyle:overTime?'background:linear-gradient(135deg,#fff1f2,#ffe4e6);border-color:#fca5a5':''}"><div class="row gap2"><span class="live-dot" style="${overTime?'background:var(--red)':isFba?'background:var(--fba-green)':''}"></span><div><div style="font-weight:800;color:${isFba?'var(--fba-dark)':overTime?'var(--red)':'var(--green)'}">Live${isFba?' FBA':''} Session — ${esc(S.selClient.name)}${isFba&&sess.behavioristName?' <span style="font-size:.72rem;font-weight:600;color:var(--fba-green)">· '+esc(sess.behavioristName)+'</span>':''}</div>
+          ${sess.location?`<div style="font-size:.74rem;color:var(--muted);margin-top:1px">📍 ${esc(sess.location)} · ${new Date(sess.startedAt).toLocaleTimeString('en-US',{hour:'numeric',minute:'2-digit',hour12:true})}</div>`:`<div style="font-size:.74rem;color:var(--muted);margin-top:1px">${new Date(sess.startedAt).toLocaleTimeString('en-US',{hour:'numeric',minute:'2-digit',hour12:true})}</div>`}<div class="row gap2 mt1" style="flex-wrap:wrap"><span class="muted mono" id="sess-elapsed" style="font-size:.8rem">${fmt(elapsedNow)} elapsed</span>${plannedMs?`<span id="sess-remain" class="mono" style="font-size:.8rem;font-weight:700;color:${overTime?'var(--red)':'var(--muted)'}">${overTime?'⚠ +'+fmt(elapsedNow-plannedMs)+' over':'⏱ '+fmt(remainMs)+' left'}</span>`:''}</div></div></div><div class="row gap2">${sessionTypeBadge}<button class="btn btn-danger btn-sm" onclick="endSession()">⏹ End</button></div></div>${liveGoals}<div class="slabel" style="margin-bottom:10px">${isGoalSpec?'IEP Goal Behaviors':isGeneral?'Configured Behaviors':isFba?'All Behaviors — Behaviorist Observation':isInitial?'Assessment Behaviors':'All Behaviors'}</div>${abcPanel}<div class="beh-grid mb3">${behGrid}</div>${addBehOnFly}${activeCards}${evFeed}${fbaHypField||''}</div>`;
 }
 
 // ── MULTI-CLIENT RECORD ────────────────────────────────────────────────────
@@ -1967,7 +1970,7 @@ function buildMultiRecord(){
 
   const evFeed=events.length>0?`<div class="card mb3"><div class="slabel">Events — ${esc(slot.clientName)} (${events.length})</div><div class="scroll">${[...events].reverse().map(ev=>`<div class="ev-row"><span class="ev-badge b-${ev.type==='frequency'?'freq':ev.type==='duration'?'dur':ev.type==='intensity'?'int':'lat'}">${ev.type==='frequency'?'FREQ':ev.type==='duration'?'DUR':ev.type==='intensity'?'INT':'LAT'}</span><div style="flex:1"><div style="font-size:.84rem;font-weight:700">${ev.behaviorIcon} ${esc(ev.behaviorLabel)}</div><div class="muted">${fmtTime(ev.timestamp)}${ev.type==='duration'?' · '+fmt(ev.durationMs):''}${ev.type==='intensity'?' · '+INT_LABELS[ev.intensity]:''}${ev.type==='latency'?' · '+fmt(ev.latencyMs):''}${ev.antecedent?' · A: '+esc(ev.antecedent):''}${ev.consequence?' · C: '+esc(ev.consequence):''}${ev.note?'<br><span style="color:var(--text2)">📝 '+esc(ev.note)+'</span>':''}</div></div></div>`).join('')}</div></div>`:'';
 
-  return`${tabBar}
+  return`<div class="sub-view">${tabBar}
   <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px">
     <div style="font-weight:800;font-size:1rem;color:var(--text)">${esc(slot.clientName)}</div>
     <div class="row gap2">${sessionTypeBadge}<button class="btn btn-ghost btn-sm" onclick="endOneSession(${S.activeClientIdx})">End This Student</button></div>
@@ -1976,7 +1979,7 @@ function buildMultiRecord(){
   <div class="slabel" style="margin-bottom:10px">${isGoalSpec?'IEP Goal Behaviors':isGeneral?'Configured Behaviors':'All Behaviors'}</div>
   <div class="beh-grid mb3">${behGrid}</div>
   ${measurePanel}${evFeed}
-  `;
+  </div>`;
 }
 
 // ── SUMMARY ────────────────────────────────────────────────────────────────
@@ -3723,6 +3726,13 @@ function cancelFbaAffirm(){
 
 function selectSessType(t){
   if(!S._modal)return;
+  // Manual Entry: open manual entry modal directly
+  if(t==='manual'){
+    const cid=S._modal.cid;
+    S._modal=null;
+    openManualEntry(cid);
+    return;
+  }
   // FBA: gate behind behaviorist affirmation modal
   if(t==='fba'){
     S._fbaGate={
