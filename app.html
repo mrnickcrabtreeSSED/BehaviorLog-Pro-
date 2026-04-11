@@ -69,8 +69,9 @@
 
 /* ── Base ────────────────────────────────────────────────────── */
 html,body{min-height:100vh;background:var(--bg);color:var(--text);
-  font-family:-apple-system,BlinkMacSystemFont,'Segoe UI','Helvetica Neue',Arial,sans-serif}
-.app{max-width:900px;margin:0 auto;padding:0 0 90px}
+  font-family:-apple-system,BlinkMacSystemFont,'Segoe UI','Helvetica Neue',Arial,sans-serif;
+  overflow-x:hidden;width:100%;max-width:100vw}
+.app{max-width:900px;margin:0 auto;padding:0 0 90px;overflow-x:hidden}
 .sub-view{padding:22px 22px 0;max-width:900px;margin:0 auto}
 h1{font-size:1.6rem;font-weight:800;letter-spacing:-.4px;color:var(--nav-text)}
 h2{font-size:1.25rem;font-weight:700;color:var(--text)}
@@ -109,8 +110,7 @@ h3{font-size:.95rem;font-weight:700;color:var(--text)}
 .app-header{
   background:var(--sse-navy);
   padding:0 26px;
-  padding-top:env(safe-area-inset-top,0);
-  height:calc(62px + env(safe-area-inset-top,0));
+  height:62px;
   display:flex;
   align-items:center;
   justify-content:space-between;
@@ -119,6 +119,15 @@ h3{font-size:.95rem;font-weight:700;color:var(--text)}
   top:0;
   z-index:50;
   box-shadow:0 2px 10px rgba(30,58,95,.35);
+}
+/* Notch spacer — fills the area behind the camera/Dynamic Island */
+.notch-spacer{
+  background:var(--sse-navy);
+  height:env(safe-area-inset-top,0);
+  position:sticky;
+  top:0;
+  z-index:51;
+  width:100%;
 }
 .app-header h1{display:none}
 .app-header p{display:none}
@@ -1537,7 +1546,7 @@ function buildModal(){
 
 // ── HOME ───────────────────────────────────────────────────────────────────
 function buildHome(){
-  let out=`<div class="app-header">
+  let out=`<div class="notch-spacer"></div><div class="app-header">
     <div class="nav-logo">
       <svg class="nav-logo-svg" viewBox="0 0 200 44" xmlns="http://www.w3.org/2000/svg">
   <defs>
@@ -1565,13 +1574,13 @@ function buildHome(){
     <div class="nav-actions">
       <button class="btn btn-sm" style="color:rgba(255,255,255,.8);border:1.5px solid rgba(255,255,255,.22);background:rgba(255,255,255,.08);border-radius:7px" onclick="openSettings()">⚙️ Settings</button>
 
-      ${isBehaviorist()?`<button class="btn btn-sm" style="background:linear-gradient(135deg,#2b7a78,#3aafa9);color:#fff;border-radius:7px;box-shadow:0 2px 6px rgba(43,122,120,.4)" onclick="S.view='assessments';S._assTab='dashboard';rerender()">📋 Assessments</button>`:''}
+      ${isBehaviorist()?`<button class="btn btn-sm desktop-only" style="background:linear-gradient(135deg,#2b7a78,#3aafa9);color:#fff;border-radius:7px;box-shadow:0 2px 6px rgba(43,122,120,.4)" onclick="S.view='assessments';S._assTab='dashboard';rerender()">📋 Assessments</button>`:''}
 
-      <button class="btn btn-sm btn-amber" onclick="openMultiSess()">👥 Group Session</button>
-      <button class="btn btn-sm btn-ghost" style="color:rgba(255,255,255,.8);border:1.5px solid rgba(255,255,255,.22);background:rgba(255,255,255,.08)" onclick="toggleSelectMode()">${S._selectMode?'✕ Cancel':'☑ Select'}</button>
+      <button class="btn btn-sm btn-amber desktop-only" onclick="openMultiSess()">👥 Group Session</button>
+      <button class="btn btn-sm btn-ghost desktop-only" style="color:rgba(255,255,255,.8);border:1.5px solid rgba(255,255,255,.22);background:rgba(255,255,255,.08)" onclick="toggleSelectMode()">${S._selectMode?'✕ Cancel':'☑ Select'}</button>
       <button class="btn btn-sm btn-ghost desktop-only" style="color:rgba(255,255,255,.8);border:1.5px solid rgba(255,255,255,.22);background:rgba(255,255,255,.08)" onclick="document.getElementById('csv-upload').click()">📄 Import CSV</button>
       <input type="file" id="csv-upload" accept=".csv" style="display:none" onchange="handleCSVUpload(this)"/>
-      <button class="btn btn-sm" style="background:var(--sse-teal);color:#fff;border-radius:7px;box-shadow:0 2px 6px rgba(42,143,168,.4)" onclick="showAddClient()">+ Student</button>
+      <button class="btn btn-sm desktop-only" style="background:var(--sse-teal);color:#fff;border-radius:7px;box-shadow:0 2px 6px rgba(42,143,168,.4)" onclick="showAddClient()">+ Student</button>
     </div>
   </div>
   <div class="page-body">
@@ -1659,10 +1668,10 @@ function buildHome(){
           </div>
           ${S._selectMode?'':'<div class="client-actions">'}
           ${S._selectMode?'':`<button class="btn btn-ghost btn-sm" onclick="goAnalytics('${c.id}','charts')">📊 Data</button>`}
-          ${S._selectMode?'':isBehaviorist()?`<button class="btn btn-ghost btn-sm" onclick="openManualEntry('${c.id}')" title="Manual data entry" style="color:var(--purple)">📝 Enter</button>`:''}
-            ${S._selectMode?'':`<button class="btn btn-ghost btn-sm" title="Link behaviorist" onclick="linkBehaviorist('${c.id}')" style="color:var(--purple)">🧠</button>`}
-            ${S._selectMode?'':`<button class="btn btn-ghost btn-sm" title="Student settings" onclick="openClientSettings('${c.id}')">⚙️</button>`}
-            ${S._selectMode?'':`<button class="btn btn-ghost btn-sm" title="Delete student" style="color:var(--red);border:1.5px solid #fca5a5;background:#fff5f5" onclick="confirmDeleteClient('${c.id}')">🗑</button>`}
+          ${S._selectMode?'':isBehaviorist()?`<button class="btn btn-ghost btn-sm desktop-only" onclick="openManualEntry('${c.id}')" title="Manual data entry" style="color:var(--purple)">📝 Enter</button>`:''}
+            ${S._selectMode?'':`<button class="btn btn-ghost btn-sm desktop-only" title="Link behaviorist" onclick="linkBehaviorist('${c.id}')" style="color:var(--purple)">🧠</button>`}
+            ${S._selectMode?'':`<button class="btn btn-ghost btn-sm desktop-only" title="Student settings" onclick="openClientSettings('${c.id}')">⚙️</button>`}
+            ${S._selectMode?'':`<button class="btn btn-ghost btn-sm desktop-only" title="Delete student" style="color:var(--red);border:1.5px solid #fca5a5;background:#fff5f5" onclick="confirmDeleteClient('${c.id}')">🗑</button>`}
             ${S._selectMode?'':`<button class="btn btn-primary btn-sm" onclick="openSessType('${c.id}')">▶ Record</button>`}
           ${S._selectMode?'':'</div>'}
         </div>
