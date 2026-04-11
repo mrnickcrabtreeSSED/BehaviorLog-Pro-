@@ -1307,6 +1307,22 @@ function buildModal(){
     </div>`;
   }
 
+  if(m.type==='endNotes'){
+    const evCount=S.activeSess?S.activeSess.events.length:0;
+    const elapsed=S.activeSess?(S.activeSess.endedAt-S.activeSess.startedAt):0;
+    inner=`<div style="text-align:center;margin-bottom:16px">
+      <div style="font-size:2rem;margin-bottom:8px">✅</div>
+      <h2 style="margin:0;font-size:1.1rem">Session Complete</h2>
+      <p class="muted" style="margin-top:6px;font-size:.82rem">${evCount} event${evCount!==1?'s':''} recorded · ${fmt(elapsed)}</p>
+    </div>
+    <div class="slabel">Add session notes (optional)</div>
+    <textarea class="input mb3" id="end-session-notes" placeholder="Observations, context, environmental factors, follow-up notes…" style="min-height:100px"></textarea>
+    <div style="display:flex;gap:8px">
+      <button class="btn btn-primary" style="flex:1" onclick="saveEndNotes()">💾 Save with Notes</button>
+      <button class="btn btn-ghost" onclick="skipEndNotes()">Skip</button>
+    </div>`;
+  }
+
   if(m.type==='manualEntry'){
     const c=S.clients.find(x=>x.id===m.cid);
     if(!c){inner='<p>Student not found</p>';}
@@ -1760,7 +1776,7 @@ function buildRecord(){
   }
 
   // ── Event feed with notes ─────────────────────────────────────────────────
-  const evFeed=events.length>0?`<div class="card mb3"><div class="slabel">Session Events (${events.length})</div><div class="scroll">${[...events].reverse().map((ev,ri)=>{
+  const evFeed=events.length>0?`<div class="card mb3"><div class="slabel" onclick="this.nextElementSibling.style.display=this.nextElementSibling.style.display==='none'?'block':'none'" style="cursor:pointer;user-select:none">Session Events (${events.length}) <span style="font-size:.7rem;color:var(--accent)">▼ tap to toggle</span></div><div class="scroll" style="display:none">${[...events].reverse().map((ev,ri)=>{
     const ei=events.length-1-ri;
     const intPills=(ev.type==='duration'||ev.type==='intensity'||ev.type==='frequency')?
       '<div style="display:flex;gap:3px;margin-top:4px">'+[1,2,3,4].map(l=>'<div onclick="setEvIntensity('+ei+','+l+')" style="padding:2px 8px;border-radius:6px;font-size:.65rem;font-weight:700;cursor:pointer;background:'+(ev.intensity===l?INT_COLORS[l]:'var(--surface2)')+';color:'+(ev.intensity===l?INT_TEXT[l]:'var(--muted)')+'">'+INT_LABELS[l]+'</div>').join('')+'</div>':'';
@@ -1790,15 +1806,7 @@ function buildRecord(){
   const addBehOnFly=isInitial?'<div style="display:flex;gap:6px;margin-bottom:12px;align-items:center"><input class="input" id="live-add-beh" placeholder="Add new behavior on the fly…" style="flex:1;font-size:.82rem;padding:8px 10px" onkeydown="if(event.key===\'Enter\')liveAddBeh()"/><button class="btn btn-primary btn-xs" onclick="liveAddBeh()" style="white-space:nowrap">+ Add</button></div>':'';
 
   return `<div class="live-banner" style="${isFba?fbaBannerStyle:overTime?'background:linear-gradient(135deg,#fff1f2,#ffe4e6);border-color:#fca5a5':''}"><div class="row gap2"><span class="live-dot" style="${overTime?'background:var(--red)':isFba?'background:var(--fba-green)':''}"></span><div><div style="font-weight:800;color:${isFba?'var(--fba-dark)':overTime?'var(--red)':'var(--green)'}">Live${isFba?' FBA':''} Session — ${esc(S.selClient.name)}${isFba&&sess.behavioristName?' <span style="font-size:.72rem;font-weight:600;color:var(--fba-green)">· '+esc(sess.behavioristName)+'</span>':''}</div>
-          ${sess.location?`<div style="font-size:.74rem;color:var(--muted);margin-top:1px">📍 ${esc(sess.location)} · ${new Date(sess.startedAt).toLocaleTimeString('en-US',{hour:'numeric',minute:'2-digit',hour12:true})}</div>`:`<div style="font-size:.74rem;color:var(--muted);margin-top:1px">${new Date(sess.startedAt).toLocaleTimeString('en-US',{hour:'numeric',minute:'2-digit',hour12:true})}</div>`}<div class="row gap2 mt1" style="flex-wrap:wrap"><span class="muted mono" id="sess-elapsed" style="font-size:.8rem">${fmt(elapsedNow)} elapsed</span>${plannedMs?`<span id="sess-remain" class="mono" style="font-size:.8rem;font-weight:700;color:${overTime?'var(--red)':'var(--muted)'}">${overTime?'⚠ +'+fmt(elapsedNow-plannedMs)+' over':'⏱ '+fmt(remainMs)+' left'}</span>`:''}</div></div></div><div class="row gap2">${sessionTypeBadge}<button class="btn btn-danger btn-sm" onclick="endSession()">⏹ End</button></div></div>${liveGoals}<div class="slabel" style="margin-bottom:10px">${isGoalSpec?'IEP Goal Behaviors':isGeneral?'Configured Behaviors':isFba?'All Behaviors — Behaviorist Observation':isInitial?'Assessment Behaviors':'All Behaviors'}</div>${abcPanel}<div class="beh-grid mb3">${behGrid}</div>${addBehOnFly}${activeCards}${evFeed}${fbaHypField||''}<div class="card${isFba?'" style="background:var(--fba-soft);border-color:var(--fba-mid)':''}"><div class="row between mb2">
-    <div class="slabel" style="margin:0${isFba?';color:var(--fba-dark)':''}">Session Notes${isFba?' <span style="font-size:.7rem;font-weight:400;color:var(--fba-green)">— Observational summary</span>':''}</div>
-    <button id="stt-btn-single" onclick="toggleSTT('single')" style="display:flex;align-items:center;gap:6px;padding:7px 13px;border-radius:10px;border:1.5px solid var(--border);background:var(--surface2);cursor:pointer;font-size:.78rem;font-weight:700;color:var(--text2);transition:all .15s" title="Dictate notes">
-      🎙️ <span id="stt-label-single">Dictate</span>
-    </button>
-  </div>
-  <div id="stt-interim-single" style="min-height:20px;font-size:.78rem;color:var(--muted);font-style:italic;margin-bottom:4px"></div>
-  <textarea class="input" id="sess-note" placeholder="Type or dictate your observation summary…" oninput="S.sessNote=this.value" style="min-height:90px">${esc(S.sessNote)}</textarea>
-</div>`;
+          ${sess.location?`<div style="font-size:.74rem;color:var(--muted);margin-top:1px">📍 ${esc(sess.location)} · ${new Date(sess.startedAt).toLocaleTimeString('en-US',{hour:'numeric',minute:'2-digit',hour12:true})}</div>`:`<div style="font-size:.74rem;color:var(--muted);margin-top:1px">${new Date(sess.startedAt).toLocaleTimeString('en-US',{hour:'numeric',minute:'2-digit',hour12:true})}</div>`}<div class="row gap2 mt1" style="flex-wrap:wrap"><span class="muted mono" id="sess-elapsed" style="font-size:.8rem">${fmt(elapsedNow)} elapsed</span>${plannedMs?`<span id="sess-remain" class="mono" style="font-size:.8rem;font-weight:700;color:${overTime?'var(--red)':'var(--muted)'}">${overTime?'⚠ +'+fmt(elapsedNow-plannedMs)+' over':'⏱ '+fmt(remainMs)+' left'}</span>`:''}</div></div></div><div class="row gap2">${sessionTypeBadge}<button class="btn btn-danger btn-sm" onclick="endSession()">⏹ End</button></div></div>${liveGoals}<div class="slabel" style="margin-bottom:10px">${isGoalSpec?'IEP Goal Behaviors':isGeneral?'Configured Behaviors':isFba?'All Behaviors — Behaviorist Observation':isInitial?'Assessment Behaviors':'All Behaviors'}</div>${abcPanel}<div class="beh-grid mb3">${behGrid}</div>${addBehOnFly}${activeCards}${evFeed}${fbaHypField||''}`;
 }
 
 // ── MULTI-CLIENT RECORD ────────────────────────────────────────────────────
@@ -1945,15 +1953,7 @@ function buildMultiRecord(){
   <div class="slabel" style="margin-bottom:10px">${isGoalSpec?'IEP Goal Behaviors':isGeneral?'Configured Behaviors':'All Behaviors'}</div>
   <div class="beh-grid mb3">${behGrid}</div>
   ${measurePanel}${evFeed}
-  <div class="card"><div class="row between mb2">
-    <div class="slabel" style="margin:0">Notes — ${esc(slot.clientName)}</div>
-    <button id="stt-btn-multi" onclick="toggleSTT('multi')" style="display:flex;align-items:center;gap:6px;padding:7px 13px;border-radius:10px;border:1.5px solid var(--border);background:var(--surface2);cursor:pointer;font-size:.78rem;font-weight:700;color:var(--text2);transition:all .15s" title="Dictate notes">
-      🎙️ <span id="stt-label-multi">Dictate</span>
-    </button>
-  </div>
-  <div id="stt-interim-multi" style="min-height:20px;font-size:.78rem;color:var(--muted);font-style:italic;margin-bottom:4px"></div>
-  <textarea class="input" id="multi-note-${S.activeClientIdx}" placeholder="Type or dictate your observation summary…" oninput="setCs({note:this.value})" style="min-height:90px">${esc(slot.note||'')}</textarea>
-  </div>`;
+  `;
 }
 
 // ── SUMMARY ────────────────────────────────────────────────────────────────
@@ -3785,6 +3785,7 @@ function confirmStartSession(){
 
 
 function endSession(){
+  if(!confirm('End this session?')) return;
   // auto-close any running concurrent incidents
   Object.values(S.incidents).forEach(inc=>{
     const durMs=Date.now()-inc.startMs;
@@ -3793,10 +3794,23 @@ function endSession(){
   S.incidents={};
   S.intensityPrompts=[];
   S.durRunning=false;S.durElapsed=0;
-  S.activeSess.endedAt=Date.now();S.activeSess.note=S.sessNote;
+  S.activeSess.endedAt=Date.now();
   if(S.sessType==='fba'){S.activeSess.settingEvents=S.fbaSettingEvents||[];S.activeSess.settingEventsNote=S.fbaSettingEventsNote||'';S.activeSess.fbaHypothesis=S.fbaHypothesis||'';}
+  clearInterval(_tick);
+  // Show notes prompt
+  S._modal={type:'endNotes'};
+  rerender();
+}
+function saveEndNotes(){
+  const note=document.getElementById('end-session-notes')?.value||'';
+  S.activeSess.note=note;
   S.sessions.push({...S.activeSess});S.selSess={...S.activeSess};
-  S.activeSess=null;persist();S.view='summary';rerender();clearInterval(_tick);
+  S.activeSess=null;S._modal=null;S.sessNote='';persist();S.view='summary';rerender();
+}
+function skipEndNotes(){
+  S.activeSess.note='';
+  S.sessions.push({...S.activeSess});S.selSess={...S.activeSess};
+  S.activeSess=null;S._modal=null;S.sessNote='';persist();S.view='summary';rerender();
 }
 function selectBeh(bid){S.activeBeh=allBehs().find(b=>b.id===bid);S.measureMode=null;rerender();}
 function setMeasure(m){S.measureMode=S.measureMode===m?null:m;rerender();}
@@ -4216,135 +4230,6 @@ window.skipIntensityPrompt=function(){
 window.updateIntConsequence=function(val){
   if(S.isMulti){const slot=cs();if(slot&&slot.intensityPrompts.length)slot.intensityPrompts[0].consequence=val;}
   else{if(S.intensityPrompts.length)S.intensityPrompts[0].consequence=val;}
-};
-
-// ── Speech-to-Text Engine ──────────────────────────────────────────────────
-let _sttRecognition = null;
-let _sttMode = null; // 'single' | 'multi'
-
-function toggleSTT(mode) {
-  // If already running for this mode — stop
-  if (_sttRecognition && _sttMode === mode) {
-    _sttRecognition.stop();
-    return;
-  }
-  // If running for a different mode — stop old first
-  if (_sttRecognition) {
-    _sttRecognition.abort();
-    _sttRecognition = null;
-    _resetSTTBtn(_sttMode);
-    _sttMode = null;
-  }
-
-  const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
-  if (!SpeechRecognition) {
-    alert('Speech recognition is not supported in this browser. Try Chrome or Edge.');
-    return;
-  }
-
-  _sttMode = mode;
-  _sttRecognition = new SpeechRecognition();
-  _sttRecognition.continuous = true;
-  _sttRecognition.interimResults = true;
-  _sttRecognition.lang = 'en-US';
-
-  // Visual: button goes red + pulsing while recording
-  const btn = document.getElementById('stt-btn-' + mode);
-  const lbl = document.getElementById('stt-label-' + mode);
-  const interim = document.getElementById('stt-interim-' + mode);
-  if (btn) {
-    btn.style.background = 'var(--red)';
-    btn.style.color = '#fff';
-    btn.style.borderColor = 'var(--red)';
-    btn.style.animation = 'pulse 1.2s ease-in-out infinite';
-  }
-  if (lbl) lbl.textContent = 'Recording…';
-  if (interim) interim.textContent = '🎙 Listening…';
-
-  _sttRecognition.onresult = function(e) {
-    let finalText = '';
-    let interimText = '';
-    for (let i = e.resultIndex; i < e.results.length; i++) {
-      const t = e.results[i][0].transcript;
-      if (e.results[i].isFinal) finalText += t + ' ';
-      else interimText += t;
-    }
-    // Show interim in the preview div
-    const iv = document.getElementById('stt-interim-' + _sttMode);
-    if (iv) iv.textContent = interimText ? '…' + interimText : '';
-
-    if (finalText) {
-      // Append to the right textarea
-      if (_sttMode === 'single') {
-        const ta = document.getElementById('sess-note');
-        if (ta) {
-          const sep = (ta.value && !ta.value.endsWith(' ') && ta.value.slice(-1) !== '\n') ? ' ' : '';
-          ta.value += sep + finalText.trim();
-          S.sessNote = ta.value;
-        }
-      } else {
-        const ta = document.getElementById('multi-note-' + S.activeClientIdx);
-        if (ta) {
-          const sep = (ta.value && !ta.value.endsWith(' ') && ta.value.slice(-1) !== '\n') ? ' ' : '';
-          ta.value += sep + finalText.trim();
-          setCs({ note: ta.value });
-        }
-      }
-    }
-  };
-
-  _sttRecognition.onerror = function(e) {
-    const iv = document.getElementById('stt-interim-' + _sttMode);
-    if (iv) {
-      if (e.error === 'not-allowed') {
-        iv.textContent = '⚠ Microphone access denied. Check browser permissions.';
-      } else if (e.error === 'no-speech') {
-        iv.textContent = ''; // silent timeout, not an error
-      } else {
-        iv.textContent = '⚠ ' + e.error;
-      }
-    }
-    _sttRecognition = null;
-    _resetSTTBtn(_sttMode);
-    _sttMode = null;
-  };
-
-  _sttRecognition.onend = function() {
-    const iv = document.getElementById('stt-interim-' + _sttMode);
-    if (iv) iv.textContent = '';
-    _resetSTTBtn(_sttMode);
-    _sttRecognition = null;
-    _sttMode = null;
-  };
-
-  try {
-    _sttRecognition.start();
-  } catch(err) {
-    const iv = document.getElementById('stt-interim-' + mode);
-    if (iv) iv.textContent = '⚠ Could not start microphone: ' + err.message;
-    _sttRecognition = null;
-    _sttMode = null;
-  }
-}
-
-function _resetSTTBtn(mode) {
-  if (!mode) return;
-  const btn = document.getElementById('stt-btn-' + mode);
-  const lbl = document.getElementById('stt-label-' + mode);
-  if (btn) {
-    btn.style.background = '';
-    btn.style.color = '';
-    btn.style.borderColor = '';
-    btn.style.animation = '';
-  }
-  if (lbl) lbl.textContent = 'Dictate';
-}
-
-// Stop STT whenever we leave the record view
-const _origGoHome2 = window.goHome;
-window.goHome = function() {
-  if (_sttRecognition) { _sttRecognition.abort(); _sttRecognition = null; }
-  _origGoHome2();
 };
 
 // ── Settings ───────────────────────────────────────────────────────────────
