@@ -1221,6 +1221,22 @@ function buildModal(){
         </div>
       </div>`:''}
       <div style="margin-bottom:18px"></div>
+
+        <!-- Peer Comparison toggle -->
+        <div style="margin-top:14px">
+          <div class="slabel" style="margin-bottom:6px">Peer Comparison <span style="font-weight:400;color:var(--muted)">(optional)</span></div>
+          <div onclick="S._modal.hasPeer=!S._modal.hasPeer;rerender()" style="display:inline-flex;align-items:center;gap:8px;padding:9px 14px;border-radius:10px;border:1.5px solid ${m.hasPeer?'var(--fba-green)':'var(--border)'};background:${m.hasPeer?'var(--fba-mid)':'var(--surface2)'};cursor:pointer;font-size:.82rem;font-weight:700;transition:all .12s">
+            ${m.hasPeer?'<span style="color:var(--fba-green)">✓</span>':''}
+            👥 Score a generic peer side-by-side
+          </div>
+          ${m.hasPeer?`<div style="margin-top:8px">
+            <div style="font-size:.72rem;color:var(--muted);margin-bottom:5px">Peer label (optional)</div>
+            <input class="input" id="peer-label-input" placeholder="e.g. Peer, Typical Peer" style="font-size:.82rem" value="${esc(m.peerLabel||'')}" oninput="S._modal.peerLabel=this.value"/>
+          </div>
+          <div style="font-size:.7rem;color:var(--fba-dark);background:#fff;border:1px dashed var(--fba-mid);border-radius:6px;padding:6px 10px;margin-top:8px;line-height:1.5">
+            ℹ️ The same behaviors are scored for the peer each interval. Summary shows target student vs. peer % side by side.
+          </div>`:''}
+        </div>
       <div class="row gap2">
         <button class="btn btn-primary" style="flex:1" id="start-sess-btn" onclick="confirmStartSession()" ${(()=>{
           if(!m.sel) return 'disabled';
@@ -4128,7 +4144,7 @@ function firePrompts(){
 // ── Start interval session (single OR group) ──────────────────────────────
 function startIntervalSession(opts){
   // opts: {mode:'single'|'group', clientIds:[], method, intervalSec, totalMin,
-  //        prompts, behaviorIds, location, groupLayout}
+  //        prompts, behaviorIds, location, groupLayout, hasPeer, peerLabel}
   const totalSec=opts.totalMin*60;
   const totalIntervals=Math.floor(totalSec/opts.intervalSec);
   const startedAt=Date.now();
@@ -4138,6 +4154,7 @@ function startIntervalSession(opts){
     clientNames[cid]=c?c.name:'Unknown';
   });
   // Build empty intervals array — each interval has scores keyed by client and behavior
+  // __peer__ is a reserved key for the generic peer comparison student
   const intervals=[];
   for(let i=0;i<totalIntervals;i++){
     const scores={};
@@ -4145,6 +4162,10 @@ function startIntervalSession(opts){
       scores[cid]={};
       opts.behaviorIds.forEach(bid=>{ scores[cid][bid]=false; });
     });
+    if(opts.hasPeer){
+      scores['__peer__']={};
+      opts.behaviorIds.forEach(bid=>{ scores['__peer__'][bid]=false; });
+    }
     intervals.push({
       n:i+1,
       startMs:startedAt+(i*opts.intervalSec*1000),
@@ -4165,6 +4186,8 @@ function startIntervalSession(opts){
     clientIds:opts.clientIds.slice(),
     clientNames,
     behaviorIds:opts.behaviorIds.slice(),
+    hasPeer:!!opts.hasPeer,
+    peerLabel:opts.peerLabel||'Peer',
     startedAt,
     endedAt:null,
     currentInterval:0,
@@ -4260,7 +4283,43 @@ function intervalScore(cid, bid){
   if(!cur) return;
   if(!cur.scores[cid]) cur.scores[cid]={};
   cur.scores[cid][bid]=!cur.scores[cid][bid];
+  // Preserve scroll position within the sub-view so tapping a tile doesn't jump to top
+  const sv=document.querySelector('.sub-view');
+  const svScroll=sv?sv.scrollTop:0;
   rerender();
+  const svAfter=document.querySelector('.sub-view');
+  if(svAfter && svScroll) svAfter.scrollTop=svScroll;
+}
+
+// ── Add behavior mid-session (interval) ──────────────────────────────────
+function intervalLiveAddBeh(){
+  const sess=S.intervalSess;
+  if(!sess||sess.completed) return;
+  const inp=document.getElementById('iv-live-add-input');
+  const label=(inp?.value||'').trim();
+  if(!label) return;
+  const newBeh={id:uid(),label,icon:'📌',custom:true};
+  S.customs.push(newBeh);
+  // Add to session behavior list
+  sess.behaviorIds.push(newBeh.id);
+  // Back-fill all existing intervals with false for this new behavior
+  sess.intervals.forEach(iv=>{
+    sess.clientIds.forEach(cid=>{
+      if(!iv.scores[cid]) iv.scores[cid]={};
+      iv.scores[cid][newBeh.id]=false;
+    });
+    // Also back-fill peer
+    if(sess.hasPeer){
+      if(!iv.scores['__peer__']) iv.scores['__peer__']={};
+      iv.scores['__peer__'][newBeh.id]=false;
+    }
+  });
+  persist();
+  const sv=document.querySelector('.sub-view');
+  const svScroll=sv?sv.scrollTop:0;
+  rerender();
+  const svAfter=document.querySelector('.sub-view');
+  if(svAfter) svAfter.scrollTop=svScroll;
 }
 
 // ── Pause / resume / end ──────────────────────────────────────────────────
@@ -4338,8 +4397,10 @@ function completeIntervalSession(){
 }
 function intervalComputeSummary(sess){
   // Returns: {cid: {bid: {scored:N, total:N, pct:0-100}}}
+  // Also includes '__peer__' key if sess.hasPeer
   const out={};
-  sess.clientIds.forEach(cid=>{
+  const allCids=[...sess.clientIds, ...(sess.hasPeer?['__peer__']:[])];
+  allCids.forEach(cid=>{
     out[cid]={};
     sess.behaviorIds.forEach(bid=>{
       let scored=0;
@@ -4347,8 +4408,9 @@ function intervalComputeSummary(sess){
         if(iv.scores[cid] && iv.scores[cid][bid]) scored++;
       });
       // For rotate mode, only intervals where this student was active count toward their total
+      // Peer always gets the full interval total
       let total=sess.totalIntervals;
-      if(sess.mode==='group' && sess.groupLayout==='rotate'){
+      if(cid!=='__peer__' && sess.mode==='group' && sess.groupLayout==='rotate'){
         total=0;
         sess.intervals.forEach((iv,idx)=>{
           const activeCid=sess.clientIds[idx % sess.clientIds.length];
@@ -4418,12 +4480,41 @@ function buildIntervalRecord(){
 
   const flashOverlay=`<div id="interval-flash-overlay" style="position:fixed;inset:0;background:#fff;opacity:0;pointer-events:none;transition:opacity .12s;z-index:9999"></div>`;
 
+  // Live "Add Behavior" panel — shown during session
+  const liveAddBehPanel=`
+    <div style="margin-bottom:14px;background:var(--surface2);border:1.5px dashed var(--border);border-radius:12px;padding:10px 12px">
+      <div style="font-size:.72rem;font-weight:700;color:var(--muted);margin-bottom:6px;letter-spacing:.5px">➕ ADD BEHAVIOR MID-SESSION</div>
+      <div style="display:flex;gap:8px;align-items:center">
+        <input id="iv-live-add-input" class="input" placeholder="New behavior name…" style="flex:1;font-size:.82rem" oninput="event.stopPropagation()" onkeydown="if(event.key==='Enter'){event.preventDefault();intervalLiveAddBeh();}"/>
+        <button class="btn btn-ghost btn-sm" onclick="intervalLiveAddBeh()" style="white-space:nowrap;color:var(--fba-dark);border-color:var(--fba-mid)">Add</button>
+      </div>
+    </div>`;
+
   let studentSection='';
   if(sess.mode==='single'){
     const cid=sess.clientIds[0];
-    studentSection=`<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(110px,1fr));gap:10px;margin-bottom:18px">
-      ${behGridForStudent(cid)}
-    </div>`;
+    // If peer comparison is enabled, show target student and peer side by side
+    if(sess.hasPeer){
+      studentSection=`
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:18px">
+          <div style="background:var(--surface);border:2px solid var(--fba-green);border-radius:14px;padding:10px">
+            <div style="font-weight:800;font-size:.78rem;color:var(--fba-dark);margin-bottom:8px;text-align:center">🎯 ${esc(sess.clientNames[cid]||'Student')}</div>
+            <div style="display:grid;grid-template-columns:1fr;gap:8px">
+              ${behGridForStudent(cid)}
+            </div>
+          </div>
+          <div style="background:var(--surface2);border:2px solid var(--border);border-radius:14px;padding:10px">
+            <div style="font-weight:800;font-size:.78rem;color:var(--muted);margin-bottom:8px;text-align:center">👥 ${esc(sess.peerLabel||'Peer')}</div>
+            <div style="display:grid;grid-template-columns:1fr;gap:8px">
+              ${behGridForStudent('__peer__')}
+            </div>
+          </div>
+        </div>`;
+    } else {
+      studentSection=`<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(110px,1fr));gap:10px;margin-bottom:18px">
+        ${behGridForStudent(cid)}
+      </div>`;
+    }
   } else if(sess.groupLayout==='side'){
     studentSection=sess.clientIds.map(cid=>`
       <div style="background:var(--surface);border:1.5px solid var(--border);border-radius:14px;padding:12px;margin-bottom:12px">
@@ -4496,6 +4587,8 @@ function buildIntervalRecord(){
 
     ${studentSection}
 
+    ${liveAddBehPanel}
+
     <!-- Footer hint -->
     <div style="text-align:center;font-size:.72rem;color:var(--muted);margin-top:8px;line-height:1.5">
       Tap a behavior tile to mark it scored for this interval. Tap again to unmark.<br>
@@ -4513,27 +4606,53 @@ function buildIntervalSummary(){
   const dur=Math.round((sess.endedAt-sess.startedAt)/60000);
 
   let perStudent=sess.clientIds.map(cid=>{
+    const peerSum=sess.hasPeer?summary['__peer__']||{}:null;
     const rows=sess.behaviorIds.map(bid=>{
       const beh=allBehs().find(b=>b.id===bid);
       const s=summary[cid][bid]||{scored:0,total:0,pct:0};
+      const p=peerSum?peerSum[bid]||{scored:0,total:0,pct:0}:null;
+      // Color-code comparison: student higher = green, lower = amber
+      const diffColor= p ? (s.pct>p.pct?'var(--fba-green)':s.pct<p.pct?'#c0392b':'var(--text)') : 'var(--fba-dark)';
       return `<tr>
         <td style="padding:7px 10px;border-bottom:1px solid var(--border);font-weight:700;font-size:.82rem">${beh?beh.icon+' '+esc(beh.label):'Unknown'}</td>
         <td style="padding:7px 10px;border-bottom:1px solid var(--border);text-align:center;font-family:'Courier New',monospace;font-size:.82rem">${s.scored} / ${s.total}</td>
-        <td style="padding:7px 10px;border-bottom:1px solid var(--border);text-align:right;font-weight:800;font-size:.85rem;color:var(--fba-dark)">${s.pct}%</td>
+        <td style="padding:7px 10px;border-bottom:1px solid var(--border);text-align:right;font-weight:800;font-size:.85rem;color:${diffColor}">${s.pct}%${p!==null?` <span style="font-size:.7rem;font-weight:600;color:var(--muted)">vs ${p.pct}%</span>`:''}</td>
       </tr>`;
     }).join('');
+    const peerNote=sess.hasPeer?`<div style="font-size:.7rem;color:var(--muted);margin-bottom:8px">% shown as: 🎯 Student vs 👥 ${esc(sess.peerLabel||'Peer')} — <span style="color:var(--fba-green);font-weight:700">green</span> = student higher, <span style="color:#c0392b;font-weight:700">red</span> = student lower</div>`:'';
     return `<div style="background:var(--surface);border:1.5px solid var(--border);border-radius:12px;padding:14px;margin-bottom:12px">
-      <div style="font-weight:800;font-size:1rem;color:var(--fba-dark);margin-bottom:8px">👤 ${esc(sess.clientNames[cid]||'Student')}</div>
+      <div style="font-weight:800;font-size:1rem;color:var(--fba-dark);margin-bottom:4px">🎯 ${esc(sess.clientNames[cid]||'Student')}</div>
+      ${peerNote}
       <table style="width:100%;border-collapse:collapse">
         <thead><tr>
           <th style="text-align:left;padding:6px 10px;font-size:.7rem;color:var(--muted);font-weight:700;letter-spacing:1px;text-transform:uppercase">Behavior</th>
           <th style="text-align:center;padding:6px 10px;font-size:.7rem;color:var(--muted);font-weight:700;letter-spacing:1px;text-transform:uppercase">Intervals</th>
-          <th style="text-align:right;padding:6px 10px;font-size:.7rem;color:var(--muted);font-weight:700;letter-spacing:1px;text-transform:uppercase">% Occurrence</th>
+          <th style="text-align:right;padding:6px 10px;font-size:.7rem;color:var(--muted);font-weight:700;letter-spacing:1px;text-transform:uppercase">${sess.hasPeer?'Student % vs Peer %':'% Occurrence'}</th>
         </tr></thead>
         <tbody>${rows}</tbody>
       </table>
     </div>`;
   }).join('');
+  // Peer-only summary card (if enabled)
+  const peerCard=sess.hasPeer?`<div style="background:var(--surface2);border:1.5px solid var(--border);border-radius:12px;padding:14px;margin-bottom:12px;opacity:.85">
+    <div style="font-weight:800;font-size:1rem;color:var(--muted);margin-bottom:8px">👥 ${esc(sess.peerLabel||'Peer')} (comparison only)</div>
+    <table style="width:100%;border-collapse:collapse">
+      <thead><tr>
+        <th style="text-align:left;padding:6px 10px;font-size:.7rem;color:var(--muted);font-weight:700;letter-spacing:1px;text-transform:uppercase">Behavior</th>
+        <th style="text-align:center;padding:6px 10px;font-size:.7rem;color:var(--muted);font-weight:700;letter-spacing:1px;text-transform:uppercase">Intervals</th>
+        <th style="text-align:right;padding:6px 10px;font-size:.7rem;color:var(--muted);font-weight:700;letter-spacing:1px;text-transform:uppercase">% Occurrence</th>
+      </tr></thead>
+      <tbody>${sess.behaviorIds.map(bid=>{
+        const beh=allBehs().find(b=>b.id===bid);
+        const p=summary['__peer__']?summary['__peer__'][bid]||{scored:0,total:0,pct:0}:{scored:0,total:0,pct:0};
+        return `<tr>
+          <td style="padding:7px 10px;border-bottom:1px solid var(--border);font-weight:700;font-size:.82rem">${beh?beh.icon+' '+esc(beh.label):'Unknown'}</td>
+          <td style="padding:7px 10px;border-bottom:1px solid var(--border);text-align:center;font-family:'Courier New',monospace;font-size:.82rem">${p.scored} / ${p.total}</td>
+          <td style="padding:7px 10px;border-bottom:1px solid var(--border);text-align:right;font-weight:800;font-size:.85rem;color:var(--muted)">${p.pct}%</td>
+        </tr>`;
+      }).join('')}</tbody>
+    </table>
+  </div>`:'';
 
   return `<div class="sub-view" style="padding-bottom:80px">
     <div style="text-align:center;margin-bottom:16px">
@@ -4543,6 +4662,7 @@ function buildIntervalSummary(){
       ${sess.location?`<p style="font-size:.74rem;color:var(--muted);margin-top:2px">📍 ${esc(sess.location)}</p>`:''}
     </div>
     ${perStudent}
+    ${peerCard}
     <div class="row gap2" style="margin-top:18px">
       <button class="btn btn-primary" style="flex:1;background:var(--fba-green);border-color:var(--fba-green)" onclick="intervalDoneAndExit()">Done</button>
     </div>
@@ -4574,7 +4694,9 @@ function confirmStartSession(){
       prompts:m.intervalPrompts||{chime:true,vibrate:true,flash:false},
       behaviorIds:m.selectedBehs||[],
       location,
-      groupLayout:null
+      groupLayout:null,
+      hasPeer:!!m.hasPeer,
+      peerLabel:m.peerLabel||'Peer'
     };
     S._modal=null;
     S.selClient=S.clients.find(c=>c.id===cid);
