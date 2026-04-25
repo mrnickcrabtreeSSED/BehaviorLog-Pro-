@@ -801,6 +801,28 @@ let S={
   _selectMode:false,   // bulk select mode for students
   _selected:{},        // student IDs selected for bulk action
   _offline:false,      // true when no network connection
+  // ── Interval Recording (Momentary / Partial / Whole) ─────────────────
+  // Live state for an active interval session. Mirrors the multiSessions
+  // shape conceptually but is self-contained so it doesn't collide with
+  // existing legacy/multi session logic.
+  intervalSess:null,
+  // Shape when active:
+  // {
+  //   id, mode:'single'|'group', method:'momentary'|'partial'|'whole',
+  //   intervalSec, totalSec, prompts:{chime,vibrate,flash},
+  //   groupLayout:'side'|'rotate'|null,
+  //   clientIds:[], clientNames:{cid:name},
+  //   behaviorIds:[],          // behaviors being scored
+  //   startedAt, endedAt:null,
+  //   currentInterval:0,       // index of interval the user is scoring (0-based)
+  //   totalIntervals,
+  //   intervals:[              // length === totalIntervals
+  //     {n, startMs, endMs, scoredAt, scores:{cid:{behId:bool}}}
+  //   ],
+  //   activeRotateIdx:0,       // for rotate mode: which student is "up"
+  //   paused:false, pausedAt:null, pausedAccumMs:0,
+  //   location:''
+  // }
 };
 
 // helpers to get/set the focused client session slot
@@ -834,8 +856,34 @@ function initials(name){return(name||'?').split(' ').map(w=>w[0]).join('').toUpp
 
 // ── Render ─────────────────────────────────────────────────────────────────
 let _tick=null;
+let _intervalTick=null;
 function render(){
+  // ── Preserve scroll position + focus across full innerHTML rebuilds ──
+  // Without this, every state change scrolls to top and drops the cursor
+  // out of whatever input the user was typing in. This wraps the whole
+  // app render so it benefits every screen.
+  const _scrollY = window.scrollY || window.pageYOffset || 0;
+  const _ae = document.activeElement;
+  const _focusId = (_ae && _ae.id) ? _ae.id : null;
+  let _selStart = null, _selEnd = null;
+  if (_focusId && _ae && typeof _ae.selectionStart === 'number') {
+    _selStart = _ae.selectionStart;
+    _selEnd   = _ae.selectionEnd;
+  }
   document.getElementById('app').innerHTML=buildApp();
+  // Restore focus first (with preventScroll so focusing doesn't jump),
+  // then restore the exact scroll position.
+  if (_focusId) {
+    const el = document.getElementById(_focusId);
+    if (el) {
+      try { el.focus({ preventScroll: true }); } catch(e) { try { el.focus(); } catch(_){} }
+      if (_selStart != null && typeof el.setSelectionRange === 'function') {
+        try { el.setSelectionRange(_selStart, _selEnd); } catch(e){}
+      }
+    }
+  }
+  // Use auto behavior — instant, no animation, matches pre-render position
+  window.scrollTo(0, _scrollY);
 }
 function rerender(){render();}
 function tick(){
@@ -946,6 +994,8 @@ function buildApp(){
   if(S.view==='analytics')    body=buildAnalytics();
   if(S.view==='assessments')  body=buildAssessments();
   if(S.view==='admin')        body=buildAdmin();
+  if(S.view==='interval')     body=buildIntervalRecord();
+  if(S.view==='intervalSummary') body=buildIntervalSummary();
 
   return intOverlay+modeBar+`<div class="app fade">${body}</div>`+modal;
 }
@@ -990,6 +1040,9 @@ function buildModal(){
       {id:'initial', icon:'🔍', label:'Initial Assessment',
        desc:'Track any behavior to identify patterns and build a behavioral profile. Generates goal recommendations at the end.',
        color:'var(--purple)', soft:'var(--purple-soft)', always:true},
+      {id:'interval', icon:'⏲️', label:'Interval Recording',
+       desc:isBehaviorist()?'Time-based sampling — Momentary, Partial Interval, or Whole Interval. Scores behavior presence at fixed intervals.':'Interval recording is a behaviorist tool. Contact your behavior support specialist.',
+       color:'var(--fba-green)', soft:'var(--fba-soft)', always:true, blocked:!isBehaviorist()},
       {id:'general', icon:'📋', label:'General Tracking',
        desc:'Track the student\'s configured behaviors in a structured observation — no goal pressure, pure data collection.',
        color:'var(--amber)', soft:'var(--amber-soft)', always:true},
@@ -1077,12 +1130,108 @@ function buildModal(){
         </div>
       </div>
       `:''}
+      <!-- Interval Recording config (Momentary / Partial / Whole) -->
+      ${m.sel==='interval'?`<div style="background:var(--fba-soft);border:1.5px solid var(--fba-mid);border-radius:10px;padding:14px;margin-top:14px;margin-bottom:6px">
+        <div style="font-weight:800;font-size:.85rem;color:var(--fba-dark);margin-bottom:10px">⏲️ Interval Recording Setup</div>
+
+        <details style="margin-bottom:12px;background:var(--surface2);border:1px solid var(--border);border-radius:8px;padding:8px 10px">
+          <summary style="cursor:pointer;font-weight:700;font-size:.78rem;color:var(--muted)">📊 Compare methods (tap to expand)</summary>
+          <div style="margin-top:10px;font-size:.72rem;line-height:1.5">
+            <div style="display:grid;grid-template-columns:1fr 1.6fr 1.4fr;gap:1px;background:var(--border);border-radius:6px;overflow:hidden">
+              <div style="background:#e7e0f5;padding:6px 8px;font-weight:800;font-size:.7rem;color:var(--text)">Method</div>
+              <div style="background:#d8efea;padding:6px 8px;font-weight:800;font-size:.7rem;color:var(--text)">What it records</div>
+              <div style="background:#f5dcd6;padding:6px 8px;font-weight:800;font-size:.7rem;color:var(--text)">Typical bias</div>
+              <div style="background:#f3eefa;padding:6px 8px;font-weight:700">Momentary</div>
+              <div style="background:#eaf6f3;padding:6px 8px">Whether behavior is happening at the moment you look up</div>
+              <div style="background:#fbeae5;padding:6px 8px">Underestimates frequency/duration</div>
+              <div style="background:#f3eefa;padding:6px 8px;font-weight:700">Partial Interval</div>
+              <div style="background:#eaf6f3;padding:6px 8px">Whether behavior occurred at any time during the interval</div>
+              <div style="background:#fbeae5;padding:6px 8px">Overestimates duration (flags brief events)</div>
+              <div style="background:#f3eefa;padding:6px 8px;font-weight:700">Whole Interval</div>
+              <div style="background:#eaf6f3;padding:6px 8px">Whether behavior occurred throughout the entire interval</div>
+              <div style="background:#fbeae5;padding:6px 8px">Underestimates frequency/duration</div>
+            </div>
+          </div>
+        </details>
+
+        <div class="slabel" style="margin-bottom:6px">Sampling Method</div>
+        <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:6px;margin-bottom:14px">
+          ${[{id:'momentary',label:'Momentary',hint:'At the moment'},{id:'partial',label:'Partial',hint:'Any time in interval'},{id:'whole',label:'Whole',hint:'Entire interval'}].map(mt=>{
+            const on=m.intervalMethod===mt.id;
+            return `<div onclick="setIntervalMethod('${mt.id}')" style="text-align:center;padding:10px 6px;border-radius:8px;border:2px solid ${on?'var(--fba-green)':'var(--border)'};background:${on?'var(--fba-mid)':'var(--surface2)'};cursor:pointer;transition:all .12s">
+              <div style="font-weight:800;font-size:.82rem;color:${on?'var(--fba-dark)':'var(--text)'}">${mt.label}</div>
+              <div style="font-size:.66rem;color:var(--muted);margin-top:2px">${mt.hint}</div>
+            </div>`;
+          }).join('')}
+        </div>
+
+        <div class="slabel" style="margin-bottom:6px">Interval Length</div>
+        <div style="display:flex;flex-wrap:wrap;gap:5px;margin-bottom:6px">
+          ${[10,15,30,60,120].map(n=>{
+            const on=m.intervalSec===n;
+            const lbl=n<60?n+'s':(n/60)+'m';
+            return `<button type="button" class="btn btn-ghost btn-xs" style="${on?'background:var(--fba-green);color:#fff;border-color:var(--fba-green)':''}" onclick="setIntervalSec(${n})">${lbl}</button>`;
+          }).join('')}
+        </div>
+        <div style="display:flex;align-items:center;gap:8px;margin-bottom:14px">
+          <div style="position:relative;flex:1">
+            <input class="input" type="number" id="interval-sec-input" min="5" max="600" placeholder="Custom (5–600 sec)" style="padding-right:42px;font-size:.85rem" value="${m.intervalSec&&![10,15,30,60,120].includes(m.intervalSec)?m.intervalSec:''}" oninput="setIntervalSecCustom(this.value)"/>
+            <span style="position:absolute;right:10px;top:50%;transform:translateY(-50%);font-size:.74rem;color:var(--muted);pointer-events:none">sec</span>
+          </div>
+        </div>
+
+        <div class="slabel" style="margin-bottom:6px">Total Observation Duration</div>
+        <div style="display:flex;align-items:center;gap:8px;margin-bottom:14px">
+          <div style="position:relative;flex:1">
+            <input class="input" type="number" id="interval-total-input" min="1" max="60" placeholder="e.g. 10" style="padding-right:42px;font-size:.85rem" value="${m.intervalTotalMin||''}" oninput="S._modal.intervalTotalMin=parseInt(this.value)||null"/>
+            <span style="position:absolute;right:10px;top:50%;transform:translateY(-50%);font-size:.74rem;color:var(--muted);pointer-events:none">min</span>
+          </div>
+          <div class="row gap1">
+            ${[5,10,15,20].map(n=>`<button type="button" class="btn btn-ghost btn-xs" style="${m.intervalTotalMin===n?'background:var(--fba-green);color:#fff;border-color:var(--fba-green)':''}" onclick="S._modal.intervalTotalMin=${n};rerender()">${n}m</button>`).join('')}
+          </div>
+        </div>
+        ${(m.intervalSec&&m.intervalTotalMin)?`<div style="font-size:.72rem;color:var(--fba-dark);background:#fff;border:1px dashed var(--fba-mid);border-radius:6px;padding:6px 10px;margin-bottom:14px">
+          → ${Math.floor((m.intervalTotalMin*60)/m.intervalSec)} intervals over ${m.intervalTotalMin} min
+        </div>`:''}
+
+        <div class="slabel" style="margin-bottom:6px">Observer Prompts at Each Interval</div>
+        <div style="display:flex;flex-wrap:wrap;gap:6px;margin-bottom:14px">
+          ${[{id:'chime',label:'🔔 Chime'},{id:'vibrate',label:'📳 Vibrate'},{id:'flash',label:'⚡ Visual flash'}].map(p=>{
+            const prompts=m.intervalPrompts||{chime:true,vibrate:true,flash:false};
+            const on=!!prompts[p.id];
+            return `<div onclick="toggleIntervalPrompt('${p.id}')" style="display:inline-flex;align-items:center;gap:6px;padding:7px 12px;border-radius:8px;border:1.5px solid ${on?'var(--fba-green)':'var(--border)'};background:${on?'var(--fba-mid)':'var(--surface2)'};cursor:pointer;font-size:.78rem;font-weight:700;transition:all .12s">
+              ${on?'<span style="color:var(--fba-green);font-size:.72rem">✓</span>':''}${p.label}
+            </div>`;
+          }).join('')}
+        </div>
+
+        <div class="slabel" style="margin-bottom:6px">Behaviors to Score</div>
+        <div class="row gap2 mb2" style="flex-wrap:wrap">
+          <button class="btn btn-ghost btn-xs" onclick="S._modal.selectedBehs=[...PRESETS.map(b=>b.id),...S.customs.map(b=>b.id)];rerender()">Select All</button>
+          <button class="btn btn-ghost btn-xs" onclick="S._modal.selectedBehs=[...PRESETS.map(b=>b.id)];rerender()">Defaults Only</button>
+          <button class="btn btn-ghost btn-xs" onclick="S._modal.selectedBehs=[];rerender()">Clear</button>
+        </div>
+        <div style="max-height:160px;overflow-y:auto;display:flex;flex-wrap:wrap;gap:5px;padding:2px">
+          ${allBehs().map(b=>{
+            const on=(m.selectedBehs||[]).includes(b.id);
+            return`<div onclick="toggleSessBeh('${b.id}')" style="display:inline-flex;align-items:center;gap:5px;padding:6px 11px;border-radius:8px;border:1.5px solid ${on?'var(--fba-green)':'var(--border)'};background:${on?'var(--fba-mid)':'var(--surface2)'};cursor:pointer;font-size:.78rem;font-weight:700;transition:all .12s">
+              ${on?'<span style="color:var(--fba-green);font-size:.7rem">✓</span>':''}${b.icon} ${esc(b.label)}
+            </div>`;
+          }).join('')}
+        </div>
+      </div>`:''}
       <div style="margin-bottom:18px"></div>
       <div class="row gap2">
         <button class="btn btn-primary" style="flex:1" id="start-sess-btn" onclick="confirmStartSession()" ${(()=>{
           if(!m.sel) return 'disabled';
           if(m.sel==='initial'&&!m.location) return 'disabled';
           if(m.sel==='initial'&&!(m.selectedBehs||[]).length) return 'disabled';
+          if(m.sel==='interval'){
+            if(!m.intervalMethod) return 'disabled';
+            if(!m.intervalSec) return 'disabled';
+            if(!m.intervalTotalMin) return 'disabled';
+            if(!(m.selectedBehs||[]).length) return 'disabled';
+          }
           return '';
         })()}>▶ Begin Session</button>
         <button class="btn btn-ghost" onclick="closeModal()">Cancel</button>
@@ -1168,6 +1317,7 @@ function buildModal(){
       <div style="display:flex;flex-direction:column;gap:7px;margin-bottom:18px">
         ${[
           {id:'general',icon:'📋',label:'General Tracking',desc:'Track each student\'s configured behaviors — structured observation.',color:'var(--amber)',soft:'var(--amber-soft)'},
+          ...(isBehaviorist()?[{id:'interval',icon:'⏲️',label:'Interval Recording',desc:'Time-based sampling — Momentary, Partial, or Whole. Score behavior presence at fixed intervals across all students.',color:'var(--fba-green)',soft:'var(--fba-soft)'}]:[]),
         ].map(tp=>`<div class="sess-type-card" style="text-align:left;display:flex;align-items:center;gap:12px;padding:12px 14px;${m.sel===tp.id?'border-color:'+tp.color+';background:'+tp.soft+';box-shadow:0 0 0 3px '+tp.color+'22':''}" onclick="selectSessType('${tp.id}')">
           <div style="font-size:1.6rem;flex-shrink:0">${tp.icon}</div>
           <div style="flex:1"><div style="font-weight:800;font-size:.88rem;color:${m.sel===tp.id?tp.color:'var(--text)'};margin-bottom:2px">${tp.label}</div>
@@ -1205,9 +1355,119 @@ function buildModal(){
         <option value="">— Select location —</option>
         ${['Gen Ed Classroom','RSP/SCC Classroom','Transition','Lunch / Cafeteria','Playground / Recess','Other'].map(loc=>`<option value="${loc}" ${m.location===loc?'selected':''}>${loc}</option>`).join('')}
       </select>
-      ${m.location==='Other'?`<input class="input" id="sess-location-other" placeholder="Describe the setting…" value="${esc(m.locationOther||'')}" oninput="S._modal.locationOther=this.value" style="margin-top:4px"/>`:''}      <div style="margin-bottom:14px"></div>
+      ${m.location==='Other'?`<input class="input" id="sess-location-other" placeholder="Describe the setting…" value="${esc(m.locationOther||'')}" oninput="S._modal.locationOther=this.value" style="margin-top:4px"/>`:''}
+      ${m.sel==='interval'?`<div style="background:var(--fba-soft);border:1.5px solid var(--fba-mid);border-radius:10px;padding:14px;margin-top:14px;margin-bottom:6px">
+        <div style="font-weight:800;font-size:.85rem;color:var(--fba-dark);margin-bottom:10px">⏲️ Interval Recording Setup</div>
+
+        <details style="margin-bottom:12px;background:var(--surface2);border:1px solid var(--border);border-radius:8px;padding:8px 10px">
+          <summary style="cursor:pointer;font-weight:700;font-size:.78rem;color:var(--muted)">📊 Compare methods (tap to expand)</summary>
+          <div style="margin-top:10px;font-size:.72rem;line-height:1.5">
+            <div style="display:grid;grid-template-columns:1fr 1.6fr 1.4fr;gap:1px;background:var(--border);border-radius:6px;overflow:hidden">
+              <div style="background:#e7e0f5;padding:6px 8px;font-weight:800;font-size:.7rem;color:var(--text)">Method</div>
+              <div style="background:#d8efea;padding:6px 8px;font-weight:800;font-size:.7rem;color:var(--text)">What it records</div>
+              <div style="background:#f5dcd6;padding:6px 8px;font-weight:800;font-size:.7rem;color:var(--text)">Typical bias</div>
+              <div style="background:#f3eefa;padding:6px 8px;font-weight:700">Momentary</div>
+              <div style="background:#eaf6f3;padding:6px 8px">Whether behavior is happening at the moment you look up</div>
+              <div style="background:#fbeae5;padding:6px 8px">Underestimates frequency/duration</div>
+              <div style="background:#f3eefa;padding:6px 8px;font-weight:700">Partial Interval</div>
+              <div style="background:#eaf6f3;padding:6px 8px">Whether behavior occurred at any time during the interval</div>
+              <div style="background:#fbeae5;padding:6px 8px">Overestimates duration (flags brief events)</div>
+              <div style="background:#f3eefa;padding:6px 8px;font-weight:700">Whole Interval</div>
+              <div style="background:#eaf6f3;padding:6px 8px">Whether behavior occurred throughout the entire interval</div>
+              <div style="background:#fbeae5;padding:6px 8px">Underestimates frequency/duration</div>
+            </div>
+          </div>
+        </details>
+
+        <div class="slabel" style="margin-bottom:6px">Sampling Method</div>
+        <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:6px;margin-bottom:14px">
+          ${[{id:'momentary',label:'Momentary',hint:'At the moment'},{id:'partial',label:'Partial',hint:'Any time in interval'},{id:'whole',label:'Whole',hint:'Entire interval'}].map(mt=>{
+            const on=m.intervalMethod===mt.id;
+            return `<div onclick="setIntervalMethod('${mt.id}')" style="text-align:center;padding:10px 6px;border-radius:8px;border:2px solid ${on?'var(--fba-green)':'var(--border)'};background:${on?'var(--fba-mid)':'var(--surface2)'};cursor:pointer;transition:all .12s">
+              <div style="font-weight:800;font-size:.82rem;color:${on?'var(--fba-dark)':'var(--text)'}">${mt.label}</div>
+              <div style="font-size:.66rem;color:var(--muted);margin-top:2px">${mt.hint}</div>
+            </div>`;
+          }).join('')}
+        </div>
+
+        <div class="slabel" style="margin-bottom:6px">Interval Length</div>
+        <div style="display:flex;flex-wrap:wrap;gap:5px;margin-bottom:6px">
+          ${[10,15,30,60,120].map(n=>{
+            const on=m.intervalSec===n;
+            const lbl=n<60?n+'s':(n/60)+'m';
+            return `<button type="button" class="btn btn-ghost btn-xs" style="${on?'background:var(--fba-green);color:#fff;border-color:var(--fba-green)':''}" onclick="setIntervalSec(${n})">${lbl}</button>`;
+          }).join('')}
+        </div>
+        <div style="display:flex;align-items:center;gap:8px;margin-bottom:14px">
+          <div style="position:relative;flex:1">
+            <input class="input" type="number" id="interval-sec-input-grp" min="5" max="600" placeholder="Custom (5–600 sec)" style="padding-right:42px;font-size:.85rem" value="${m.intervalSec&&![10,15,30,60,120].includes(m.intervalSec)?m.intervalSec:''}" oninput="setIntervalSecCustom(this.value)"/>
+            <span style="position:absolute;right:10px;top:50%;transform:translateY(-50%);font-size:.74rem;color:var(--muted);pointer-events:none">sec</span>
+          </div>
+        </div>
+
+        <div class="slabel" style="margin-bottom:6px">Total Observation Duration</div>
+        <div style="display:flex;align-items:center;gap:8px;margin-bottom:14px">
+          <div style="position:relative;flex:1">
+            <input class="input" type="number" id="interval-total-input-grp" min="1" max="60" placeholder="e.g. 10" style="padding-right:42px;font-size:.85rem" value="${m.intervalTotalMin||''}" oninput="S._modal.intervalTotalMin=parseInt(this.value)||null"/>
+            <span style="position:absolute;right:10px;top:50%;transform:translateY(-50%);font-size:.74rem;color:var(--muted);pointer-events:none">min</span>
+          </div>
+          <div class="row gap1">
+            ${[5,10,15,20].map(n=>`<button type="button" class="btn btn-ghost btn-xs" style="${m.intervalTotalMin===n?'background:var(--fba-green);color:#fff;border-color:var(--fba-green)':''}" onclick="S._modal.intervalTotalMin=${n};rerender()">${n}m</button>`).join('')}
+          </div>
+        </div>
+        ${(m.intervalSec&&m.intervalTotalMin)?`<div style="font-size:.72rem;color:var(--fba-dark);background:#fff;border:1px dashed var(--fba-mid);border-radius:6px;padding:6px 10px;margin-bottom:14px">
+          → ${Math.floor((m.intervalTotalMin*60)/m.intervalSec)} intervals over ${m.intervalTotalMin} min
+        </div>`:''}
+
+        <div class="slabel" style="margin-bottom:6px">Observer Prompts at Each Interval</div>
+        <div style="display:flex;flex-wrap:wrap;gap:6px;margin-bottom:14px">
+          ${[{id:'chime',label:'🔔 Chime'},{id:'vibrate',label:'📳 Vibrate'},{id:'flash',label:'⚡ Visual flash'}].map(p=>{
+            const prompts=m.intervalPrompts||{chime:true,vibrate:true,flash:false};
+            const on=!!prompts[p.id];
+            return `<div onclick="toggleIntervalPrompt('${p.id}')" style="display:inline-flex;align-items:center;gap:6px;padding:7px 12px;border-radius:8px;border:1.5px solid ${on?'var(--fba-green)':'var(--border)'};background:${on?'var(--fba-mid)':'var(--surface2)'};cursor:pointer;font-size:.78rem;font-weight:700;transition:all .12s">
+              ${on?'<span style="color:var(--fba-green);font-size:.72rem">✓</span>':''}${p.label}
+            </div>`;
+          }).join('')}
+        </div>
+
+        <div class="slabel" style="margin-bottom:6px">Group Observation Layout</div>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:6px;margin-bottom:14px">
+          ${[{id:'side',label:'Side-by-side',hint:'Score all students each interval'},{id:'rotate',label:'Rotate',hint:'One student per interval'}].map(g=>{
+            const on=(m.intervalGroupLayout||'side')===g.id;
+            return `<div onclick="S._modal.intervalGroupLayout='${g.id}';rerender()" style="text-align:center;padding:9px 6px;border-radius:8px;border:2px solid ${on?'var(--fba-green)':'var(--border)'};background:${on?'var(--fba-mid)':'var(--surface2)'};cursor:pointer;transition:all .12s">
+              <div style="font-weight:800;font-size:.78rem;color:${on?'var(--fba-dark)':'var(--text)'}">${g.label}</div>
+              <div style="font-size:.66rem;color:var(--muted);margin-top:2px">${g.hint}</div>
+            </div>`;
+          }).join('')}
+        </div>
+
+        <div class="slabel" style="margin-bottom:6px">Behaviors to Score</div>
+        <div class="row gap2 mb2" style="flex-wrap:wrap">
+          <button class="btn btn-ghost btn-xs" onclick="S._modal.selectedBehs=[...PRESETS.map(b=>b.id),...S.customs.map(b=>b.id)];rerender()">Select All</button>
+          <button class="btn btn-ghost btn-xs" onclick="S._modal.selectedBehs=[...PRESETS.map(b=>b.id)];rerender()">Defaults Only</button>
+          <button class="btn btn-ghost btn-xs" onclick="S._modal.selectedBehs=[];rerender()">Clear</button>
+        </div>
+        <div style="max-height:160px;overflow-y:auto;display:flex;flex-wrap:wrap;gap:5px;padding:2px">
+          ${allBehs().map(b=>{
+            const on=(m.selectedBehs||[]).includes(b.id);
+            return`<div onclick="toggleSessBeh('${b.id}')" style="display:inline-flex;align-items:center;gap:5px;padding:6px 11px;border-radius:8px;border:1.5px solid ${on?'var(--fba-green)':'var(--border)'};background:${on?'var(--fba-mid)':'var(--surface2)'};cursor:pointer;font-size:.78rem;font-weight:700;transition:all .12s">
+              ${on?'<span style="color:var(--fba-green);font-size:.7rem">✓</span>':''}${b.icon} ${esc(b.label)}
+            </div>`;
+          }).join('')}
+        </div>
+      </div>`:''}
+      <div style="margin-bottom:14px"></div>
       <div class="row gap2">
-        <button class="btn btn-primary" style="flex:1" onclick="confirmStartMultiSession()" ${cids.length>=2&&m.sel?'':'disabled'}>▶ Start Group Session${cids.length>=2?' ('+cids.length+')':cids.length===1?' (need 1 more)':' (select 2+)'}</button>
+        <button class="btn btn-primary" style="flex:1" onclick="confirmStartMultiSession()" ${(()=>{
+          if(cids.length<2||!m.sel) return 'disabled';
+          if(m.sel==='interval'){
+            if(!m.intervalMethod) return 'disabled';
+            if(!m.intervalSec) return 'disabled';
+            if(!m.intervalTotalMin) return 'disabled';
+            if(!(m.selectedBehs||[]).length) return 'disabled';
+          }
+          return '';
+        })()}>▶ Start Group Session${cids.length>=2?' ('+cids.length+')':cids.length===1?' (need 1 more)':' (select 2+)'}</button>
         <button class="btn btn-ghost" onclick="closeModal()">Cancel</button>
       </div>`;
   }
@@ -3790,10 +4050,539 @@ function quickAddSessBeh(){
   rerender();
 }
 
+// ╔══════════════════════════════════════════════════════════════════════════╗
+// ║  INTERVAL RECORDING (Momentary / Partial / Whole)                       ║
+// ║  Self-contained module — does not modify legacy session logic.          ║
+// ║  Lives in S.intervalSess; renders its own view ('interval' / 'intSum'). ║
+// ╚══════════════════════════════════════════════════════════════════════════╝
+
+// ── Modal config helpers ──────────────────────────────────────────────────
+function setIntervalMethod(method){
+  if(!S._modal)return;
+  S._modal.intervalMethod=method;
+  // Default prompt set if not yet chosen
+  if(!S._modal.intervalPrompts) S._modal.intervalPrompts={chime:true,vibrate:true,flash:false};
+  rerender();
+}
+function setIntervalSec(sec){
+  if(!S._modal)return;
+  S._modal.intervalSec=(S._modal.intervalSec===sec?null:sec);
+  rerender();
+}
+function setIntervalSecCustom(val){
+  if(!S._modal)return;
+  const n=parseInt(val);
+  if(!isNaN(n)&&n>=5&&n<=600){
+    S._modal.intervalSec=n;
+  }else if(val===''){
+    // Clearing custom — but only clear if currently a non-preset value
+    if(S._modal.intervalSec&&![10,15,30,60,120].includes(S._modal.intervalSec)){
+      S._modal.intervalSec=null;
+    }
+  }
+  // No rerender — preserve cursor in the input. Validation re-evaluates on next render.
+}
+function toggleIntervalPrompt(p){
+  if(!S._modal)return;
+  if(!S._modal.intervalPrompts) S._modal.intervalPrompts={chime:true,vibrate:true,flash:false};
+  S._modal.intervalPrompts[p]=!S._modal.intervalPrompts[p];
+  rerender();
+}
+
+// ── Audio chime (lightweight, no dependencies) ────────────────────────────
+let _intervalAudioCtx=null;
+function playIntervalChime(){
+  try{
+    if(!_intervalAudioCtx) _intervalAudioCtx=new (window.AudioContext||window.webkitAudioContext)();
+    const ctx=_intervalAudioCtx;
+    const osc=ctx.createOscillator();
+    const gain=ctx.createGain();
+    osc.connect(gain);gain.connect(ctx.destination);
+    osc.frequency.value=880;
+    gain.gain.setValueAtTime(0.0001,ctx.currentTime);
+    gain.gain.exponentialRampToValueAtTime(0.18,ctx.currentTime+0.02);
+    gain.gain.exponentialRampToValueAtTime(0.0001,ctx.currentTime+0.4);
+    osc.start();osc.stop(ctx.currentTime+0.45);
+  }catch(e){/* silent fail — audio not critical */}
+}
+function fireIntervalVibrate(){
+  try{ if(navigator.vibrate) navigator.vibrate([120,60,120]); }catch(e){}
+}
+function fireIntervalFlash(){
+  try{
+    const f=document.getElementById('interval-flash-overlay');
+    if(f){
+      f.style.opacity='1';
+      setTimeout(()=>{ f.style.opacity='0'; },180);
+    }
+  }catch(e){}
+}
+function firePrompts(){
+  if(!S.intervalSess) return;
+  const p=S.intervalSess.prompts||{};
+  if(p.chime) playIntervalChime();
+  if(p.vibrate) fireIntervalVibrate();
+  if(p.flash) fireIntervalFlash();
+}
+
+// ── Start interval session (single OR group) ──────────────────────────────
+function startIntervalSession(opts){
+  // opts: {mode:'single'|'group', clientIds:[], method, intervalSec, totalMin,
+  //        prompts, behaviorIds, location, groupLayout}
+  const totalSec=opts.totalMin*60;
+  const totalIntervals=Math.floor(totalSec/opts.intervalSec);
+  const startedAt=Date.now();
+  const clientNames={};
+  opts.clientIds.forEach(cid=>{
+    const c=S.clients.find(x=>x.id===cid);
+    clientNames[cid]=c?c.name:'Unknown';
+  });
+  // Build empty intervals array — each interval has scores keyed by client and behavior
+  const intervals=[];
+  for(let i=0;i<totalIntervals;i++){
+    const scores={};
+    opts.clientIds.forEach(cid=>{
+      scores[cid]={};
+      opts.behaviorIds.forEach(bid=>{ scores[cid][bid]=false; });
+    });
+    intervals.push({
+      n:i+1,
+      startMs:startedAt+(i*opts.intervalSec*1000),
+      endMs:startedAt+((i+1)*opts.intervalSec*1000),
+      scoredAt:null,
+      scores
+    });
+  }
+  S.intervalSess={
+    id:uid(),
+    mode:opts.mode,
+    method:opts.method,
+    intervalSec:opts.intervalSec,
+    totalSec,
+    totalIntervals,
+    prompts:opts.prompts||{chime:true,vibrate:true,flash:false},
+    groupLayout:opts.mode==='group'?(opts.groupLayout||'side'):null,
+    clientIds:opts.clientIds.slice(),
+    clientNames,
+    behaviorIds:opts.behaviorIds.slice(),
+    startedAt,
+    endedAt:null,
+    currentInterval:0,
+    intervals,
+    activeRotateIdx:0,
+    paused:false,
+    pausedAt:null,
+    pausedAccumMs:0,
+    location:opts.location||'',
+    completed:false
+  };
+  S.view='interval';
+  rerender();
+  // Fire the first prompt immediately so observer knows the first interval is live
+  firePrompts();
+  // Start the interval-tick driver
+  startIntervalTick();
+}
+
+// ── Interval tick driver — independent of legacy tick() ───────────────────
+function startIntervalTick(){
+  if(_intervalTick) clearInterval(_intervalTick);
+  _intervalTick=setInterval(intervalTickFn, 250);
+}
+function stopIntervalTick(){
+  if(_intervalTick){ clearInterval(_intervalTick); _intervalTick=null; }
+}
+function intervalTickFn(){
+  const sess=S.intervalSess;
+  if(!sess||sess.completed) return;
+
+  // Update only the live timer DOM — do NOT call rerender()
+  // (rerender would destroy the user's tap state mid-scoring)
+  const now=Date.now();
+  const elapsed=intervalElapsedMs(now);
+  const intervalNum=Math.floor(elapsed/(sess.intervalSec*1000));
+
+  // Auto-advance to next interval when timer crosses boundary
+  if(intervalNum>sess.currentInterval && intervalNum<sess.totalIntervals){
+    // Mark previous interval as scored (locks in current state)
+    const prev=sess.intervals[sess.currentInterval];
+    if(prev) prev.scoredAt=now;
+    sess.currentInterval=intervalNum;
+    // Rotate group: advance the active student
+    if(sess.mode==='group'&&sess.groupLayout==='rotate'){
+      sess.activeRotateIdx=(sess.activeRotateIdx+1)%sess.clientIds.length;
+    }
+    // Fire prompts for the new interval
+    firePrompts();
+    rerender(); // OK to rerender on interval change — there's no in-progress tap
+    return;
+  }
+
+  // End of session
+  if(intervalNum>=sess.totalIntervals && !sess.completed){
+    completeIntervalSession();
+    return;
+  }
+
+  // Live timer DOM update only
+  const remEl=document.getElementById('iv-interval-remaining');
+  if(remEl){
+    const intoCurrent=elapsed - (sess.currentInterval*sess.intervalSec*1000);
+    const remThis=Math.max(0, sess.intervalSec*1000 - intoCurrent);
+    remEl.textContent=fmt(remThis);
+  }
+  const totalRemEl=document.getElementById('iv-total-remaining');
+  if(totalRemEl){
+    const totalRem=Math.max(0, sess.totalSec*1000 - elapsed);
+    totalRemEl.textContent=fmt(totalRem);
+  }
+  const progEl=document.getElementById('iv-progress-bar');
+  if(progEl){
+    const pct=Math.min(100, (elapsed/(sess.totalSec*1000))*100);
+    progEl.style.width=pct+'%';
+  }
+}
+function intervalElapsedMs(now){
+  const sess=S.intervalSess;
+  if(!sess) return 0;
+  const baseElapsed=(now||Date.now()) - sess.startedAt - sess.pausedAccumMs;
+  if(sess.paused && sess.pausedAt){
+    return sess.pausedAt - sess.startedAt - sess.pausedAccumMs;
+  }
+  return baseElapsed;
+}
+
+// ── Scoring (the actual data capture) ─────────────────────────────────────
+function intervalScore(cid, bid){
+  const sess=S.intervalSess;
+  if(!sess||sess.completed) return;
+  const cur=sess.intervals[sess.currentInterval];
+  if(!cur) return;
+  if(!cur.scores[cid]) cur.scores[cid]={};
+  cur.scores[cid][bid]=!cur.scores[cid][bid];
+  rerender();
+}
+
+// ── Pause / resume / end ──────────────────────────────────────────────────
+function intervalTogglePause(){
+  const sess=S.intervalSess;
+  if(!sess) return;
+  if(sess.paused){
+    if(sess.pausedAt){ sess.pausedAccumMs += (Date.now() - sess.pausedAt); }
+    sess.paused=false; sess.pausedAt=null;
+  }else{
+    sess.paused=true; sess.pausedAt=Date.now();
+  }
+  rerender();
+}
+function intervalEndEarly(){
+  if(!confirm('End this interval session early? Data scored so far will be saved.')) return;
+  completeIntervalSession();
+}
+function completeIntervalSession(){
+  const sess=S.intervalSess;
+  if(!sess||sess.completed) return;
+  // Mark the in-progress interval (if any) as scored at the moment of end
+  const cur=sess.intervals[sess.currentInterval];
+  if(cur && !cur.scoredAt) cur.scoredAt=Date.now();
+  sess.endedAt=Date.now();
+  sess.completed=true;
+  stopIntervalTick();
+
+  // Save into the regular sessions array (one record per student) so
+  // downstream summary/analytics flows pick it up.
+  const summary=intervalComputeSummary(sess);
+  sess.clientIds.forEach(cid=>{
+    const events=[];
+    sess.intervals.forEach(iv=>{
+      sess.behaviorIds.forEach(bid=>{
+        if(iv.scores[cid] && iv.scores[cid][bid]){
+          const beh=allBehs().find(b=>b.id===bid);
+          events.push({
+            id:uid(),type:'interval',
+            behaviorId:bid,
+            behaviorLabel:beh?beh.label:'Unknown',
+            behaviorIcon:beh?beh.icon:'📌',
+            timestamp:iv.startMs,
+            intervalNum:iv.n,
+            intervalMethod:sess.method,
+            intervalSec:sess.intervalSec
+          });
+        }
+      });
+    });
+    const c=S.clients.find(x=>x.id===cid);
+    S.sessions.push({
+      id:uid(),
+      clientId:cid,
+      clientName:c?c.name:'Unknown',
+      startedAt:sess.startedAt,
+      endedAt:sess.endedAt,
+      events,
+      note:'',
+      sessType:'interval',
+      intervalMethod:sess.method,
+      intervalSec:sess.intervalSec,
+      totalIntervals:sess.totalIntervals,
+      groupLayout:sess.groupLayout,
+      groupSize:sess.clientIds.length,
+      location:sess.location,
+      selectedBehs:sess.behaviorIds.slice(),
+      // Per-behavior interval percentages (scored / total)
+      intervalSummary: summary[cid] || {}
+    });
+  });
+  persist();
+  S.view='intervalSummary';
+  rerender();
+}
+function intervalComputeSummary(sess){
+  // Returns: {cid: {bid: {scored:N, total:N, pct:0-100}}}
+  const out={};
+  sess.clientIds.forEach(cid=>{
+    out[cid]={};
+    sess.behaviorIds.forEach(bid=>{
+      let scored=0;
+      sess.intervals.forEach(iv=>{
+        if(iv.scores[cid] && iv.scores[cid][bid]) scored++;
+      });
+      // For rotate mode, only intervals where this student was active count toward their total
+      let total=sess.totalIntervals;
+      if(sess.mode==='group' && sess.groupLayout==='rotate'){
+        total=0;
+        sess.intervals.forEach((iv,idx)=>{
+          const activeCid=sess.clientIds[idx % sess.clientIds.length];
+          if(activeCid===cid) total++;
+        });
+      }
+      out[cid][bid]={
+        scored,
+        total,
+        pct: total>0 ? Math.round((scored/total)*100) : 0
+      };
+    });
+  });
+  return out;
+}
+function intervalDoneAndExit(){
+  S.intervalSess=null;
+  S.view='home';
+  rerender();
+}
+
+// ── Live recording UI ─────────────────────────────────────────────────────
+function buildIntervalRecord(){
+  const sess=S.intervalSess;
+  if(!sess) return '<div class="sub-view"><p class="muted">No active interval session.</p></div>';
+  const elapsed=intervalElapsedMs();
+  const intoCurrent=elapsed - (sess.currentInterval*sess.intervalSec*1000);
+  const remThis=Math.max(0, sess.intervalSec*1000 - intoCurrent);
+  const totalRem=Math.max(0, sess.totalSec*1000 - elapsed);
+  const pct=Math.min(100, (elapsed/(sess.totalSec*1000))*100);
+  const cur=sess.intervals[sess.currentInterval];
+  const methodLabel={momentary:'Momentary',partial:'Partial Interval',whole:'Whole Interval'}[sess.method]||sess.method;
+  const methodHint={
+    momentary:'Mark only what is happening AT this moment',
+    partial:'Mark anything seen at any point in this interval',
+    whole:'Mark only behaviors that occur for the ENTIRE interval'
+  }[sess.method]||'';
+
+  // Determine which students to show as scoring rows
+  let activeCids=sess.clientIds;
+  if(sess.mode==='group' && sess.groupLayout==='rotate'){
+    // Source of truth: currentInterval index — keeps UI and summary aligned
+    const idx=sess.currentInterval % sess.clientIds.length;
+    activeCids=[sess.clientIds[idx]];
+  }
+
+  // Behavior cards builder for a single student
+  function behGridForStudent(cid){
+    return sess.behaviorIds.map(bid=>{
+      const beh=allBehs().find(b=>b.id===bid);
+      if(!beh) return '';
+      const scored=cur && cur.scores[cid] && cur.scores[cid][bid];
+      return `<div onclick="intervalScore('${cid}','${bid}')" style="
+        display:flex;flex-direction:column;align-items:center;justify-content:center;
+        padding:14px 6px;border-radius:12px;
+        border:2.5px solid ${scored?'var(--fba-green)':'var(--border)'};
+        background:${scored?'var(--fba-mid)':'var(--surface)'};
+        cursor:pointer;transition:all .12s;
+        min-height:80px;text-align:center;
+        box-shadow:${scored?'0 0 0 3px rgba(6,122,95,.15)':'0 1px 2px rgba(0,0,0,.04)'}">
+        <div style="font-size:1.6rem;margin-bottom:3px">${beh.icon}</div>
+        <div style="font-weight:800;font-size:.78rem;color:${scored?'var(--fba-dark)':'var(--text)'};line-height:1.15">${esc(beh.label)}</div>
+        ${scored?'<div style="margin-top:4px;font-size:.66rem;color:var(--fba-green);font-weight:800">✓ SCORED</div>':''}
+      </div>`;
+    }).join('');
+  }
+
+  const flashOverlay=`<div id="interval-flash-overlay" style="position:fixed;inset:0;background:#fff;opacity:0;pointer-events:none;transition:opacity .12s;z-index:9999"></div>`;
+
+  let studentSection='';
+  if(sess.mode==='single'){
+    const cid=sess.clientIds[0];
+    studentSection=`<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(110px,1fr));gap:10px;margin-bottom:18px">
+      ${behGridForStudent(cid)}
+    </div>`;
+  } else if(sess.groupLayout==='side'){
+    studentSection=sess.clientIds.map(cid=>`
+      <div style="background:var(--surface);border:1.5px solid var(--border);border-radius:14px;padding:12px;margin-bottom:12px">
+        <div style="font-weight:800;font-size:.92rem;color:var(--fba-dark);margin-bottom:10px">👤 ${esc(sess.clientNames[cid]||'Student')}</div>
+        <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(100px,1fr));gap:8px">
+          ${behGridForStudent(cid)}
+        </div>
+      </div>
+    `).join('');
+  } else {
+    // rotate
+    const cid=activeCids[0];
+    const activeIdx=sess.currentInterval % sess.clientIds.length;
+    const upcoming=sess.clientIds.map((c,i)=>{
+      const isActive=i===activeIdx;
+      return `<div style="display:inline-flex;align-items:center;gap:6px;padding:5px 10px;border-radius:14px;border:1.5px solid ${isActive?'var(--fba-green)':'var(--border)'};background:${isActive?'var(--fba-mid)':'var(--surface2)'};font-size:.72rem;font-weight:${isActive?'800':'600'};color:${isActive?'var(--fba-dark)':'var(--muted)'};margin:2px">
+        ${isActive?'▶ ':''}${esc(sess.clientNames[c]||'Student')}
+      </div>`;
+    }).join('');
+    studentSection=`
+      <div style="background:var(--fba-soft);border:1.5px solid var(--fba-mid);border-radius:10px;padding:8px 10px;margin-bottom:14px;text-align:center">
+        <div style="font-size:.68rem;font-weight:700;letter-spacing:1.2px;text-transform:uppercase;color:var(--fba-green);margin-bottom:6px">Currently Observing (Rotate)</div>
+        <div style="display:flex;flex-wrap:wrap;justify-content:center">${upcoming}</div>
+      </div>
+      <div style="background:var(--surface);border:2px solid var(--fba-green);border-radius:14px;padding:14px;margin-bottom:18px">
+        <div style="font-weight:800;font-size:1.05rem;color:var(--fba-dark);margin-bottom:10px;text-align:center">👤 ${esc(sess.clientNames[cid]||'Student')}</div>
+        <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(110px,1fr));gap:10px">
+          ${behGridForStudent(cid)}
+        </div>
+      </div>`;
+  }
+
+  return `${flashOverlay}<div class="sub-view" style="padding-bottom:120px">
+    <!-- Header -->
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;flex-wrap:wrap;gap:8px">
+      <div>
+        <div style="font-size:.68rem;font-weight:700;letter-spacing:1.5px;text-transform:uppercase;color:var(--fba-green)">⏲️ ${methodLabel} ${sess.mode==='group'?'· Group ('+sess.clientIds.length+')':''}</div>
+        <h2 style="margin:2px 0 0;color:var(--fba-dark);font-size:1.15rem">Interval Recording</h2>
+      </div>
+      <div class="row gap2">
+        <button class="btn btn-ghost btn-sm" onclick="intervalTogglePause()">${sess.paused?'▶ Resume':'⏸ Pause'}</button>
+        <button class="btn btn-ghost btn-sm" onclick="intervalEndEarly()" style="color:#c0392b">End</button>
+      </div>
+    </div>
+
+    <!-- Hint card -->
+    <div style="background:var(--fba-soft);border:1px solid var(--fba-mid);border-radius:10px;padding:8px 12px;margin-bottom:12px;font-size:.74rem;color:var(--fba-dark);line-height:1.4">
+      <strong>${methodLabel}:</strong> ${methodHint}
+    </div>
+
+    <!-- Big timer card -->
+    <div style="background:linear-gradient(135deg,var(--fba-green) 0%,#0a8c70 100%);border-radius:16px;padding:18px;margin-bottom:14px;color:#fff;box-shadow:0 4px 16px rgba(6,122,95,.25)">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px">
+        <div>
+          <div style="font-size:.7rem;font-weight:700;letter-spacing:1.5px;text-transform:uppercase;opacity:.85">Interval ${sess.currentInterval+1} of ${sess.totalIntervals}</div>
+          <div style="font-size:1.85rem;font-weight:900;font-family:'Courier New',monospace;letter-spacing:.5px"><span id="iv-interval-remaining">${fmt(remThis)}</span></div>
+          <div style="font-size:.7rem;opacity:.85;margin-top:1px">remaining this interval</div>
+        </div>
+        <div style="text-align:right">
+          <div style="font-size:.7rem;font-weight:700;letter-spacing:1.5px;text-transform:uppercase;opacity:.85">Total Remaining</div>
+          <div style="font-size:1.4rem;font-weight:800;font-family:'Courier New',monospace"><span id="iv-total-remaining">${fmt(totalRem)}</span></div>
+          ${sess.paused?'<div style="font-size:.7rem;background:rgba(255,255,255,.2);border-radius:6px;padding:2px 8px;margin-top:4px;display:inline-block;font-weight:800">⏸ PAUSED</div>':''}
+        </div>
+      </div>
+      <!-- Progress bar -->
+      <div style="background:rgba(255,255,255,.2);border-radius:6px;height:6px;overflow:hidden">
+        <div id="iv-progress-bar" style="background:#fff;height:100%;width:${pct}%;transition:width .25s"></div>
+      </div>
+    </div>
+
+    ${studentSection}
+
+    <!-- Footer hint -->
+    <div style="text-align:center;font-size:.72rem;color:var(--muted);margin-top:8px;line-height:1.5">
+      Tap a behavior tile to mark it scored for this interval. Tap again to unmark.<br>
+      Scores lock when the interval ends. The next interval starts automatically.
+    </div>
+  </div>`;
+}
+
+// ── Summary screen ────────────────────────────────────────────────────────
+function buildIntervalSummary(){
+  const sess=S.intervalSess;
+  if(!sess||!sess.completed) return '<div class="sub-view"><p class="muted">No completed session.</p></div>';
+  const summary=intervalComputeSummary(sess);
+  const methodLabel={momentary:'Momentary Time Sampling',partial:'Partial Interval',whole:'Whole Interval'}[sess.method]||sess.method;
+  const dur=Math.round((sess.endedAt-sess.startedAt)/60000);
+
+  let perStudent=sess.clientIds.map(cid=>{
+    const rows=sess.behaviorIds.map(bid=>{
+      const beh=allBehs().find(b=>b.id===bid);
+      const s=summary[cid][bid]||{scored:0,total:0,pct:0};
+      return `<tr>
+        <td style="padding:7px 10px;border-bottom:1px solid var(--border);font-weight:700;font-size:.82rem">${beh?beh.icon+' '+esc(beh.label):'Unknown'}</td>
+        <td style="padding:7px 10px;border-bottom:1px solid var(--border);text-align:center;font-family:'Courier New',monospace;font-size:.82rem">${s.scored} / ${s.total}</td>
+        <td style="padding:7px 10px;border-bottom:1px solid var(--border);text-align:right;font-weight:800;font-size:.85rem;color:var(--fba-dark)">${s.pct}%</td>
+      </tr>`;
+    }).join('');
+    return `<div style="background:var(--surface);border:1.5px solid var(--border);border-radius:12px;padding:14px;margin-bottom:12px">
+      <div style="font-weight:800;font-size:1rem;color:var(--fba-dark);margin-bottom:8px">👤 ${esc(sess.clientNames[cid]||'Student')}</div>
+      <table style="width:100%;border-collapse:collapse">
+        <thead><tr>
+          <th style="text-align:left;padding:6px 10px;font-size:.7rem;color:var(--muted);font-weight:700;letter-spacing:1px;text-transform:uppercase">Behavior</th>
+          <th style="text-align:center;padding:6px 10px;font-size:.7rem;color:var(--muted);font-weight:700;letter-spacing:1px;text-transform:uppercase">Intervals</th>
+          <th style="text-align:right;padding:6px 10px;font-size:.7rem;color:var(--muted);font-weight:700;letter-spacing:1px;text-transform:uppercase">% Occurrence</th>
+        </tr></thead>
+        <tbody>${rows}</tbody>
+      </table>
+    </div>`;
+  }).join('');
+
+  return `<div class="sub-view" style="padding-bottom:80px">
+    <div style="text-align:center;margin-bottom:16px">
+      <div style="font-size:2.2rem;margin-bottom:6px">✅</div>
+      <h2 style="color:var(--fba-dark);margin-bottom:4px">Session Complete</h2>
+      <p class="muted" style="font-size:.82rem">${methodLabel} · ${sess.intervalSec}s intervals · ${sess.totalIntervals} intervals · ${dur} min</p>
+      ${sess.location?`<p style="font-size:.74rem;color:var(--muted);margin-top:2px">📍 ${esc(sess.location)}</p>`:''}
+    </div>
+    ${perStudent}
+    <div class="row gap2" style="margin-top:18px">
+      <button class="btn btn-primary" style="flex:1;background:var(--fba-green);border-color:var(--fba-green)" onclick="intervalDoneAndExit()">Done</button>
+    </div>
+    <p style="font-size:.7rem;color:var(--muted);text-align:center;margin-top:14px;line-height:1.5">
+      Session saved. View again anytime under each student's session history.
+    </p>
+  </div>`;
+}
+
+// ── Branch original confirmStartSession to launch interval mode ──────────
 function confirmStartSession(){
   if(!S._modal||!S._modal.sel)return;
   const cid=S._modal.cid;
   const type=S._modal.sel;
+
+  // ── INTERVAL RECORDING branch (single-student) ────────────────────────
+  if(type==='interval'){
+    const m=S._modal;
+    const locSel=document.getElementById('sess-location-select');
+    const locRaw=locSel?locSel.value:m.location||'';
+    const locOther=document.getElementById('sess-location-other');
+    const location=locRaw==='Other'?(locOther?locOther.value.trim()||'Other':'Other'):locRaw;
+    const opts={
+      mode:'single',
+      clientIds:[cid],
+      method:m.intervalMethod,
+      intervalSec:m.intervalSec,
+      totalMin:m.intervalTotalMin,
+      prompts:m.intervalPrompts||{chime:true,vibrate:true,flash:false},
+      behaviorIds:m.selectedBehs||[],
+      location,
+      groupLayout:null
+    };
+    S._modal=null;
+    S.selClient=S.clients.find(c=>c.id===cid);
+    startIntervalSession(opts);
+    return;
+  }
+
+  // ── Original (legacy) flow for all other session types ────────────────
   const inp=document.getElementById('sess-length-input');
   const plannedMins=inp&&inp.value?parseInt(inp.value):S._modal.plannedMins||null;
   const locSel=document.getElementById('sess-location-select');
@@ -3813,13 +4602,6 @@ function confirmStartSession(){
   S.fbaSettingEvents=[];S.fbaSettingEventsNote='';S.fbaHypothesis='';
   S.view='record';rerender();tick();
 }
-
-
-
-
-
-
-
 
 function endSession(){
   if(!confirm('End this session?')) return;
@@ -4039,6 +4821,31 @@ function confirmStartMultiSession(){
   const cids=S._modal.clientIds||[];
   const type=S._modal.sel;
   if(cids.length<2||!type)return;
+
+  // ── INTERVAL RECORDING branch (group) ────────────────────────────────
+  if(type==='interval'){
+    const m=S._modal;
+    const locSel=document.getElementById('sess-location-select');
+    const locRaw=locSel?locSel.value:m.location||'';
+    const locOther=document.getElementById('sess-location-other');
+    const location=locRaw==='Other'?(locOther?locOther.value.trim()||'Other':'Other'):locRaw;
+    const opts={
+      mode:'group',
+      clientIds:cids.slice(),
+      method:m.intervalMethod,
+      intervalSec:m.intervalSec,
+      totalMin:m.intervalTotalMin,
+      prompts:m.intervalPrompts||{chime:true,vibrate:true,flash:false},
+      behaviorIds:m.selectedBehs||[],
+      location,
+      groupLayout:m.intervalGroupLayout||'side'
+    };
+    S._modal=null;
+    startIntervalSession(opts);
+    return;
+  }
+
+  // ── Original (legacy) flow ───────────────────────────────────────────
   const inp=document.getElementById('sess-length-input');
   const plannedMins=inp&&inp.value?parseInt(inp.value):S._modal.plannedMins||null;
   const locSel=document.getElementById('sess-location-select');
