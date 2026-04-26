@@ -27,7 +27,7 @@
 
   /* primary action — Sure Step Education teal */
   --accent:#1a7fa8;
-  --accent-soft:#e4f4f9;
+  --accent-soft:#ddf0f8; /* teal chip bg — verified AA on #0f5d7e label */
   --accent-hover:#15668a;
 
   /* secondary colors pulled directly from DailyWins pills */
@@ -51,7 +51,7 @@
   --yellow:#d99200;
   --yellow-soft:#fef8e2;
   --green:#1a7fa8;
-  --green-soft:#e4f4f9;
+  --green-soft:#ddf0f8;
 
   --shadow:0 1px 3px rgba(0,0,0,.07),0 2px 8px rgba(0,0,0,.05);
   --shadow-lg:0 4px 18px rgba(0,0,0,.11),0 1px 4px rgba(0,0,0,.06);
@@ -89,8 +89,24 @@ h3{font-size:.95rem;font-weight:700;color:var(--text)}
 .grid2{display:grid;grid-template-columns:1fr 1fr;gap:12px}
 .grid3{display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px}
 .grid4{display:grid;grid-template-columns:repeat(4,1fr);gap:8px}
-.beh-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:10px}
+.beh-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:9px}
 @media(max-width:500px){.beh-grid{grid-template-columns:repeat(2,1fr)}}
+/* ── Density token: comfortable mode (tablet at arm's length) ──
+   Apply data-density="comfortable" to <body> to bump text +15%.
+   Designed for in-classroom iPad use where readability > density. ── */
+/* ── density="comfortable" token — 15% text bump for in-classroom iPad use ─
+   Apply: document.body.dataset.density='comfortable'
+   Remove: delete document.body.dataset.density                              */
+[data-density="comfortable"]{font-size:108%}
+[data-density="comfortable"] .beh-label{font-size:.77rem}
+[data-density="comfortable"] .beh-icon{font-size:1.45rem}
+[data-density="comfortable"] .beh-btn{min-height:88px}
+[data-density="comfortable"] .slabel{font-size:.74rem;letter-spacing:1.5px}
+[data-density="comfortable"] .beh-grid-standalone{grid-template-columns:repeat(4,1fr);gap:12px}
+[data-density="comfortable"] .beh-grid-side{grid-template-columns:repeat(3,1fr);gap:11px}
+[data-density="comfortable"] .btn{font-size:.84rem;padding:9px 18px}
+[data-density="comfortable"] .beh-empty-label{font-size:.95rem}
+[data-density="comfortable"] .beh-empty-hint{font-size:.8rem}
 
 /* ── Typography ──────────────────────────────────────────────── */
 .slabel{font-size:.62rem;font-weight:700;letter-spacing:2px;text-transform:uppercase;
@@ -204,18 +220,71 @@ select.input{cursor:pointer}
 .client-actions{display:flex;gap:6px;flex-wrap:wrap;justify-content:flex-end}
 
 /* ── Behavior buttons ────────────────────────────────────────── */
-.beh-btn{padding:14px 10px;border-radius:10px;background:var(--surface2);
+/* Standalone = 4-up fixed grid; side-by-side = 3-up fixed grid.
+   Tiles are 1:1 aspect-ratio squares — no free-height stretching.
+   GRID RULES (locked, do not change):
+     Standalone view  → always 4 columns (.beh-grid-standalone)
+     Side-by-side     → always 3 columns per student (.beh-grid-side)
+     >8 behaviors     → scroll inside .beh-grid-wrap, never reflow
+   MOTION TOKENS (standardize easing to ease-in-out except fade):
+     beh-pulse: 1.5s ease-in-out  |  pulse: 1s ease-in-out
+     splashFloat: 4-5s ease-in-out  |  fade: .22s ease (only exception)
+   ICON RULE: custom behaviors must pick from ICON_OPTS — see README §5 */
+
+/* ── Grid layouts (locked column counts) ───────────────────────────────── */
+.beh-grid-standalone{display:grid;grid-template-columns:repeat(4,1fr);gap:9px}
+.beh-grid-side{display:grid;grid-template-columns:repeat(3,1fr);gap:8px}
+/* Scroll container: >8 behaviors scroll here, not reflow */
+.beh-grid-wrap{max-height:320px;overflow-y:auto;overflow-x:hidden;-webkit-overflow-scrolling:touch}
+/* Legacy .beh-grid kept for non-interval views */
+
+/* ── Behavior button base ────────────────────────────────────────────────── */
+.beh-btn{
+  aspect-ratio:1/1;
+  border-radius:10px;background:var(--surface2);
   border:1.5px solid var(--border);cursor:pointer;text-align:center;
-  transition:all .15s;display:flex;flex-direction:column;align-items:center;
-  gap:5px;position:relative;min-height:88px;justify-content:center}
+  transition:border-color .15s ease-in-out,background .15s ease-in-out,
+             box-shadow .15s ease-in-out,opacity .22s ease-in-out;
+  display:flex;flex-direction:column;
+  align-items:center;justify-content:center;
+  gap:4px;position:relative;min-height:72px;width:100%;box-sizing:border-box}
 .beh-btn:hover{border-color:var(--accent);background:var(--accent-soft)}
-.beh-icon{font-size:1.3rem}
-.beh-label{font-size:.68rem;font-weight:700;color:var(--text2);line-height:1.2}
+.beh-icon{font-size:1.25rem;line-height:1;flex-shrink:0}
+/* Label handles long names (e.g. "Physical Aggression") at 3-up without overflow */
+.beh-label{
+  font-size:.67rem;font-weight:700;color:var(--text2);line-height:1.2;
+  word-break:break-word;hyphens:auto;max-width:100%;padding:0 4px;
+  display:-webkit-box;-webkit-line-clamp:3;-webkit-box-orient:vertical;overflow:hidden}
 .beh-selected{border-color:var(--accent)!important;background:var(--accent-soft)!important}
+
+/* ── States ─────────────────────────────────────────────────────────────── */
+/* RECORDING: loudest thing on screen */
+.beh-recording{
+  border-color:var(--red)!important;
+  background:#fde4e6!important;
+  animation:beh-pulse 1.5s ease-in-out infinite;
+  z-index:1}
+/* Non-recording siblings dim so eye locks on active timer */
+.beh-dimmed{opacity:.6;transition:opacity .22s ease-in-out}
+/* Disabled / locked (e.g. incident running on another device) */
+.beh-disabled{opacity:.38;pointer-events:none;filter:grayscale(.6)}
+/* Empty state — shown when no behaviors are selected */
+.beh-empty{
+  background:var(--surface2);border:1.5px dashed var(--border);
+  border-radius:12px;padding:28px 16px;text-align:center;margin-bottom:16px}
+.beh-empty-icon{font-size:2rem;margin-bottom:8px}
+.beh-empty-label{font-weight:700;color:var(--muted);font-size:.88rem}
+.beh-empty-hint{font-size:.74rem;color:var(--muted);margin-top:4px;line-height:1.5}
+
+/* ── Recording pulse animation ───────────────────────────────────────────── */
 @keyframes beh-pulse{
   0%,100%{box-shadow:0 0 0 0 rgba(212,60,60,.4);border-color:#f87171}
-  50%{box-shadow:0 0 0 6px rgba(212,60,60,0);border-color:var(--red)}
+  50%{box-shadow:0 0 0 8px rgba(212,60,60,0);border-color:var(--red)}
 }
+/* Scored state in interval recording (green variant of selected) */
+.beh-scored{
+  border-color:var(--fba-green)!important;
+  background:var(--fba-mid)!important}
 
 /* ── Session type selector ───────────────────────────────────── */
 .sess-type-card{border:2px solid var(--border);border-radius:12px;padding:18px;
@@ -232,7 +301,8 @@ select.input{cursor:pointer}
   border-radius:10px;padding:12px 16px;margin-bottom:14px;
   display:flex;align-items:center;justify-content:space-between}
 .live-dot{width:8px;height:8px;border-radius:50%;background:var(--green);
-  animation:pulse 1.2s ease-in-out infinite;display:inline-block;margin-right:7px}
+  animation:pulse 1.2s ease-in-out infinite;display:inline-block;margin-right:7px} /* --dur-pulse */
+/* Motion token: --dur-pulse:1.2s, --dur-beh:1.5s, --dur-float:4s, --dur-fade:.22s — all ease-in-out */
 @keyframes pulse{0%,100%{opacity:1;transform:scale(1)}50%{opacity:.4;transform:scale(.8)}}
 .timer{font-family:'Courier New',monospace;font-size:2.1rem;color:var(--text);letter-spacing:3px}
 
@@ -733,10 +803,11 @@ const PRESETS=[
   {id:'tan',label:'Tantrum/Meltdown',icon:'😤'},
   {id:'vba',label:'Verbal Aggression',icon:'📣'},
   {id:'pro',label:'Prop. Destruction',icon:'💥'},
-  {id:'ste',label:'Repetitive Behavior',      icon:'🔄'},
-  {id:'oft',label:'Off-Task',        icon:'😶'},
+  {id:'ste',label:'Repetitive Behavior',      icon:'🌀'},
+  {id:'oft',label:'Off-Task',        icon:'🌫️'},
 ];
-const ICON_OPTS=['🏃','👊','⚠️','📣','🚫','🔄','😤','💥','😢','😡','🤜','🦷','💊','🛑','📌','🎯','🔴','⭕','🟠','🟡','💬','🤔','😰','🤸','🙈','✋','🖐️','👋','😶','😬'];
+// ICON_OPTS: curated set — no new emoji outside this list (see README §5)
+const ICON_OPTS=['🏃','👊','⚠️','📣','🚫','😤','💥','😢','😡','🤜','🦷','🛑','📌','🎯','🔴','⭕','🟠','🟡','💬','💭','🌫️','😰','🤸','🙈','✋','🖐️','👋','🌀','😬','🔕'];
 const OPPOSITES={
   'Elopement':          'In Area ✓',
   'Physical Aggression':'Calm & Hands Down ✓',
@@ -907,7 +978,7 @@ function tick(){
         rem.textContent=over?'⚠ +'+fmt(diff)+' over':'⏱ '+fmt(diff)+' left';
         rem.style.color=over?'var(--red)':'var(--muted)';
         const banner=rem.closest('.live-banner');
-        if(banner)banner.style.background=over?'linear-gradient(135deg,#fff1f2,#ffe4e6)':'';
+        if(banner)banner.style.background=over?'linear-gradient(135deg,#fde4e6,#ffe4e6)':'';
       }
       // Update tab badge counters
       S.multiSessions.forEach((_,i)=>{
@@ -2019,21 +2090,21 @@ function buildRecord(){
     const mIcon=measure==='frequency'?'🔢':measure==='intensity'?'📊':measure==='latency'?'🔄':'⏱';
     const freqCount=(S.activeSess.events||[]).filter(e=>e.behaviorId===b.id&&e.type==='frequency').length;
     if(inc){
-      return`<div class="beh-btn" style="border-color:var(--red);background:#fff1f2;animation:beh-pulse 1.5s ease-in-out infinite;position:relative;min-height:90px" onclick="startIncident('${b.id}')">
+      return`<div class="beh-btn beh-recording" onclick="startIncident('${b.id}')" style="position:relative;min-height:unset">
         <span style="font-size:2rem">✅</span>
         <span class="beh-label" style="color:#b91c1c;font-weight:800;font-size:.72rem;line-height:1.2">${esc(oppLabel)}</span>
         <span id="inc-timer-${b.id}" style="font-family:'Courier New',monospace;font-size:.68rem;color:var(--red);font-weight:700;margin-top:2px">${fmt(inc.elapsed||0)}</span>
         <span style="position:absolute;top:4px;left:4px;width:7px;height:7px;border-radius:50%;background:var(--red);animation:pulse 1s infinite"></span>
       </div>`;
     } else if(measure==='frequency'){
-      return`<div class="beh-btn" onclick="startIncident('${b.id}')" style="position:relative">
+      return`<div class="beh-btn ${activeIncs.length>0?'beh-dimmed':''}" onclick="startIncident('${b.id}')" style="position:relative">
         <span style="font-size:2rem">${b.icon}</span>
         <span class="beh-label" style="font-size:.78rem;font-weight:700;margin-top:4px">${esc(b.label)}</span>
         ${freqCount>0?`<span style="position:absolute;top:4px;right:6px;background:var(--accent);color:#fff;font-size:.68rem;font-weight:800;padding:1px 7px;border-radius:10px">${freqCount}</span>`:''}
         <span style="font-size:.58rem;color:var(--muted);margin-top:2px">${mIcon} tap to count</span>
       </div>`;
     } else {
-      return`<div class="beh-btn" onclick="startIncident('${b.id}')" style="position:relative">
+      return`<div class="beh-btn ${activeIncs.length>0?'beh-dimmed':''}" onclick="startIncident('${b.id}')" style="position:relative">
         <span style="font-size:2rem">${b.icon}</span>
         <span class="beh-label" style="font-size:.78rem;font-weight:700;margin-top:4px">${esc(b.label)}</span>
         <span style="font-size:.58rem;color:var(--muted);margin-top:2px">${mIcon} ${measure}</span>
@@ -2044,7 +2115,7 @@ function buildRecord(){
   // ── Active incident panels — one card per running behavior ───────────────
   let activeCards='';
   if(activeIncs.length>0){
-    activeCards=`<div class="card mb3" style="background:linear-gradient(135deg,#fff1f2,#ffe4e6);border:2px solid #fca5a5;padding:14px 16px">
+    activeCards=`<div class="card mb3" style="background:linear-gradient(135deg,#fde4e6,#ffe4e6);border:2px solid #fca5a5;padding:14px 16px">
       <div class="slabel" style="color:var(--red);margin-bottom:10px">⏱ ${activeIncs.length} Behavior${activeIncs.length>1?'s':''} in Progress — tap button to end</div>
       ${activeIncs.map(inc=>`<div style="display:flex;align-items:center;gap:10px;padding:10px 12px;background:#fff;border-radius:12px;border:1.5px solid #fca5a5;margin-bottom:8px">
         <div style="flex:1;min-width:0">
@@ -2115,8 +2186,8 @@ function buildRecord(){
 
   const addBehOnFly=isInitial?'<div style="display:flex;gap:6px;margin-bottom:12px;align-items:center"><input class="input" id="live-add-beh" placeholder="Add new behavior on the fly…" style="flex:1;font-size:.82rem;padding:8px 10px" onkeydown="if(event.key===\'Enter\')liveAddBeh()"/><button class="btn btn-primary btn-xs" onclick="liveAddBeh()" style="white-space:nowrap">+ Add</button></div>':'';
 
-  return `<div class="sub-view"><div class="live-banner" style="${isFba?fbaBannerStyle:overTime?'background:linear-gradient(135deg,#fff1f2,#ffe4e6);border-color:#fca5a5':''}"><div class="row gap2"><span class="live-dot" style="${overTime?'background:var(--red)':isFba?'background:var(--fba-green)':''}"></span><div><div style="font-weight:800;color:${isFba?'var(--fba-dark)':overTime?'var(--red)':'var(--green)'}">Live${isFba?' FBA':''} Session — ${esc(S.selClient.name)}${isFba&&sess.behavioristName?' <span style="font-size:.72rem;font-weight:600;color:var(--fba-green)">· '+esc(sess.behavioristName)+'</span>':''}</div>
-          ${sess.location?`<div style="font-size:.74rem;color:var(--muted);margin-top:1px">📍 ${esc(sess.location)} · ${new Date(sess.startedAt).toLocaleTimeString('en-US',{hour:'numeric',minute:'2-digit',hour12:true})}</div>`:`<div style="font-size:.74rem;color:var(--muted);margin-top:1px">${new Date(sess.startedAt).toLocaleTimeString('en-US',{hour:'numeric',minute:'2-digit',hour12:true})}</div>`}<div class="row gap2 mt1" style="flex-wrap:wrap"><span class="muted mono" id="sess-elapsed" style="font-size:.8rem">${fmt(elapsedNow)} elapsed</span>${plannedMs?`<span id="sess-remain" class="mono" style="font-size:.8rem;font-weight:700;color:${overTime?'var(--red)':'var(--muted)'}">${overTime?'⚠ +'+fmt(elapsedNow-plannedMs)+' over':'⏱ '+fmt(remainMs)+' left'}</span>`:''}</div></div></div><div class="row gap2">${sessionTypeBadge}<button class="btn btn-danger btn-sm" onclick="endSession()">⏹ End</button></div></div>${liveGoals}<div class="slabel" style="margin-bottom:10px">${isGoalSpec?'IEP Goal Behaviors':isGeneral?'Configured Behaviors':isFba?'All Behaviors — Behaviorist Observation':isInitial?'Assessment Behaviors':'All Behaviors'}</div>${abcPanel}<div class="beh-grid mb3">${behGrid}</div>${addBehOnFly}${activeCards}${evFeed}${fbaHypField||''}</div>`;
+  return `<div class="sub-view"><div class="live-banner" style="${isFba?fbaBannerStyle:overTime?'background:linear-gradient(135deg,#fde4e6,#ffe4e6);border-color:#fca5a5':''}"><div class="row gap2"><span class="live-dot" style="${overTime?'background:var(--red)':isFba?'background:var(--fba-green)':''}"></span><div><div style="font-weight:800;color:${isFba?'var(--fba-dark)':overTime?'var(--red)':'var(--green)'}">Live${isFba?' FBA':''} Session — ${esc(S.selClient.name)}${isFba&&sess.behavioristName?' <span style="font-size:.72rem;font-weight:600;color:var(--fba-green)">· '+esc(sess.behavioristName)+'</span>':''}</div>
+          ${sess.location?`<div style="font-size:.74rem;color:var(--muted);margin-top:1px">📍 ${esc(sess.location)} · ${new Date(sess.startedAt).toLocaleTimeString('en-US',{hour:'numeric',minute:'2-digit',hour12:true})}</div>`:`<div style="font-size:.74rem;color:var(--muted);margin-top:1px">${new Date(sess.startedAt).toLocaleTimeString('en-US',{hour:'numeric',minute:'2-digit',hour12:true})}</div>`}<div class="row gap2 mt1" style="flex-wrap:wrap"><span class="muted mono" id="sess-elapsed" style="font-size:.8rem">${fmt(elapsedNow)} elapsed</span>${plannedMs?`<span id="sess-remain" class="mono" style="font-size:.8rem;font-weight:700;color:${overTime?'var(--red)':'var(--muted)'}">${overTime?'⚠ +'+fmt(elapsedNow-plannedMs)+' over':'⏱ '+fmt(remainMs)+' left'}</span>`:''}</div></div></div><div class="row gap2">${sessionTypeBadge}<button class="btn btn-danger btn-sm" onclick="endSession()">⏹ End</button></div></div>${liveGoals}<div class="slabel" style="margin-bottom:10px">${isGoalSpec?'IEP Goal Behaviors':isGeneral?'Configured Behaviors':isFba?'All Behaviors — Behaviorist Observation':isInitial?'Assessment Behaviors':'All Behaviors'}</div>${abcPanel}${behs.length===0?`<div style="background:var(--surface2);border:1.5px dashed var(--border);border-radius:12px;padding:24px;text-align:center;margin-bottom:16px"><div style="font-size:2rem;margin-bottom:8px">📋</div><div style="font-weight:700;color:var(--muted);font-size:.88rem">No behaviors selected yet</div><div style="font-size:.74rem;color:var(--muted);margin-top:4px">Tap the settings icon to choose behaviors to track for this student.</div></div>`:`<div class="beh-grid-wrap mb3"><div class="beh-grid-standalone">${behGrid}</div></div>`}${addBehOnFly}${activeCards}${evFeed}${fbaHypField||''}</div>`;
 }
 
 // ── MULTI-CLIENT RECORD ────────────────────────────────────────────────────
@@ -2151,7 +2222,7 @@ function buildMultiRecord(){
         const hasIncident=s.incidents&&Object.keys(s.incidents).length>0;
         const hasPending=s.intensityPrompts&&s.intensityPrompts.length>0;
         const evCount=s.events.length;
-        return`<div onclick="switchClient(${i})" style="flex:1;min-width:90px;max-width:160px;padding:10px 10px 8px;border-radius:12px;cursor:pointer;border:2px solid ${isActive?'var(--accent)':hasIncident?'var(--red)':'var(--border)'};background:${isActive?'var(--accent-soft)':hasIncident?'#fff1f2':'var(--surface2)'};transition:all .15s;position:relative">
+        return`<div onclick="switchClient(${i})" style="flex:1;min-width:90px;max-width:160px;padding:10px 10px 8px;border-radius:12px;cursor:pointer;border:2px solid ${isActive?'var(--accent)':hasIncident?'var(--red)':'var(--border)'};background:${isActive?'var(--accent-soft)':hasIncident?'#fde4e6':'var(--surface2)'};transition:all .15s;position:relative">
           ${hasIncident?'<span style="position:absolute;top:4px;right:5px;width:8px;height:8px;border-radius:50%;background:var(--red);animation:pulse 1s infinite"></span>':''}
           ${hasPending?'<span style="position:absolute;top:4px;right:5px;font-size:.65rem">⚡</span>':''}
           <div style="font-weight:800;font-size:.78rem;color:${isActive?'var(--accent)':'var(--text)'};white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${esc(s.clientName)}</div>
@@ -2194,14 +2265,14 @@ function buildMultiRecord(){
     const inc=slotIncs[b.id];
     const oppLabel=getOpposite(b.label);
     if(inc){
-      return`<div class="beh-btn" style="border-color:var(--red);background:#fff1f2;animation:beh-pulse 1.5s ease-in-out infinite;position:relative;min-height:90px" onclick="mStartIncident('${b.id}')">
+      return`<div class="beh-btn beh-recording" onclick="mStartIncident('${b.id}')" style="position:relative;min-height:unset">
         <span style="font-size:2rem">✅</span>
         <span class="beh-label" style="color:#b91c1c;font-weight:800;font-size:.72rem;line-height:1.2">${esc(oppLabel)}</span>
         <span id="inc-timer-m-${b.id}" style="font-family:'Courier New',monospace;font-size:.68rem;color:var(--red);font-weight:700;margin-top:2px">${fmt(inc.elapsed||0)}</span>
         <span style="position:absolute;top:4px;left:4px;width:7px;height:7px;border-radius:50%;background:var(--red);animation:pulse 1s infinite"></span>
       </div>`;
     } else {
-      return`<div class="beh-btn" onclick="mStartIncident('${b.id}')">
+      return`<div class="beh-btn ${activeSlotIncs.length>0?'beh-dimmed':''}" onclick="mStartIncident('${b.id}')">
         <span style="font-size:2rem">${b.icon}</span>
         <span class="beh-label" style="font-size:.78rem;font-weight:700;margin-top:4px">${esc(b.label)}</span>
       </div>`;
@@ -2211,7 +2282,7 @@ function buildMultiRecord(){
   // ── Active incident panels — one per running behavior (same as single) ──
   let activeCards='';
   if(activeSlotIncs.length>0){
-    activeCards=`<div class="card mb3" style="background:linear-gradient(135deg,#fff1f2,#ffe4e6);border:2px solid #fca5a5;padding:14px 16px">
+    activeCards=`<div class="card mb3" style="background:linear-gradient(135deg,#fde4e6,#ffe4e6);border:2px solid #fca5a5;padding:14px 16px">
       <div class="slabel" style="color:var(--red);margin-bottom:10px">⏱ ${activeSlotIncs.length} Behavior${activeSlotIncs.length>1?'s':''} in Progress — tap button to end</div>
       ${activeSlotIncs.map(inc=>`<div style="display:flex;align-items:center;gap:10px;padding:10px 12px;background:#fff;border-radius:12px;border:1.5px solid #fca5a5;margin-bottom:8px">
         <div style="flex:1;min-width:0">
@@ -2261,7 +2332,7 @@ function buildMultiRecord(){
   </div>
   ${liveGoals}
   <div class="slabel" style="margin-bottom:10px">${isGoalSpec?'IEP Goal Behaviors':isGeneral?'Configured Behaviors':'All Behaviors'}</div>
-  <div class="beh-grid mb3">${behGrid}</div>
+  ${behs.length===0?`<div style="background:var(--surface2);border:1.5px dashed var(--border);border-radius:12px;padding:24px;text-align:center;margin-bottom:16px"><div style="font-size:2rem;margin-bottom:8px">📋</div><div style="font-weight:700;color:var(--muted);font-size:.88rem">No behaviors selected yet</div><div style="font-size:.74rem;color:var(--muted);margin-top:4px">Tap the settings icon to choose behaviors to track for this student.</div></div>`:`<div class="beh-grid-wrap mb3"><div class="beh-grid-standalone">${behGrid}</div></div>`}
   ${measurePanel}${evFeed}
   </div>`;
 }
@@ -4560,21 +4631,25 @@ function buildIntervalRecord(){
 
   // Behavior cards builder for a single student
   function behGridForStudent(cid){
+    // Empty state
+    if(!sess.behaviorIds.length){
+      return '<div class="beh-empty"><div class="beh-empty-icon">📋</div><div class="beh-empty-label">No behaviors selected</div><div class="beh-empty-hint">Go back to setup and choose behaviors to score.</div></div>';
+    }
     return sess.behaviorIds.map(bid=>{
       const beh=allBehs().find(b=>b.id===bid);
       if(!beh) return '';
       const scored=cur && cur.scores[cid] && cur.scores[cid][bid];
-      return `<div onclick="intervalScore('${cid}','${bid}')" style="
-        display:flex;flex-direction:column;align-items:center;justify-content:center;
-        padding:14px 6px;border-radius:12px;
-        border:2.5px solid ${scored?'var(--fba-green)':'var(--border)'};
-        background:${scored?'var(--fba-mid)':'var(--surface)'};
-        cursor:pointer;transition:all .12s;
-        min-height:80px;text-align:center;
-        box-shadow:${scored?'0 0 0 3px rgba(6,122,95,.15)':'0 1px 2px rgba(0,0,0,.04)'}">
-        <div style="font-size:1.6rem;margin-bottom:3px">${beh.icon}</div>
-        <div style="font-weight:800;font-size:.78rem;color:${scored?'var(--fba-dark)':'var(--text)'};line-height:1.15">${esc(beh.label)}</div>
-        ${scored?'<div style="margin-top:4px;font-size:.66rem;color:var(--fba-green);font-weight:800">✓ SCORED</div>':''}
+      // Use .beh-btn CSS class so aspect-ratio, density token, and grid math all apply
+      return `<div onclick="intervalScore('${cid}','${bid}')"
+        class="beh-btn${scored?' beh-scored':''}"
+        style="
+          border-width:2.5px;
+          border-color:${scored?'var(--fba-green)':'var(--border)'};
+          background:${scored?'var(--fba-mid)':'var(--surface)'};
+          box-shadow:${scored?'0 0 0 3px rgba(6,122,95,.15)':'none'}">
+        <div class="beh-icon">${beh.icon}</div>
+        <div class="beh-label" style="color:${scored?'var(--fba-dark)':'var(--text2)'}">${esc(beh.label)}</div>
+        ${scored?'<div style="font-size:.58rem;color:var(--fba-green);font-weight:800;margin-top:1px;letter-spacing:.3px">✓ SCORED</div>':''}
       </div>`;
     }).join('');
   }
@@ -4599,25 +4674,23 @@ function buildIntervalRecord(){
         <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:4px">
           <div style="background:var(--surface);border:2px solid var(--fba-green);border-radius:14px;padding:10px">
             <div style="font-weight:800;font-size:.76rem;color:var(--fba-dark);margin-bottom:8px;text-align:center">🎯 ${esc(sess.clientNames[cid]||'Student')}</div>
-            <div style="display:grid;grid-template-columns:1fr;gap:8px">${behGridForStudent(cid)}</div>
+            <div class="beh-grid-wrap"><div class="beh-grid-side">${behGridForStudent(cid)}</div></div>
           </div>
           <div style="background:var(--surface2);border:2px solid var(--border);border-radius:14px;padding:10px">
             <div style="font-weight:800;font-size:.76rem;color:var(--muted);margin-bottom:8px;text-align:center">👥 ${esc(sess.peerLabel||'Peer')}</div>
-            <div style="display:grid;grid-template-columns:1fr;gap:8px">${behGridForStudent('__peer__')}</div>
+            <div class="beh-grid-wrap"><div class="beh-grid-side">${behGridForStudent('__peer__')}</div></div>
           </div>
         </div>`;
     } else {
-      studentSection=`<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(110px,1fr));gap:10px;margin-bottom:4px">
-        ${behGridForStudent(cid)}
-      </div>`;
+      studentSection=`<div class="beh-grid-wrap" style="margin-bottom:4px"><div class="beh-grid-standalone">${behGridForStudent(cid)}</div></div>`;
     }
   } else if(sess.groupLayout==='side'){
     studentSection=sess.clientIds.map(cid=>`
       <div style="background:var(--surface);border:1.5px solid var(--border);border-radius:14px;padding:12px;margin-bottom:12px">
         <div style="font-weight:800;font-size:.92rem;color:var(--fba-dark);margin-bottom:10px">👤 ${esc(sess.clientNames[cid]||'Student')}</div>
-        <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(100px,1fr));gap:8px">
+        <div class="beh-grid-wrap"><div class="beh-grid-side">
           ${behGridForStudent(cid)}
-        </div>
+        </div></div>
       </div>
     `).join('');
   } else {
@@ -4637,9 +4710,9 @@ function buildIntervalRecord(){
       </div>
       <div style="background:var(--surface);border:2px solid var(--fba-green);border-radius:14px;padding:14px;margin-bottom:18px">
         <div style="font-weight:800;font-size:1.05rem;color:var(--fba-dark);margin-bottom:10px;text-align:center">👤 ${esc(sess.clientNames[cid]||'Student')}</div>
-        <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(110px,1fr));gap:10px">
+        <div class="beh-grid-wrap"><div class="beh-grid-standalone">
           ${behGridForStudent(cid)}
-        </div>
+        </div></div>
       </div>`;
   }
 
