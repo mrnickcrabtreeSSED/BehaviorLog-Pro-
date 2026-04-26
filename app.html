@@ -859,10 +859,8 @@ let _tick=null;
 let _intervalTick=null;
 function render(){
   // ── Preserve scroll position + focus across full innerHTML rebuilds ──
-  // Without this, every state change scrolls to top and drops the cursor
-  // out of whatever input the user was typing in. This wraps the whole
-  // app render so it benefits every screen.
-  const _scrollY = window.scrollY || window.pageYOffset || 0;
+  // iPad Safari scrolls document.documentElement, not window — read both.
+  const _scrollY = window.scrollY || window.pageYOffset || document.documentElement.scrollTop || 0;
   const _ae = document.activeElement;
   const _focusId = (_ae && _ae.id) ? _ae.id : null;
   let _selStart = null, _selEnd = null;
@@ -872,7 +870,7 @@ function render(){
   }
   document.getElementById('app').innerHTML=buildApp();
   // Restore focus first (with preventScroll so focusing doesn't jump),
-  // then restore the exact scroll position.
+  // then restore the exact scroll position on all browsers/devices.
   if (_focusId) {
     const el = document.getElementById(_focusId);
     if (el) {
@@ -882,8 +880,12 @@ function render(){
       }
     }
   }
-  // Use auto behavior — instant, no animation, matches pre-render position
-  window.scrollTo(0, _scrollY);
+  // Restore scroll — write to all three targets so iPad Safari, Chrome, and Firefox all work
+  if(_scrollY > 0){
+    try { window.scrollTo({ top: _scrollY, behavior: 'instant' }); } catch(e){ window.scrollTo(0, _scrollY); }
+    document.documentElement.scrollTop = _scrollY;
+    document.body.scrollTop = _scrollY;
+  }
 }
 function rerender(){render();}
 function tick(){
@@ -1222,6 +1224,20 @@ function buildModal(){
               ${on?'<span style="color:var(--fba-green);font-size:.7rem">✓</span>':''}${b.icon} ${esc(b.label)}
             </div>`;
           }).join('')}
+        </div>
+
+        <!-- Peer Comparison -->
+        <div style="margin-top:14px;padding-top:12px;border-top:1px solid var(--border)">
+          <div class="slabel" style="margin-bottom:6px">👥 Peer Comparison <span style="font-weight:400;color:var(--muted)">(optional)</span></div>
+          <div onclick="S._modal.hasPeer=!S._modal.hasPeer;rerender()" style="display:inline-flex;align-items:center;gap:8px;padding:9px 14px;border-radius:10px;border:1.5px solid ${m.hasPeer?'var(--fba-green)':'var(--border)'};background:${m.hasPeer?'var(--fba-mid)':'var(--surface2)'};cursor:pointer;font-size:.82rem;font-weight:700;margin-bottom:8px;transition:all .12s">
+            ${m.hasPeer?'<span style="color:var(--fba-green)">✓</span>':''} Score a typical peer side-by-side
+          </div>
+          ${m.hasPeer?`<div style="display:flex;align-items:center;gap:8px;margin-bottom:6px">
+            <input class="input" id="peer-label-input" placeholder="Peer label (e.g. Typical Peer)" style="font-size:.82rem;flex:1" value="${esc(m.peerLabel||'')}" oninput="S._modal.peerLabel=this.value"/>
+          </div>
+          <div style="font-size:.7rem;color:var(--fba-dark);background:#fff;border:1px dashed var(--fba-mid);border-radius:6px;padding:6px 10px;line-height:1.5">
+            ℹ️ Same behaviors scored for the peer each interval. Summary shows student vs. peer % side by side.
+          </div>`:''}
         </div>
       </div>`:''}
       <div style="margin-bottom:18px"></div>
@@ -4159,14 +4175,14 @@ function fireIntervalFlash(){
     }
   }catch(e){}
 }
-function firePrompts(){
+function firePrompts(intervalNum){
   if(!S.intervalSess) return;
   const p=S.intervalSess.prompts||{};
   if(p.chime) playIntervalChime();
   if(p.vibrate) fireIntervalVibrate();
   if(p.flash) fireIntervalFlash();
-  // Always show the "SCORE NOW" banner regardless of other prompt settings
-  fireScoreNowBanner();
+  // Always show the "SCORE NOW" banner — lives outside #app so it survives rerender
+  fireScoreNowBanner(intervalNum!=null ? intervalNum : S.intervalSess.currentInterval+1);
 }
 // Test chime — called from setup modal test button (inside a user gesture)
 function fireTestChime(){
@@ -4174,25 +4190,57 @@ function fireTestChime(){
 }
 
 // ── "SCORE NOW" banner — prominent on-screen prompt at each interval ──────
-function fireScoreNowBanner(){
+function fireScoreNowBanner(intervalNum){
   try{
-    const el=document.getElementById('iv-score-now-banner');
-    if(!el) return;
-    el.style.opacity='1';
-    el.style.transform='scale(1)';
-    el.style.pointerEvents='none';
+    // The banner lives OUTSIDE #app so rerender() never destroys it
+    let el=document.getElementById('iv-score-now-banner');
+    if(!el){
+      el=document.createElement('div');
+      el.id='iv-score-now-banner';
+      el.style.cssText=[
+        'position:fixed',
+        'top:68px',
+        'left:50%',
+        'transform:translateX(-50%) translateY(-12px)',
+        'background:#067a5f',
+        'color:#fff',
+        'font-size:1.05rem',
+        'font-weight:900',
+        'letter-spacing:1.5px',
+        'text-transform:uppercase',
+        'padding:11px 26px',
+        'border-radius:16px',
+        'box-shadow:0 6px 28px rgba(6,122,95,.5)',
+        'opacity:0',
+        'pointer-events:none',
+        'transition:opacity .18s ease, transform .18s ease',
+        'z-index:10000',
+        'white-space:nowrap',
+      ].join(';');
+      document.body.appendChild(el);
+    }
+    // Update text if interval number provided
+    if(intervalNum!=null) el.textContent='📋 Score Now — Interval '+intervalNum;
+    // Force reflow so transition fires even if already visible
+    el.style.opacity='0';
+    el.style.transform='translateX(-50%) translateY(-12px)';
     clearTimeout(window._scoreNowTimer);
-    window._scoreNowTimer=setTimeout(()=>{
-      el.style.opacity='0';
-      el.style.transform='scale(0.92)';
-    }, 1800);
+    window._scoreNowTimer2=requestAnimationFrame(()=>{
+      el.style.opacity='1';
+      el.style.transform='translateX(-50%) translateY(0px)';
+      clearTimeout(window._scoreNowTimer);
+      window._scoreNowTimer=setTimeout(()=>{
+        el.style.opacity='0';
+        el.style.transform='translateX(-50%) translateY(-12px)';
+      }, 2200);
+    });
   }catch(e){}
 }
 
 // ── Start interval session (single OR group) ──────────────────────────────
 function startIntervalSession(opts){
   // opts: {mode:'single'|'group', clientIds:[], method, intervalSec, totalMin,
-  //        prompts, behaviorIds, location, groupLayout}
+  //        prompts, behaviorIds, location, groupLayout, hasPeer, peerLabel}
   const totalSec=opts.totalMin*60;
   const totalIntervals=Math.floor(totalSec/opts.intervalSec);
   const startedAt=Date.now();
@@ -4201,7 +4249,8 @@ function startIntervalSession(opts){
     const c=S.clients.find(x=>x.id===cid);
     clientNames[cid]=c?c.name:'Unknown';
   });
-  // Build empty intervals array — each interval has scores keyed by client and behavior
+  // Build empty intervals — scores keyed by clientId and behaviorId
+  // '__peer__' is a reserved key for the generic peer comparison student
   const intervals=[];
   for(let i=0;i<totalIntervals;i++){
     const scores={};
@@ -4209,6 +4258,10 @@ function startIntervalSession(opts){
       scores[cid]={};
       opts.behaviorIds.forEach(bid=>{ scores[cid][bid]=false; });
     });
+    if(opts.hasPeer){
+      scores['__peer__']={};
+      opts.behaviorIds.forEach(bid=>{ scores['__peer__'][bid]=false; });
+    }
     intervals.push({
       n:i+1,
       startMs:startedAt+(i*opts.intervalSec*1000),
@@ -4229,6 +4282,8 @@ function startIntervalSession(opts){
     clientIds:opts.clientIds.slice(),
     clientNames,
     behaviorIds:opts.behaviorIds.slice(),
+    hasPeer:!!opts.hasPeer,
+    peerLabel:(opts.peerLabel||'Peer').trim()||'Peer',
     startedAt,
     endedAt:null,
     currentInterval:0,
@@ -4280,8 +4335,8 @@ function intervalTickFn(){
     if(sess.mode==='group'&&sess.groupLayout==='rotate'){
       sess.activeRotateIdx=(sess.activeRotateIdx+1)%sess.clientIds.length;
     }
-    // Fire prompts for the new interval
-    firePrompts();
+    // Fire prompts for the new interval — pass number so banner text is correct
+    firePrompts(intervalNum+1);
     rerender(); // OK to rerender on interval change — there's no in-progress tap
     return;
   }
@@ -4331,6 +4386,35 @@ function intervalScore(cid, bid){
   // Every tap is a user gesture — keeps AudioContext alive for next chime on iOS
   unlockIntervalAudio().catch(()=>{});
   // Preserve sub-view scroll so tapping a tile doesn't jump to top
+  const sv=document.querySelector('.sub-view');
+  const svScroll=sv?sv.scrollTop:0;
+  rerender();
+  const svAfter=document.querySelector('.sub-view');
+  if(svAfter && svScroll) svAfter.scrollTop=svScroll;
+}
+
+// ── Add behavior mid-session ─────────────────────────────────────────────
+function intervalLiveAddBeh(){
+  const sess=S.intervalSess;
+  if(!sess||sess.completed) return;
+  const inp=document.getElementById('iv-live-add-input');
+  const label=(inp?.value||'').trim();
+  if(!label) return;
+  const newBeh={id:uid(),label,icon:'📌',custom:true};
+  S.customs.push(newBeh);
+  sess.behaviorIds.push(newBeh.id);
+  // Back-fill all existing intervals with false for this new behavior
+  sess.intervals.forEach(iv=>{
+    sess.clientIds.forEach(cid=>{
+      if(!iv.scores[cid]) iv.scores[cid]={};
+      iv.scores[cid][newBeh.id]=false;
+    });
+    if(sess.hasPeer){
+      if(!iv.scores['__peer__']) iv.scores['__peer__']={};
+      iv.scores['__peer__'][newBeh.id]=false;
+    }
+  });
+  persist();
   const sv=document.querySelector('.sub-view');
   const svScroll=sv?sv.scrollTop:0;
   rerender();
@@ -4415,17 +4499,19 @@ function completeIntervalSession(){
 }
 function intervalComputeSummary(sess){
   // Returns: {cid: {bid: {scored:N, total:N, pct:0-100}}}
+  // Includes '__peer__' key if sess.hasPeer
   const out={};
-  sess.clientIds.forEach(cid=>{
+  const allCids=[...sess.clientIds, ...(sess.hasPeer?['__peer__']:[])];
+  allCids.forEach(cid=>{
     out[cid]={};
     sess.behaviorIds.forEach(bid=>{
       let scored=0;
       sess.intervals.forEach(iv=>{
         if(iv.scores[cid] && iv.scores[cid][bid]) scored++;
       });
-      // For rotate mode, only intervals where this student was active count toward their total
+      // Rotate mode: only count intervals where this student was active (peer always gets full total)
       let total=sess.totalIntervals;
-      if(sess.mode==='group' && sess.groupLayout==='rotate'){
+      if(cid!=='__peer__' && sess.mode==='group' && sess.groupLayout==='rotate'){
         total=0;
         sess.intervals.forEach((iv,idx)=>{
           const activeCid=sess.clientIds[idx % sess.clientIds.length];
@@ -4493,24 +4579,38 @@ function buildIntervalRecord(){
     }).join('');
   }
 
-  const flashOverlay=`<div id="interval-flash-overlay" style="position:fixed;inset:0;background:#fff;opacity:0;pointer-events:none;transition:opacity .12s;z-index:9999"></div>
-    <div id="iv-score-now-banner" style="
-      position:fixed;top:72px;left:50%;transform:translateX(-50%) scale(0.92);
-      background:var(--fba-green);color:#fff;
-      font-size:1.1rem;font-weight:900;letter-spacing:1.5px;text-transform:uppercase;
-      padding:12px 28px;border-radius:16px;
-      box-shadow:0 6px 24px rgba(6,122,95,.45);
-      opacity:0;pointer-events:none;
-      transition:opacity .15s ease, transform .15s ease;
-      z-index:9998;white-space:nowrap;
-    ">📋 Score Now — Interval ${sess.currentInterval+1}</div>`;
+  const flashOverlay=`<div id="interval-flash-overlay" style="position:fixed;inset:0;background:#fff;opacity:0;pointer-events:none;transition:opacity .12s;z-index:9999"></div>`;
+
+  // ── Live add-behavior panel ──────────────────────────────────────────
+  const liveAddPanel=`<div style="margin-top:6px;margin-bottom:14px;background:var(--surface2);border:1.5px dashed var(--border);border-radius:12px;padding:10px 12px">
+    <div style="font-size:.68rem;font-weight:700;color:var(--muted);margin-bottom:6px;letter-spacing:.5px;text-transform:uppercase">➕ Add behavior mid-session</div>
+    <div style="display:flex;gap:8px;align-items:center">
+      <input id="iv-live-add-input" class="input" placeholder="New behavior name…" style="flex:1;font-size:.82rem" onkeydown="if(event.key==='Enter'){event.preventDefault();intervalLiveAddBeh();}"/>
+      <button class="btn btn-ghost btn-sm" onclick="intervalLiveAddBeh()" style="white-space:nowrap;border-color:var(--fba-mid)">Add</button>
+    </div>
+  </div>`;
 
   let studentSection='';
   if(sess.mode==='single'){
     const cid=sess.clientIds[0];
-    studentSection=`<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(110px,1fr));gap:10px;margin-bottom:18px">
-      ${behGridForStudent(cid)}
-    </div>`;
+    if(sess.hasPeer){
+      // Side-by-side: target student left, peer right
+      studentSection=`
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:4px">
+          <div style="background:var(--surface);border:2px solid var(--fba-green);border-radius:14px;padding:10px">
+            <div style="font-weight:800;font-size:.76rem;color:var(--fba-dark);margin-bottom:8px;text-align:center">🎯 ${esc(sess.clientNames[cid]||'Student')}</div>
+            <div style="display:grid;grid-template-columns:1fr;gap:8px">${behGridForStudent(cid)}</div>
+          </div>
+          <div style="background:var(--surface2);border:2px solid var(--border);border-radius:14px;padding:10px">
+            <div style="font-weight:800;font-size:.76rem;color:var(--muted);margin-bottom:8px;text-align:center">👥 ${esc(sess.peerLabel||'Peer')}</div>
+            <div style="display:grid;grid-template-columns:1fr;gap:8px">${behGridForStudent('__peer__')}</div>
+          </div>
+        </div>`;
+    } else {
+      studentSection=`<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(110px,1fr));gap:10px;margin-bottom:4px">
+        ${behGridForStudent(cid)}
+      </div>`;
+    }
   } else if(sess.groupLayout==='side'){
     studentSection=sess.clientIds.map(cid=>`
       <div style="background:var(--surface);border:1.5px solid var(--border);border-radius:14px;padding:12px;margin-bottom:12px">
@@ -4582,6 +4682,7 @@ function buildIntervalRecord(){
     </div>
 
     ${studentSection}
+    ${liveAddPanel}
 
     <!-- Footer hint -->
     <div style="text-align:center;font-size:.72rem;color:var(--muted);margin-top:8px;line-height:1.5">
@@ -4599,28 +4700,54 @@ function buildIntervalSummary(){
   const methodLabel={momentary:'Momentary Time Sampling',partial:'Partial Interval',whole:'Whole Interval'}[sess.method]||sess.method;
   const dur=Math.round((sess.endedAt-sess.startedAt)/60000);
 
+  const peerSum=sess.hasPeer?(summary['__peer__']||{}):null;
+
   let perStudent=sess.clientIds.map(cid=>{
     const rows=sess.behaviorIds.map(bid=>{
       const beh=allBehs().find(b=>b.id===bid);
       const s=summary[cid][bid]||{scored:0,total:0,pct:0};
+      const p=peerSum?peerSum[bid]||{scored:0,total:0,pct:0}:null;
+      const diffColor=p?(s.pct>p.pct?'#067a5f':s.pct<p.pct?'#c0392b':'var(--text)'):'var(--fba-dark)';
       return `<tr>
         <td style="padding:7px 10px;border-bottom:1px solid var(--border);font-weight:700;font-size:.82rem">${beh?beh.icon+' '+esc(beh.label):'Unknown'}</td>
-        <td style="padding:7px 10px;border-bottom:1px solid var(--border);text-align:center;font-family:'Courier New',monospace;font-size:.82rem">${s.scored} / ${s.total}</td>
-        <td style="padding:7px 10px;border-bottom:1px solid var(--border);text-align:right;font-weight:800;font-size:.85rem;color:var(--fba-dark)">${s.pct}%</td>
+        <td style="padding:7px 10px;border-bottom:1px solid var(--border);text-align:center;font-family:'Courier New',monospace;font-size:.82rem">${s.scored}/${s.total}</td>
+        <td style="padding:7px 10px;border-bottom:1px solid var(--border);text-align:right;font-weight:800;font-size:.85rem;color:${diffColor}">${s.pct}%${p!==null?` <span style="font-size:.7rem;font-weight:500;color:var(--muted)">vs ${p.pct}%</span>`:''}</td>
       </tr>`;
     }).join('');
-    return `<div style="background:var(--surface);border:1.5px solid var(--border);border-radius:12px;padding:14px;margin-bottom:12px">
-      <div style="font-weight:800;font-size:1rem;color:var(--fba-dark);margin-bottom:8px">👤 ${esc(sess.clientNames[cid]||'Student')}</div>
+    return `<div style="background:var(--surface);border:2px solid var(--fba-green);border-radius:12px;padding:14px;margin-bottom:12px">
+      <div style="font-weight:800;font-size:1rem;color:var(--fba-dark);margin-bottom:4px">🎯 ${esc(sess.clientNames[cid]||'Student')}</div>
+      ${peerSum?`<div style="font-size:.68rem;color:var(--muted);margin-bottom:8px">% shown as student vs 👥 ${esc(sess.peerLabel||'Peer')} — <span style="color:#067a5f;font-weight:700">green</span>=higher, <span style="color:#c0392b;font-weight:700">red</span>=lower</div>`:''}
       <table style="width:100%;border-collapse:collapse">
         <thead><tr>
           <th style="text-align:left;padding:6px 10px;font-size:.7rem;color:var(--muted);font-weight:700;letter-spacing:1px;text-transform:uppercase">Behavior</th>
           <th style="text-align:center;padding:6px 10px;font-size:.7rem;color:var(--muted);font-weight:700;letter-spacing:1px;text-transform:uppercase">Intervals</th>
-          <th style="text-align:right;padding:6px 10px;font-size:.7rem;color:var(--muted);font-weight:700;letter-spacing:1px;text-transform:uppercase">% Occurrence</th>
+          <th style="text-align:right;padding:6px 10px;font-size:.7rem;color:var(--muted);font-weight:700;letter-spacing:1px;text-transform:uppercase">${peerSum?'Student % / Peer %':'% Occurrence'}</th>
         </tr></thead>
         <tbody>${rows}</tbody>
       </table>
     </div>`;
   }).join('');
+
+  // Peer-only summary card
+  const peerCard=peerSum?`<div style="background:var(--surface2);border:1.5px solid var(--border);border-radius:12px;padding:14px;margin-bottom:12px">
+    <div style="font-weight:800;font-size:1rem;color:var(--muted);margin-bottom:8px">👥 ${esc(sess.peerLabel||'Peer')} (comparison data)</div>
+    <table style="width:100%;border-collapse:collapse">
+      <thead><tr>
+        <th style="text-align:left;padding:6px 10px;font-size:.7rem;color:var(--muted);font-weight:700;letter-spacing:1px;text-transform:uppercase">Behavior</th>
+        <th style="text-align:center;padding:6px 10px;font-size:.7rem;color:var(--muted);font-weight:700;letter-spacing:1px;text-transform:uppercase">Intervals</th>
+        <th style="text-align:right;padding:6px 10px;font-size:.7rem;color:var(--muted);font-weight:700;letter-spacing:1px;text-transform:uppercase">% Occurrence</th>
+      </tr></thead>
+      <tbody>${sess.behaviorIds.map(bid=>{
+        const beh=allBehs().find(b=>b.id===bid);
+        const p=peerSum[bid]||{scored:0,total:0,pct:0};
+        return `<tr>
+          <td style="padding:7px 10px;border-bottom:1px solid var(--border);font-weight:700;font-size:.82rem">${beh?beh.icon+' '+esc(beh.label):'Unknown'}</td>
+          <td style="padding:7px 10px;border-bottom:1px solid var(--border);text-align:center;font-family:'Courier New',monospace;font-size:.82rem">${p.scored}/${p.total}</td>
+          <td style="padding:7px 10px;border-bottom:1px solid var(--border);text-align:right;font-weight:800;font-size:.85rem;color:var(--muted)">${p.pct}%</td>
+        </tr>`;
+      }).join('')}</tbody>
+    </table>
+  </div>`:'';
 
   return `<div class="sub-view" style="padding-bottom:80px">
     <div style="text-align:center;margin-bottom:16px">
@@ -4630,6 +4757,7 @@ function buildIntervalSummary(){
       ${sess.location?`<p style="font-size:.74rem;color:var(--muted);margin-top:2px">📍 ${esc(sess.location)}</p>`:''}
     </div>
     ${perStudent}
+    ${peerCard}
     <div class="row gap2" style="margin-top:18px">
       <button class="btn btn-primary" style="flex:1;background:var(--fba-green);border-color:var(--fba-green)" onclick="intervalDoneAndExit()">Done</button>
     </div>
@@ -4661,7 +4789,9 @@ function confirmStartSession(){
       prompts:m.intervalPrompts||{chime:true,vibrate:true,flash:false},
       behaviorIds:m.selectedBehs||[],
       location,
-      groupLayout:null
+      groupLayout:null,
+      hasPeer:!!m.hasPeer,
+      peerLabel:m.peerLabel||'Peer'
     };
     S._modal=null;
     S.selClient=S.clients.find(c=>c.id===cid);
