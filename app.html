@@ -98,9 +98,9 @@ h3{font-size:.95rem;font-weight:700;color:var(--text)}
    Apply: document.body.dataset.density='comfortable'
    Remove: delete document.body.dataset.density                              */
 [data-density="comfortable"]{font-size:108%}
-[data-density="comfortable"] .beh-label{font-size:.77rem}
-[data-density="comfortable"] .beh-icon{font-size:1.45rem}
-[data-density="comfortable"] .beh-btn{min-height:88px}
+[data-density="comfortable"] .beh-label{font-size:.85rem}
+[data-density="comfortable"] .beh-icon{font-size:1.8rem}
+[data-density="comfortable"] .beh-btn{min-height:108px}
 [data-density="comfortable"] .slabel{font-size:.74rem;letter-spacing:1.5px}
 [data-density="comfortable"] .beh-grid-standalone{grid-template-columns:repeat(4,1fr);gap:12px}
 [data-density="comfortable"] .beh-grid-side{grid-template-columns:repeat(3,1fr);gap:11px}
@@ -221,7 +221,7 @@ select.input{cursor:pointer}
 
 /* ── Behavior buttons ────────────────────────────────────────── */
 /* Standalone = 4-up fixed grid; side-by-side = 3-up fixed grid.
-   Tiles are 1:1 aspect-ratio squares — no free-height stretching.
+   Tiles grow vertically as needed so icon + label always fit on small phones.
    GRID RULES (locked, do not change):
      Standalone view  → always 4 columns (.beh-grid-standalone)
      Side-by-side     → always 3 columns per student (.beh-grid-side)
@@ -240,21 +240,24 @@ select.input{cursor:pointer}
 
 /* ── Behavior button base ────────────────────────────────────────────────── */
 .beh-btn{
-  aspect-ratio:1/1;
+  /* Removed aspect-ratio:1/1 — was crowding out the label text on small tiles.
+     Buttons now grow vertically as needed so icon + label are always readable. */
   border-radius:10px;background:var(--surface2);
   border:1.5px solid var(--border);cursor:pointer;text-align:center;
   transition:border-color .15s ease-in-out,background .15s ease-in-out,
              box-shadow .15s ease-in-out,opacity .22s ease-in-out;
   display:flex;flex-direction:column;
   align-items:center;justify-content:center;
-  gap:4px;position:relative;min-height:72px;width:100%;box-sizing:border-box}
+  gap:6px;position:relative;
+  min-height:96px;padding:12px 6px;
+  width:100%;box-sizing:border-box}
 .beh-btn:hover{border-color:var(--accent);background:var(--accent-soft)}
-.beh-icon{font-size:1.25rem;line-height:1;flex-shrink:0}
-/* Label handles long names (e.g. "Physical Aggression") at 3-up without overflow */
+.beh-icon{font-size:1.6rem;line-height:1;flex-shrink:0}
+/* Label is always visible — never clipped to invisibility on small tiles */
 .beh-label{
-  font-size:.67rem;font-weight:700;color:var(--text2);line-height:1.2;
-  word-break:break-word;hyphens:auto;max-width:100%;padding:0 4px;
-  display:-webkit-box;-webkit-line-clamp:3;-webkit-box-orient:vertical;overflow:hidden}
+  font-size:.78rem;font-weight:700;color:var(--text2);line-height:1.2;
+  word-break:break-word;hyphens:auto;max-width:100%;padding:0 2px;
+  display:block;overflow:visible}
 .beh-selected{border-color:var(--accent)!important;background:var(--accent-soft)!important}
 
 /* ── States ─────────────────────────────────────────────────────────────── */
@@ -464,10 +467,10 @@ select.input{cursor:pointer}
   .btn-xs{padding:2px 6px;font-size:.65rem}
   .btn-primary{padding:10px 16px;font-size:.85rem}
 
-  /* Behavior buttons — bigger tap targets */
-  .beh-btn{padding:16px 8px;min-height:80px;border-radius:12px}
-  .beh-icon{font-size:1.5rem}
-  .beh-label{font-size:.72rem}
+  /* Behavior buttons — bigger tap targets, label always visible */
+  .beh-btn{padding:14px 6px;min-height:100px;border-radius:12px;gap:6px}
+  .beh-icon{font-size:1.7rem}
+  .beh-label{font-size:.78rem}
 
   /* Timer — prominent */
   .timer{font-size:1.6rem;letter-spacing:2px}
@@ -548,9 +551,9 @@ select.input{cursor:pointer}
 /* ── RESPONSIVE — Small phones (380px and below) ─────────────── */
 @media(max-width:380px){
   .beh-grid{grid-template-columns:1fr 1fr;gap:5px}
-  .beh-btn{padding:12px 6px;min-height:70px}
-  .beh-icon{font-size:1.3rem}
-  .beh-label{font-size:.65rem}
+  .beh-btn{padding:12px 5px;min-height:90px;gap:5px}
+  .beh-icon{font-size:1.5rem}
+  .beh-label{font-size:.72rem}
   .timer{font-size:1.3rem}
   .app-header{height:48px}
   .nav-logo-svg{height:26px}
@@ -573,8 +576,7 @@ select.input{cursor:pointer}
   .btn:active:not(:disabled){transform:scale(.97);opacity:.85}
   .beh-btn:active{border-color:var(--accent);background:var(--accent-soft);transform:scale(.96)}
   .client-card:active{border-color:var(--border2)}
-  /* Larger touch targets */
-  .beh-btn{min-height:72px}
+  /* Larger touch targets — but don't shrink the base min-height that the label needs */
   .int-pip{min-height:44px}
   /* Prevent text selection on rapid taps */
   .beh-btn,.btn,.int-pip,.client-card{-webkit-user-select:none;user-select:none;-webkit-tap-highlight-color:transparent;touch-action:manipulation}
@@ -930,8 +932,24 @@ let _tick=null;
 let _intervalTick=null;
 function render(){
   // ── Preserve scroll position + focus across full innerHTML rebuilds ──
-  // iPad Safari scrolls document.documentElement, not window — read both.
+  // The page can scroll in three places: (a) window/document — main page,
+  // (b) the .modal element — session-setup modal scrolls internally,
+  // (c) any .beh-grid-wrap — behavior grids with >8 buttons scroll inside.
+  // Capture all three before innerHTML is rewritten.
+
+  // (a) Window scroll — iPad Safari uses documentElement, others use window.
   const _scrollY = window.scrollY || window.pageYOffset || document.documentElement.scrollTop || 0;
+
+  // (b) Modal scroll — only one modal is ever open; capture its scrollTop.
+  const _modalEl = document.querySelector('.modal');
+  const _modalScroll = _modalEl ? _modalEl.scrollTop : 0;
+
+  // (c) Behavior-grid wrappers — capture by index so we can restore in order.
+  const _gridWraps = document.querySelectorAll('.beh-grid-wrap');
+  const _gridScrolls = [];
+  _gridWraps.forEach(el => _gridScrolls.push(el.scrollTop));
+
+  // Focus + caret position for active text input
   const _ae = document.activeElement;
   const _focusId = (_ae && _ae.id) ? _ae.id : null;
   let _selStart = null, _selEnd = null;
@@ -939,9 +957,11 @@ function render(){
     _selStart = _ae.selectionStart;
     _selEnd   = _ae.selectionEnd;
   }
+
+  // ── Rebuild DOM ────────────────────────────────────────────────────
   document.getElementById('app').innerHTML=buildApp();
-  // Restore focus first (with preventScroll so focusing doesn't jump),
-  // then restore the exact scroll position on all browsers/devices.
+
+  // ── Restore focus first (with preventScroll so focusing doesn't jump) ──
   if (_focusId) {
     const el = document.getElementById(_focusId);
     if (el) {
@@ -951,11 +971,27 @@ function render(){
       }
     }
   }
-  // Restore scroll — write to all three targets so iPad Safari, Chrome, and Firefox all work
+
+  // ── Restore window scroll on all platforms ──────────────────────────
   if(_scrollY > 0){
     try { window.scrollTo({ top: _scrollY, behavior: 'instant' }); } catch(e){ window.scrollTo(0, _scrollY); }
     document.documentElement.scrollTop = _scrollY;
     document.body.scrollTop = _scrollY;
+  }
+
+  // ── Restore modal scroll ────────────────────────────────────────────
+  // The modal element was destroyed and recreated, so we must look it up again.
+  if (_modalScroll > 0) {
+    const newModal = document.querySelector('.modal');
+    if (newModal) newModal.scrollTop = _modalScroll;
+  }
+
+  // ── Restore behavior-grid scroll (matched by index) ─────────────────
+  if (_gridScrolls.length > 0) {
+    const newGrids = document.querySelectorAll('.beh-grid-wrap');
+    newGrids.forEach((el, i) => {
+      if (_gridScrolls[i] != null && _gridScrolls[i] > 0) el.scrollTop = _gridScrolls[i];
+    });
   }
 }
 function rerender(){render();}
@@ -2090,24 +2126,24 @@ function buildRecord(){
     const mIcon=measure==='frequency'?'🔢':measure==='intensity'?'📊':measure==='latency'?'🔄':'⏱';
     const freqCount=(S.activeSess.events||[]).filter(e=>e.behaviorId===b.id&&e.type==='frequency').length;
     if(inc){
-      return`<div class="beh-btn beh-recording" onclick="startIncident('${b.id}')" style="position:relative;min-height:unset">
-        <span style="font-size:2rem">✅</span>
-        <span class="beh-label" style="color:#b91c1c;font-weight:800;font-size:.72rem;line-height:1.2">${esc(oppLabel)}</span>
-        <span id="inc-timer-${b.id}" style="font-family:'Courier New',monospace;font-size:.68rem;color:var(--red);font-weight:700;margin-top:2px">${fmt(inc.elapsed||0)}</span>
+      return`<div class="beh-btn beh-recording" onclick="startIncident('${b.id}')" style="position:relative">
+        <span class="beh-icon" style="font-size:1.6rem">✅</span>
+        <span class="beh-label" style="color:#b91c1c;font-weight:800">${esc(oppLabel)}</span>
+        <span id="inc-timer-${b.id}" style="font-family:'Courier New',monospace;font-size:.7rem;color:var(--red);font-weight:700;margin-top:2px">${fmt(inc.elapsed||0)}</span>
         <span style="position:absolute;top:4px;left:4px;width:7px;height:7px;border-radius:50%;background:var(--red);animation:pulse 1s infinite"></span>
       </div>`;
     } else if(measure==='frequency'){
       return`<div class="beh-btn ${activeIncs.length>0?'beh-dimmed':''}" onclick="startIncident('${b.id}')" style="position:relative">
-        <span style="font-size:2rem">${b.icon}</span>
-        <span class="beh-label" style="font-size:.78rem;font-weight:700;margin-top:4px">${esc(b.label)}</span>
+        <span class="beh-icon">${b.icon}</span>
+        <span class="beh-label">${esc(b.label)}</span>
         ${freqCount>0?`<span style="position:absolute;top:4px;right:6px;background:var(--accent);color:#fff;font-size:.68rem;font-weight:800;padding:1px 7px;border-radius:10px">${freqCount}</span>`:''}
-        <span style="font-size:.58rem;color:var(--muted);margin-top:2px">${mIcon} tap to count</span>
+        <span style="font-size:.6rem;color:var(--muted);margin-top:1px">${mIcon} tap to count</span>
       </div>`;
     } else {
       return`<div class="beh-btn ${activeIncs.length>0?'beh-dimmed':''}" onclick="startIncident('${b.id}')" style="position:relative">
-        <span style="font-size:2rem">${b.icon}</span>
-        <span class="beh-label" style="font-size:.78rem;font-weight:700;margin-top:4px">${esc(b.label)}</span>
-        <span style="font-size:.58rem;color:var(--muted);margin-top:2px">${mIcon} ${measure}</span>
+        <span class="beh-icon">${b.icon}</span>
+        <span class="beh-label">${esc(b.label)}</span>
+        <span style="font-size:.6rem;color:var(--muted);margin-top:1px">${mIcon} ${measure}</span>
       </div>`;
     }
   }).join('');
@@ -2265,16 +2301,16 @@ function buildMultiRecord(){
     const inc=slotIncs[b.id];
     const oppLabel=getOpposite(b.label);
     if(inc){
-      return`<div class="beh-btn beh-recording" onclick="mStartIncident('${b.id}')" style="position:relative;min-height:unset">
-        <span style="font-size:2rem">✅</span>
-        <span class="beh-label" style="color:#b91c1c;font-weight:800;font-size:.72rem;line-height:1.2">${esc(oppLabel)}</span>
-        <span id="inc-timer-m-${b.id}" style="font-family:'Courier New',monospace;font-size:.68rem;color:var(--red);font-weight:700;margin-top:2px">${fmt(inc.elapsed||0)}</span>
+      return`<div class="beh-btn beh-recording" onclick="mStartIncident('${b.id}')" style="position:relative">
+        <span class="beh-icon" style="font-size:1.6rem">✅</span>
+        <span class="beh-label" style="color:#b91c1c;font-weight:800">${esc(oppLabel)}</span>
+        <span id="inc-timer-m-${b.id}" style="font-family:'Courier New',monospace;font-size:.7rem;color:var(--red);font-weight:700;margin-top:2px">${fmt(inc.elapsed||0)}</span>
         <span style="position:absolute;top:4px;left:4px;width:7px;height:7px;border-radius:50%;background:var(--red);animation:pulse 1s infinite"></span>
       </div>`;
     } else {
       return`<div class="beh-btn ${activeSlotIncs.length>0?'beh-dimmed':''}" onclick="mStartIncident('${b.id}')">
-        <span style="font-size:2rem">${b.icon}</span>
-        <span class="beh-label" style="font-size:.78rem;font-weight:700;margin-top:4px">${esc(b.label)}</span>
+        <span class="beh-icon">${b.icon}</span>
+        <span class="beh-label">${esc(b.label)}</span>
       </div>`;
     }
   }).join('');
