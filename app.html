@@ -1027,6 +1027,17 @@ function studentHasBehaviors(cid){
   return !!(c && Array.isArray(c.behaviors) && c.behaviors.length>0);
 }
 
+// Returns true if a session record should count toward the BIP/FBA build-out
+// for this student. Two cases:
+//   (1) Legacy "Behaviorist Observation" sessions (sessType==='fba') — back
+//       when FBA was a session type. Preserved for backward compatibility.
+//   (2) Any session tagged fbaContext:true — set when a behaviorist routed
+//       through the FBA affirmation + sub-type picker, regardless of whether
+//       the recording mechanic was Interval, General, or Manual Entry.
+function isFbaForBuildOut(sess){
+  return !!sess && (sess.sessType==='fba' || sess.fbaContext===true);
+}
+
 // Returns behaviors for a specific client — strict per-student selection.
 // New behavior: students start with NO behaviors. Empty array = empty grid.
 // (Previously this fell back to allBehs() when a student had none configured,
@@ -1293,7 +1304,7 @@ function buildModal(){
        desc:'Enter observation data from a paper tracking sheet — date, time, location, and behavior counts.',
        color:'var(--orange)', soft:'var(--orange-soft)', always:true, isManual:true},
       {id:'fba', icon:'🧠', label:'Behaviorist Observation',
-       desc:isBehaviorist()?'Structured behavioral observation with setting events, antecedent categories, and hypothesis tools. Requires licensed behaviorist affirmation.':'Behaviorist observations can only be started by a licensed behaviorist. Contact your behavior support specialist.',
+       desc:isBehaviorist()?'After your behaviorist affirmation, choose how to record (Interval, General, or Manual Entry). All three count toward the FBA and BIP build-out for this student.':'Behaviorist observations can only be started by a licensed behaviorist. Contact your behavior support specialist.',
        color:'var(--fba-green)', soft:'var(--fba-soft)', always:true, blocked:!isBehaviorist()},
     ];
     inner=`<h2 style="margin-bottom:4px">Start Session</h2>
@@ -1558,6 +1569,48 @@ function buildModal(){
       <div class="row gap2">
         <button class="btn btn-primary" style="flex:1;background:var(--fba-green);border-color:var(--fba-green)" onclick="confirmFbaAffirm()">🧠 Begin Session</button>
         <button class="btn btn-ghost" onclick="cancelFbaAffirm()">Cancel</button>
+      </div>`;
+  }
+
+  if(m.type==='fbaSubtype'){
+    // Sub-type picker shown after the FBA affirmation. The behaviorist chooses
+    // HOW to record the session — Interval, General, or Manual Entry. Whichever
+    // they pick, the resulting session is tagged with fbaContext:true so it
+    // counts toward the FBA/BIP build-out for this student.
+    const SUBTYPES=[
+      {id:'interval', icon:'⏲️', label:'Interval Recording',
+       desc:'Time-based sampling — Momentary, Partial, or Whole Interval. Best for measuring on-task behavior or behaviors with a clear time-bounded structure.',
+       color:'var(--fba-green)', soft:'var(--fba-soft)'},
+      {id:'general',  icon:'📋', label:'General Tracking',
+       desc:'Tap-to-start recording for frequency, duration, intensity, and ABC notes. Best for full continuous observation of all configured behaviors.',
+       color:'var(--amber)', soft:'var(--amber-soft)'},
+      {id:'manual',   icon:'📝', label:'Manual Entry',
+       desc:'Enter observation data from a paper tracking sheet — counts, durations, and intensity. Best for retrospective documentation.',
+       color:'var(--orange)', soft:'var(--orange-soft)'},
+    ];
+    const behName=(S._fbaGate&&S._fbaGate.behavioristName)||'';
+    inner=`<div style="text-align:center;margin-bottom:14px">
+        <div style="font-size:1.8rem;margin-bottom:4px">🧠</div>
+        <h2 style="margin-bottom:2px;color:var(--fba-dark)">Recording Method</h2>
+        <p style="font-size:.78rem;color:var(--muted);line-height:1.5;max-width:340px;margin:0 auto">${behName?'Behaviorist: <strong>'+esc(behName)+'</strong><br/>':''}Choose how you'd like to record this Behaviorist Observation. All three methods will count toward the FBA and BIP build-out for this student.</p>
+      </div>
+      <div style="display:flex;flex-direction:column;gap:8px;margin-bottom:18px">
+        ${SUBTYPES.map(tp=>`
+          <div class="sess-type-card" style="text-align:left;display:flex;align-items:center;gap:14px;padding:14px 16px;cursor:pointer"
+            onclick="pickFbaSubtype('${tp.id}')">
+            <div style="font-size:1.8rem;flex-shrink:0">${tp.icon}</div>
+            <div style="flex:1;min-width:0">
+              <div style="font-weight:800;font-size:.92rem;color:var(--text);margin-bottom:2px">${tp.label}</div>
+              <div style="font-size:.75rem;color:var(--muted);line-height:1.4">${tp.desc}</div>
+            </div>
+            <span style="font-size:1rem;color:var(--muted);flex-shrink:0">›</span>
+          </div>`).join('')}
+      </div>
+      <div style="background:var(--fba-soft);border:1.5px solid var(--fba-mid);border-radius:10px;padding:10px 12px;margin-bottom:14px;font-size:.74rem;color:var(--fba-dark);line-height:1.5">
+        🧠 <strong>Behaviorist Notes</strong> — Setting events and hypothesis fields will be available on the session summary screen regardless of which method you choose.
+      </div>
+      <div class="row gap2">
+        <button class="btn btn-ghost" style="flex:1" onclick="cancelFbaSubtype()">← Back</button>
       </div>`;
   }
 
@@ -2688,20 +2741,50 @@ function buildSummary(){
   }
 
   const chart=bList.length>0?buildBarChart(bList.map(b=>({label:b.label,val:b.freq+b.durs.length+b.ints.length+b.lats.length})),'Events'):'';
-  const typeBadge=sess.sessType==='initial'?`<span class="tag" style="background:var(--purple-soft);color:var(--purple);margin-left:9px">🔍 Initial Assessment</span>`
+  const mechBadge=sess.sessType==='initial'?`<span class="tag" style="background:var(--purple-soft);color:var(--purple);margin-left:9px">🔍 Initial Assessment</span>`
     :sess.sessType==='tracking'?`<span class="tag" style="background:var(--accent-soft);color:var(--accent);margin-left:9px">🎯 Goal-Specific</span>`
     :sess.sessType==='general'?`<span class="tag" style="background:var(--amber-soft);color:var(--amber);margin-left:9px">📋 General Tracking</span>`
+    :sess.sessType==='interval'?`<span class="tag" style="background:var(--fba-soft);color:var(--fba-green);margin-left:9px">⏲️ Interval Recording</span>`
     :sess.sessType==='fba'?`<span class="tag" style="background:var(--fba-soft);color:var(--fba-green);margin-left:9px;font-weight:800">🧠 Behaviorist Observation</span>`
     :sess.sessType==='manual'?`<span class="tag" style="background:var(--orange-soft);color:var(--orange);margin-left:9px">📝 Manual Entry</span>`:'';
+  // FBA-context sub-badge for sessions that count toward the build-out but
+  // aren't legacy 'fba' type.
+  const fbaSubBadge=(sess.fbaContext && sess.sessType!=='fba')
+    ? `<span class="tag" style="background:var(--fba-soft);color:var(--fba-green);margin-left:6px;font-weight:800">🧠 FBA</span>`
+    : '';
+  const typeBadge=mechBadge+fbaSubBadge;
 
-  // behaviorist session metadata card (shown in summary when it's an behaviorist session)
-  const fbaMetaCard=isFbaSess?`<div class="card mb3" style="background:var(--fba-soft);border:1.5px solid var(--fba-mid);padding:13px 15px">
-    <div class="slabel" style="color:var(--fba-dark);margin-bottom:10px">🧠 Behaviorist Session Data</div>
-    ${sess.behavioristName?`<div style="margin-bottom:8px;font-size:.82rem"><strong>Behaviorist:</strong> ${esc(sess.behavioristName)}</div>`:''}
-    ${sess.settingEvents&&sess.settingEvents.length?`<div style="margin-bottom:8px"><div style="font-size:.73rem;font-weight:700;color:var(--fba-dark);margin-bottom:4px">Setting Events Present:</div><div style="display:flex;flex-wrap:wrap;gap:5px">${sess.settingEvents.map(s=>`<span style="padding:3px 9px;border-radius:16px;background:var(--fba-green);color:#fff;font-size:.7rem;font-weight:700">${s}</span>`).join('')}</div></div>`:''}
-    ${sess.settingEventsNote?`<div style="margin-bottom:8px;font-size:.78rem;color:var(--text2)"><strong>Setting notes:</strong> ${esc(sess.settingEventsNote)}</div>`:''}
-    ${sess.fbaHypothesis?`<div style="margin-bottom:6px"><div style="font-size:.73rem;font-weight:700;color:var(--fba-dark);margin-bottom:4px">Behaviorist Hypothesis Notes:</div><div style="font-size:.78rem;color:var(--text2);background:rgba(255,255,255,.6);border-radius:8px;padding:8px 10px;border-left:3px solid var(--fba-green)">${esc(sess.fbaHypothesis)}</div></div>`:''}
-    <div style="margin-top:8px;font-size:.7rem;color:var(--fba-green);font-style:italic;border-top:1px solid var(--fba-mid);padding-top:8px">Supplemental reports from other session types are reference data only. FBA conclusions are those of the behaviorist.</div>
+  // Behaviorist metadata card — shown for any session that counts toward the
+  // FBA build-out: legacy Behaviorist Observation sessions (sessType==='fba')
+  // OR sessions started from the FBA sub-type picker (fbaContext:true).
+  // Setting Events, Hypothesis Notes, and Behaviorist Name are all editable
+  // post-hoc on the summary screen, so behaviorists who recorded via Interval
+  // or Manual Entry can still capture those FBA-specific fields after the fact.
+  const isFbaContextSess=isFbaForBuildOut(sess);
+  const setEventsList=Array.isArray(sess.settingEvents)?sess.settingEvents:[];
+  // Standard setting event categories — match what the legacy FBA recording UI offers.
+  const SETTING_EVENT_OPTS=['Sleep deprivation','Hunger','Illness','Medication change','Family stressor','Schedule change','Sensory overload','Recent transition'];
+  const fbaMetaCard=isFbaContextSess?`<div class="card mb3" style="background:var(--fba-soft);border:1.5px solid var(--fba-mid);padding:13px 15px">
+    <div class="slabel" style="color:var(--fba-dark);margin-bottom:10px">🧠 Behaviorist Notes</div>
+    <div style="margin-bottom:10px">
+      <div style="font-size:.7rem;font-weight:700;color:var(--fba-dark);text-transform:uppercase;letter-spacing:1px;margin-bottom:4px">Behaviorist Name</div>
+      <input class="input" placeholder="Behaviorist name…" value="${esc(sess.behavioristName||'')}" oninput="updateSessFbaField('${sess.id}','behavioristName',this.value)" style="font-size:.84rem;border-color:var(--fba-mid);background:#fff"/>
+    </div>
+    <div style="margin-bottom:10px">
+      <div style="font-size:.7rem;font-weight:700;color:var(--fba-dark);text-transform:uppercase;letter-spacing:1px;margin-bottom:6px">Setting Events Present</div>
+      <div style="display:flex;flex-wrap:wrap;gap:5px;margin-bottom:6px">
+        ${SETTING_EVENT_OPTS.map(opt=>{
+          const on=setEventsList.includes(opt);
+          return`<div onclick="toggleSessSettingEvent('${sess.id}','${opt.replace(/'/g,"\\'")}')" style="padding:5px 10px;border-radius:16px;border:1.5px solid ${on?'var(--fba-green)':'var(--border)'};background:${on?'var(--fba-green)':'#fff'};color:${on?'#fff':'var(--muted)'};cursor:pointer;font-size:.7rem;font-weight:700;transition:all .12s">${on?'✓ ':''}${esc(opt)}</div>`;
+        }).join('')}
+      </div>
+      <input class="input" placeholder="Other setting event notes…" value="${esc(sess.settingEventsNote||'')}" oninput="updateSessFbaField('${sess.id}','settingEventsNote',this.value)" style="font-size:.78rem;border-color:var(--fba-mid);background:#fff"/>
+    </div>
+    <div style="margin-bottom:6px">
+      <div style="font-size:.7rem;font-weight:700;color:var(--fba-dark);text-transform:uppercase;letter-spacing:1px;margin-bottom:4px">Hypothesis Notes</div>
+      <textarea class="input" placeholder="Document emerging behavioral function hypotheses, patterns observed, ecological variables…" oninput="updateSessFbaField('${sess.id}','fbaHypothesis',this.value)" style="min-height:70px;border-color:var(--fba-mid);background:#fff;font-size:.82rem">${esc(sess.fbaHypothesis||'')}</textarea>
+    </div>
+    <div style="margin-top:8px;font-size:.7rem;color:var(--fba-green);font-style:italic;border-top:1px solid var(--fba-mid);padding-top:8px">This session counts toward the FBA build-out for ${esc(sess.clientName||'this student')}. Supplemental reports from other session types are reference data only.</div>
   </div>`:'';
 
   const bCards=bList.map(b=>`<div class="card mb2">
@@ -2770,10 +2853,20 @@ function buildHistory(){
   const rows=cs.length===0
     ?`<div class="empty"><div class="empty-icon">📋</div><p>No sessions recorded yet.</p></div>`
     :cs.map(s=>{
-      const typeBadge=s.sessType==='initial'?`<span class="tag" style="background:var(--purple-soft);color:var(--purple);font-size:.65rem">🔍</span>`
+      // Mechanic badge — what kind of session this was.
+      const mechBadge=s.sessType==='initial'?`<span class="tag" style="background:var(--purple-soft);color:var(--purple);font-size:.65rem">🔍</span>`
         :s.sessType==='tracking'?`<span class="tag" style="background:var(--accent-soft);color:var(--accent);font-size:.65rem">🎯</span>`
         :s.sessType==='general'?`<span class="tag" style="background:var(--amber-soft);color:var(--amber);font-size:.65rem">📋</span>`
+        :s.sessType==='interval'?`<span class="tag" style="background:var(--fba-soft);color:var(--fba-green);font-size:.65rem">⏲️</span>`
+        :s.sessType==='manual'?`<span class="tag" style="background:var(--orange-soft);color:var(--orange);font-size:.65rem">📝</span>`
         :s.sessType==='fba'?`<span class="tag" style="background:var(--fba-soft);color:var(--fba-green);font-size:.65rem;font-weight:800">🧠</span>`:'';
+      // FBA-context sub-badge — appears alongside the mechanic badge for any
+      // session that counts toward the FBA build-out (excluding legacy 'fba'
+      // type, which already has the 🧠 badge above).
+      const fbaSubBadge=(s.fbaContext && s.sessType!=='fba')
+        ? `<span class="tag" style="background:var(--fba-soft);color:var(--fba-green);font-size:.62rem;font-weight:800">🧠 FBA</span>`
+        : '';
+      const typeBadge=mechBadge+fbaSubBadge;
       return`<div class="chip mb2" onclick="goSummary('${s.id}')">
         <div class="row gap2"><div>
           <div class="row gap2"><span style="font-weight:700">${fmtDate(s.startedAt)} · ${fmtTime(s.startedAt)}</span>${typeBadge}</div>
@@ -2869,7 +2962,7 @@ function buildReports(){
   const initSess=filtered.filter(s=>s.sessType==='initial').length;
   const genSess=filtered.filter(s=>s.sessType==='general').length;
   const trackSess=filtered.filter(s=>s.sessType==='tracking').length;
-  const fbaSess=filtered.filter(s=>s.sessType==='fba').length;
+  const fbaSess=filtered.filter(isFbaForBuildOut).length;
 
   return`<div class="row between mb3"><div class="slabel" style="margin:0;align-self:center">Session Report</div><button class="btn btn-orange btn-sm" onclick="doExportPDF()">⬇ PDF</button></div>
   <div class="card mb3">
@@ -2964,7 +3057,7 @@ function buildMultiSummary(){
             <div class="row gap2 mt1">
               <span class="muted" style="font-size:.78rem">${events.length} event${events.length!==1?'s':''}</span>
               <span class="muted" style="font-size:.78rem">${fmt(sess.endedAt-sess.startedAt)}</span>
-              <span class="tag" style="font-size:.65rem;background:${sess.sessType==='tracking'?'var(--accent-soft)':sess.sessType==='general'?'var(--amber-soft)':sess.sessType==='fba'?'var(--fba-soft)':sess.sessType==='manual'?'var(--orange-soft)':'var(--purple-soft)'};color:${sess.sessType==='tracking'?'var(--accent)':sess.sessType==='general'?'var(--amber)':sess.sessType==='fba'?'var(--fba-green)':sess.sessType==='manual'?'var(--orange)':'var(--purple)'};${sess.sessType==='fba'?'font-weight:800':''}">${sess.sessType==='tracking'?'🎯 Goal-Specific':sess.sessType==='general'?'📋 General':sess.sessType==='fba'?'🧠 Behaviorist':sess.sessType==='manual'?'📝 Manual Entry':'🔍 Initial'}</span>
+              <span class="tag" style="font-size:.65rem;background:${sess.sessType==='tracking'?'var(--accent-soft)':sess.sessType==='general'?'var(--amber-soft)':sess.sessType==='fba'?'var(--fba-soft)':sess.sessType==='interval'?'var(--fba-soft)':sess.sessType==='manual'?'var(--orange-soft)':'var(--purple-soft)'};color:${sess.sessType==='tracking'?'var(--accent)':sess.sessType==='general'?'var(--amber)':sess.sessType==='fba'?'var(--fba-green)':sess.sessType==='interval'?'var(--fba-green)':sess.sessType==='manual'?'var(--orange)':'var(--purple)'};${sess.sessType==='fba'?'font-weight:800':''}">${sess.sessType==='tracking'?'🎯 Goal-Specific':sess.sessType==='general'?'📋 General':sess.sessType==='fba'?'🧠 Behaviorist':sess.sessType==='interval'?'⏲️ Interval':sess.sessType==='manual'?'📝 Manual Entry':'🔍 Initial'}</span>${sess.fbaContext&&sess.sessType!=='fba'?'<span class="tag" style="margin-left:4px;font-size:.62rem;background:var(--fba-soft);color:var(--fba-green);font-weight:800">🧠 FBA</span>':''}
             </div>
           </div>
         </div>
@@ -3262,9 +3355,10 @@ function buildFBA(){
     <div style="font-size:.78rem;color:var(--muted);margin-top:2px">behaviorist sessions and analysis are managed by the behavior specialist. You can view this data but cannot create behaviorist sessions or generate reports.</div></div>
   </div>`:'';
   const allSessions=S.sessions.filter(s=>s.clientId===c.id);
-  // Only FBA-type sessions count toward FBA progress criteria
-  const sessions=allSessions.filter(s=>s.sessType==='fba');
-  const suppSessions=allSessions.filter(s=>s.sessType!=='fba');
+  // Only sessions tagged as FBA build-out (legacy sessType==='fba' OR
+  // fbaContext:true from the FBA sub-type picker) count toward FBA progress.
+  const sessions=allSessions.filter(isFbaForBuildOut);
+  const suppSessions=allSessions.filter(s=>!isFbaForBuildOut(s));
   const allEv=sessions.flatMap(s=>s.events||[]);
   const suppEv=suppSessions.flatMap(s=>s.events||[]);
   const goals=clientGoals(c.id);
@@ -3752,8 +3846,8 @@ function generateFbaDoc(docType, clientId){
   const client = S.clients.find(c=>c.id===clientId);
   if(!client){ alert('Student not found.'); return; }
 
-  const fbaSessions = S.sessions.filter(s=>s.clientId===clientId && s.sessType==='fba');
-  const suppSessions = S.sessions.filter(s=>s.clientId===clientId && s.sessType!=='fba');
+  const fbaSessions = S.sessions.filter(s=>s.clientId===clientId && isFbaForBuildOut(s));
+  const suppSessions = S.sessions.filter(s=>s.clientId===clientId && !isFbaForBuildOut(s));
   const allEv = fbaSessions.flatMap(s=>s.events||[]);
   const goals = (S.goals||[]).filter(g=>g.clientId===clientId);
 
@@ -4173,11 +4267,17 @@ function saveManualEntry(cid){
     sessType:'manual',
     plannedMins:length,
     location,
-    manual:true
+    manual:true,
+    // FBA context — when this manual entry was started from the FBA sub-type
+    // picker, mark it so the FBA aggregator includes it.
+    fbaContext: !!m.fbaContext,
+    behavioristName: m.behavioristName||''
   };
 
   S.sessions.push(sess);
   persist();
+  // Clear the FBA gate now that the session has been saved.
+  S._fbaGate=null;
   S._modal=null;
   rerender();
   alert('Manual entry saved — '+events.length+' event'+(events.length!==1?'s':'')+' recorded for '+date);
@@ -4388,14 +4488,62 @@ function confirmFbaAffirm(){
   if(!chkEl||!chkEl.checked){alert('Please check the affirmation box to proceed.');return;}
   S._fbaGate.behavioristName=nameEl.value.trim();
   S._fbaGate.affirmed=true;
-  // Restore the session setup modal with FBA pre-selected
-  const g=S._fbaGate;
-  S._modal={type:g.prevType||'sessType', cid:g.prevCid, clientIds:g.prevClientIds, sel:'fba', behavioristName:g.behavioristName, plannedMins:null, location:'', locationOther:''};
+  // After affirmation, route to the new FBA sub-type picker. The behaviorist
+  // chooses HOW to record (Interval / General / Manual). Whichever they pick,
+  // the resulting session is tagged with fbaContext:true so it counts toward
+  // the BIP/FBA build-out.
+  S._modal={type:'fbaSubtype'};
   rerender();
-  const btn=document.getElementById('start-sess-btn');
-  if(btn)btn.disabled=false;
 }
 function cancelFbaAffirm(){
+  const g=S._fbaGate||{};
+  S._modal={type:g.prevType||'sessType', cid:g.prevCid, clientIds:g.prevClientIds, sel:null, plannedMins:null, location:'', locationOther:''};
+  S._fbaGate=null;
+  rerender();
+}
+// User picked an FBA sub-type (interval/general/manual). Re-enter the regular
+// session setup flow as that mechanic, but stash fbaContext so confirmStartSession
+// (and the manual entry handler) tag the resulting session correctly.
+function pickFbaSubtype(t){
+  if(!S._fbaGate||!S._fbaGate.affirmed){
+    // Should not happen — affirmation is required to reach this picker.
+    alert('Please complete the behaviorist affirmation first.');
+    return;
+  }
+  const g=S._fbaGate;
+  // Manual Entry: open the manual entry modal with fbaContext on it.
+  if(t==='manual'){
+    if(!studentHasBehaviors(g.prevCid)){
+      alert('This student has no behaviors configured.\n\nOpen the student\'s settings (gear icon) and add at least one behavior before entering manual data.');
+      return;
+    }
+    S._modal={
+      type:'manualEntry',
+      cid:g.prevCid,
+      entries:{},date:'',time:'09:00',location:'',length:'',notes:'',
+      fbaContext:true,
+      behavioristName:g.behavioristName||''
+    };
+    rerender();
+    return;
+  }
+  // Interval or General: re-enter the regular session-setup modal with the
+  // chosen mechanic pre-selected and fbaContext flagged.
+  S._modal={
+    type:g.prevType||'sessType',
+    cid:g.prevCid,
+    clientIds:g.prevClientIds,
+    sel:t,
+    behavioristName:g.behavioristName||'',
+    fbaContext:true,
+    plannedMins:null,location:'',locationOther:'',
+    selectedBehs: t==='interval' ? ['__ontask__'] : []
+  };
+  rerender();
+}
+function cancelFbaSubtype(){
+  // Return to the original session-type picker, FBA still selected so the
+  // user can re-affirm or pick something else.
   const g=S._fbaGate||{};
   S._modal={type:g.prevType||'sessType', cid:g.prevCid, clientIds:g.prevClientIds, sel:null, plannedMins:null, location:'', locationOther:''};
   S._fbaGate=null;
@@ -4713,7 +4861,11 @@ function startIntervalSession(opts){
     pausedAt:null,
     pausedAccumMs:0,
     location:opts.location||'',
-    completed:false
+    completed:false,
+    // FBA context carries through so the saved session records on completion
+    // get tagged correctly and the FBA aggregator picks them up.
+    fbaContext:!!opts.fbaContext,
+    behavioristName:opts.behavioristName||''
   };
   S.view='interval';
   rerender();
@@ -4912,7 +5064,11 @@ function completeIntervalSession(){
       location:sess.location,
       selectedBehs:sess.behaviorIds.slice(),
       // Per-behavior interval percentages (scored / total)
-      intervalSummary: summary[cid] || {}
+      intervalSummary: summary[cid] || {},
+      // FBA context — when this interval session was started from the FBA
+      // sub-type picker, carry the flag so the FBA aggregator includes it.
+      fbaContext: !!sess.fbaContext,
+      behavioristName: sess.behavioristName||''
     });
   });
   persist();
@@ -5238,9 +5394,15 @@ function confirmStartSession(){
       location,
       groupLayout:null,
       hasPeer:!!m.hasPeer,
-      peerLabel:m.peerLabel||'Peer'
+      peerLabel:m.peerLabel||'Peer',
+      // FBA tagging — when the behaviorist routed here via the FBA sub-type
+      // picker, mark this session so the FBA aggregator picks it up.
+      fbaContext:!!m.fbaContext,
+      behavioristName:m.behavioristName||(S._fbaGate&&S._fbaGate.behavioristName)||''
     };
     S._modal=null;
+    // Clear the FBA gate — its data is now embedded on the session record.
+    S._fbaGate=null;
     S.selClient=S.clients.find(c=>c.id===cid);
     startIntervalSession(opts);
     return;
@@ -5255,11 +5417,20 @@ function confirmStartSession(){
   const location=locRaw==='Other'?(locOther?locOther.value.trim()||'Other':'Other'):locRaw;
   const selectedBehs=S._modal.selectedBehs||[];
   const behavioristName=S._modal.behavioristName||S._fbaGate?.behavioristName||'';
+  const fbaContext=!!S._modal.fbaContext;
   const startedAt=Date.now();
   S._initialBehs=type==='initial'?selectedBehs:[];
   S._modal=null;
+  // Clear the FBA gate — its data is now embedded on the activeSess record.
+  S._fbaGate=null;
   S.selClient=S.clients.find(c=>c.id===cid);
-  S.activeSess={id:uid(),clientId:cid,clientName:S.selClient.name,startedAt,endedAt:null,events:[],note:'',sessType:type,plannedMins,location,behavioristName,selectedBehs};
+  S.activeSess={
+    id:uid(),clientId:cid,clientName:S.selClient.name,
+    startedAt,endedAt:null,events:[],note:'',
+    sessType:type,                // recording mechanic ('initial'|'general'|'tracking'|'fba')
+    fbaContext,                   // true when started from the FBA sub-type picker
+    plannedMins,location,behavioristName,selectedBehs
+  };
   S.sessType=type;
   S.sessNote='';S.activeBeh=null;S.measureMode=null;S.abcA='';S.abcC='';
   S.incidents={};S.intensityPrompts=[];S.durRunning=false;S.durElapsed=0;
@@ -5465,6 +5636,37 @@ function deleteEvent(evIdx){
   if(!confirm('Delete this '+ev.behaviorLabel+' event?')) return;
   S.activeSess.events.splice(evIdx,1);
   rerender();
+}
+
+// Update an FBA-related field on a saved session record. Used by the
+// editable Behaviorist Notes panel on the session summary screen — lets
+// behaviorists capture setting events / hypothesis notes after the fact
+// for sessions recorded via Interval or Manual Entry mechanics.
+function updateSessFbaField(sessId,field,val){
+  if(!Array.isArray(S.sessions)) return;
+  const idx=S.sessions.findIndex(s=>s.id===sessId);
+  if(idx<0) return;
+  S.sessions[idx]={...S.sessions[idx],[field]:val};
+  // If this is the currently-selected session, sync that ref too.
+  if(S.selSess&&S.selSess.id===sessId) S.selSess={...S.selSess,[field]:val};
+  persist();
+  // Don't rerender — typing in a textarea/input shouldn't blow away focus.
+}
+
+// Toggle a setting-event tag on a saved session record (post-hoc edit on
+// the summary screen for FBA-tagged sessions).
+function toggleSessSettingEvent(sessId,opt){
+  if(!Array.isArray(S.sessions)) return;
+  const idx=S.sessions.findIndex(s=>s.id===sessId);
+  if(idx<0) return;
+  const cur=Array.isArray(S.sessions[idx].settingEvents)?[...S.sessions[idx].settingEvents]:[];
+  const at=cur.indexOf(opt);
+  if(at>=0) cur.splice(at,1);
+  else cur.push(opt);
+  S.sessions[idx]={...S.sessions[idx],settingEvents:cur};
+  if(S.selSess&&S.selSess.id===sessId) S.selSess={...S.selSess,settingEvents:cur};
+  persist();
+  rerender(); // toggles need rerender to flip the chip styling
 }
 
 function updateIntConsequence(val){
