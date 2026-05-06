@@ -797,25 +797,27 @@ window.addEventListener('offline',function(){
 });
 
 // ── Constants ──────────────────────────────────────────────────────────────
-// PRESETS — left empty so behaviors are entered in Settings → Behavior Library.
-// The 9 historical presets are seeded into each user's library on first load
-// (see seedDefaultBehaviors()) so existing students keep their selections and
-// historical session events still resolve. Kept as exported const for any
-// remaining call-site references.
+// PRESETS — empty by design. Behaviors are entered explicitly by users in
+// Settings → Behavior Library, or imported from the static STARTER_BEHAVIORS
+// list per-student in Settings → Student → Behaviors. The empty const is
+// retained for any legacy spread/iteration call-sites.
 const PRESETS=[];
 
-// LIBRARY_SEEDS — one-time per-user seeded entries. Operational definitions are
-// intentionally blank: only behaviorists/admins can fill them in (Path 1).
-const LIBRARY_SEEDS=[
-  {id:'elo',label:'Elopement',         icon:'🏃'},
-  {id:'phy',label:'Physical Aggression',icon:'👊'},
-  {id:'si', label:'Self-Injury',       icon:'🤕'},
-  {id:'non',label:'Noncompliance',     icon:'🚫'},
-  {id:'tan',label:'Tantrum/Meltdown',  icon:'😤'},
-  {id:'vba',label:'Verbal Aggression', icon:'📣'},
-  {id:'pro',label:'Prop. Destruction', icon:'💥'},
-  {id:'ste',label:'Repetitive Behavior',icon:'🌀'},
-  {id:'oft',label:'Off-Task',          icon:'🌫️'},
+// STARTER_BEHAVIORS — the 9 historical defaults, now offered as an opt-in
+// import list in per-student behavior settings. Selecting one adds it to the
+// user's library AND attaches it to that student. Operational definitions are
+// intentionally blank — only behaviorists/admins write definitions, on their
+// own account, after the behavior has been imported.
+const STARTER_BEHAVIORS=[
+  {seedId:'elo',label:'Elopement',         icon:'🏃'},
+  {seedId:'phy',label:'Physical Aggression',icon:'👊'},
+  {seedId:'si', label:'Self-Injury',       icon:'🤕'},
+  {seedId:'non',label:'Noncompliance',     icon:'🚫'},
+  {seedId:'tan',label:'Tantrum/Meltdown',  icon:'😤'},
+  {seedId:'vba',label:'Verbal Aggression', icon:'📣'},
+  {seedId:'pro',label:'Prop. Destruction', icon:'💥'},
+  {seedId:'ste',label:'Repetitive Behavior',icon:'🌀'},
+  {seedId:'oft',label:'Off-Task',          icon:'🌫️'},
 ];
 
 // ON_TASK — built-in behavior available in Interval Recording regardless of
@@ -923,14 +925,12 @@ function fmtDate(ts){return new Date(ts).toLocaleDateString('en-US',{month:'shor
 function fmtDateS(ts){return new Date(ts).toLocaleDateString('en-US',{month:'short',day:'numeric'});}
 function fmtTime(ts){return new Date(ts).toLocaleTimeString('en-US',{hour:'numeric',minute:'2-digit'});}
 function isToday(ts){return new Date(ts).toISOString().slice(0,10)===new Date().toISOString().slice(0,10);}
-// allBehs returns the user's full Behavior Library. Library lives in S.customs
-// (per-user, RLS-protected via user_data). PRESETS is empty and kept only for
-// any legacy call-site references; LIBRARY_SEEDS is migrated into S.customs
-// once per user via seedDefaultBehaviors().
+// allBehs returns the user's full Behavior Library (per-user, RLS-protected
+// via user_data). PRESETS is empty and kept only for any legacy spread refs.
 function allBehs(){return[...PRESETS,...S.customs];}
-// Returns the library plus any built-ins (e.g. On Task) for a given context.
-// Use forInterval=true when surfacing options in Interval Recording so On Task
-// is always available even when the library is otherwise empty.
+// Returns the library plus any built-ins for a given context. Use forInterval=true
+// when surfacing options in Interval Recording so On Task is always available
+// even when the library is otherwise empty.
 function allBehsForContext(forInterval){
   const lib=allBehs();
   if(forInterval && !lib.some(b=>b.id===ON_TASK_BEH.id)) return [ON_TASK_BEH,...lib];
@@ -938,8 +938,8 @@ function allBehsForContext(forInterval){
 }
 function getBehMeasure(bid){
   const m=S._measureTypes[bid]||'duration';
-  // Latency removed — auto-coerce any legacy 'latency' setting to 'duration'.
-  // We keep historical latency events readable but no new ones can be created.
+  // Latency is removed — coerce any legacy 'latency' value to 'duration'.
+  // Historical latency events still display correctly in feeds and CSV.
   if(m==='latency') return 'duration';
   return m;
 }
@@ -957,32 +957,85 @@ function getBehDefinition(bid){
 }
 function isBehaviorist(){return S._role==='behaviorist'||S._role==='admin';}
 function isAdmin(){return S._role==='admin';}
-// One-time per-user migration: seed the historical default behaviors into the
-// user's library if they have no library yet, OR if specific seeded ids are
-// missing (so existing students whose `behaviors` array references 'elo' etc.
-// continue to resolve). Definitions stay empty — only behaviorists fill them.
-function seedDefaultBehaviors(){
-  if(!Array.isArray(S.customs)) S.customs=[];
-  const have=new Set(S.customs.map(b=>b.id));
-  let added=0;
-  LIBRARY_SEEDS.forEach(seed=>{
-    if(!have.has(seed.id)){
-      S.customs.push({...seed,custom:true,seeded:true,definition:''});
-      added++;
-    }
+
+// One-time auto-purge of unused seeded library entries. Older versions of this
+// app auto-seeded the 9 starter behaviors into S.customs on first load. Per
+// product direction, the library should now start truly empty — starter
+// behaviors are an opt-in per-student import. This function removes any
+// `seeded:true` entry that:
+//   (a) is not selected by any student, AND
+//   (b) is not referenced by any session event.
+// Anything actively in use is preserved so existing data isn't broken.
+function purgeUnusedSeededBehaviors(){
+  if(!Array.isArray(S.customs)||S.customs.length===0) return 0;
+  const seededIds=new Set(S.customs.filter(b=>b.seeded).map(b=>b.id));
+  if(seededIds.size===0) return 0;
+  // Collect every behavior id that is in use.
+  const inUse=new Set();
+  (S.clients||[]).forEach(c=>{
+    (c.behaviors||[]).forEach(id=>inUse.add(id));
   });
-  return added;
+  (S.sessions||[]).forEach(s=>{
+    (s.events||[]).forEach(ev=>{ if(ev.behaviorId) inUse.add(ev.behaviorId); });
+    (s.selectedBehs||[]).forEach(id=>inUse.add(id));
+  });
+  // Remove seeded entries that aren't in use.
+  const before=S.customs.length;
+  S.customs=S.customs.filter(b=>!b.seeded||inUse.has(b.id));
+  return before-S.customs.length;
 }
-// Returns behaviors for a specific client — their custom selection, or all if none configured
+
+// Add a starter behavior to the user's library and attach it to the given
+// student. If the same starter (by seedId) is already in the library, just
+// attach the existing entry rather than creating a duplicate.
+function addStarterBehaviorToStudent(seedId,clientId){
+  const starter=STARTER_BEHAVIORS.find(s=>s.seedId===seedId);
+  if(!starter) return null;
+  // Prefer matching by seedId. Fall back to label match for any historical
+  // entry that predates the seedId tag (e.g. previously-seeded libraries).
+  let beh=S.customs.find(b=>b.seedId===seedId)
+       || S.customs.find(b=>b.label===starter.label);
+  if(!beh){
+    beh={
+      id:uid(),
+      seedId:starter.seedId,
+      label:starter.label,
+      icon:starter.icon,
+      custom:true,
+      definition:''   // blank — behaviorist fills in later
+    };
+    S.customs.push(beh);
+    if(!S._measureTypes) S._measureTypes={};
+    if(!S._measureTypes[beh.id]) S._measureTypes[beh.id]='duration';
+  }
+  // Attach to student if not already attached.
+  S.clients=S.clients.map(c=>{
+    if(c.id!==clientId) return c;
+    const list=Array.isArray(c.behaviors)?[...c.behaviors]:[];
+    if(!list.includes(beh.id)) list.push(beh.id);
+    return{...c,behaviors:list};
+  });
+  persist();
+  return beh;
+}
+
+// Returns true if this student has at least one behavior configured. Interval
+// recording is the only session type that has a built-in (On Task), so it can
+// proceed even with zero student behaviors — every other session type cannot.
+function studentHasBehaviors(cid){
+  const c=(S.clients||[]).find(x=>x.id===cid);
+  return !!(c && Array.isArray(c.behaviors) && c.behaviors.length>0);
+}
+
+// Returns behaviors for a specific client — strict per-student selection.
+// New behavior: students start with NO behaviors. Empty array = empty grid.
+// (Previously this fell back to allBehs() when a student had none configured,
+// which silently auto-populated every student with the full library. Per
+// product direction, student profiles must be configured explicitly before
+// observations can begin.)
 function clientBehs(cid){
   const c=S.clients.find(x=>x.id===cid);
-  // New behavior: students start with no behaviors selected. Empty array = empty grid.
-  // (Previously this returned allBehs() as a fallback, which auto-populated every
-  // student with the 9 PRESETS. That's no longer desired — each student's
-  // behaviors are configured explicitly in Settings → Behaviors.)
-  if(!c) return [];
-  if(!c.behaviors) return [];
-  // Return behaviors in the client's chosen order, filtering out deleted customs
+  if(!c||!Array.isArray(c.behaviors)) return [];
   const pool=allBehs();
   return c.behaviors.map(bid=>pool.find(b=>b.id===bid)).filter(Boolean);
 }
@@ -1182,8 +1235,8 @@ function buildModal(){
     const b=m.beh||{label:'',icon:'',definition:''};
     const isEdit=m.type==='editBeh';
     const curMeasure=isEdit?getBehMeasure(b.id):(m._newMeasure||'duration');
-    // Operational definition: only behaviorists/admins can edit. For non-behaviorists,
-    // the field renders read-only with a notice that a behaviorist will fill it in.
+    // Operational definition: only behaviorists/admins can edit. Non-behaviorists
+    // see read-only with a notice that a behaviorist will fill it in.
     const canEditDef=canEditDefinition();
     const curDef=isEdit?getBehDefinition(b.id):(m._newDefinition||'');
     const measureOptions=[
@@ -1300,11 +1353,13 @@ function buildModal(){
       <!-- Behavior selection for Initial Assessment -->
       <div style="margin-top:14px;margin-bottom:6px">
         <div class="slabel" style="margin-bottom:6px">Behaviors to Assess</div>
-        <div class="row gap2 mb2" style="flex-wrap:wrap">
+        ${allBehs().length===0?`<div style="background:#fef3c7;border:1.5px solid #fcd34d;border-radius:10px;padding:12px 14px;margin-bottom:8px">
+          <div style="font-weight:800;font-size:.82rem;color:#92400e">⚠ Behavior library is empty</div>
+          <div style="font-size:.74rem;color:#92400e;margin-top:4px;line-height:1.5">Add behaviors to the student in <strong>Settings → Behaviors</strong> first — either import from the starter list or create custom ones.</div>
+        </div>`:`<div class="row gap2 mb2" style="flex-wrap:wrap">
           <button class="btn btn-ghost btn-xs" onclick="S._modal.selectedBehs=allBehs().map(b=>b.id);rerender()">Select All</button>
           <button class="btn btn-ghost btn-xs" onclick="S._modal.selectedBehs=[];rerender()">Clear</button>
-        </div>
-        ${allBehs().length===0?`<div style="background:var(--surface2);border:1.5px dashed var(--border);border-radius:10px;padding:12px;text-align:center;font-size:.78rem;color:var(--muted);margin-bottom:8px">Your behavior library is empty. Add behaviors below or in Settings → Behavior Library.</div>`:''}
+        </div>`}
         <div style="max-height:180px;overflow-y:auto;display:flex;flex-wrap:wrap;gap:5px;padding:2px">
           ${allBehs().map(b=>{
             const on=(m.selectedBehs||[]).includes(b.id);
@@ -1405,7 +1460,7 @@ function buildModal(){
           <button class="btn btn-ghost btn-xs" onclick="S._modal.selectedBehs=['__ontask__'];rerender()">On Task Only</button>
           <button class="btn btn-ghost btn-xs" onclick="S._modal.selectedBehs=[];rerender()">Clear</button>
         </div>
-        <p style="font-size:.7rem;color:var(--muted);margin:0 0 6px 0;line-height:1.4">✅ <strong>On Task</strong> is always available for interval recording. Other behaviors come from your library.</p>
+        <p style="font-size:.7rem;color:var(--muted);margin:0 0 6px 0;line-height:1.4">✅ <strong>On Task</strong> is always available for interval recording. Other behaviors come from the student's library.</p>
         <div style="max-height:160px;overflow-y:auto;display:flex;flex-wrap:wrap;gap:5px;padding:2px">
           ${allBehsForContext(true).map(b=>{
             const on=(m.selectedBehs||[]).includes(b.id);
@@ -1415,6 +1470,8 @@ function buildModal(){
             </div>`;
           }).join('')}
         </div>
+
+        <!-- Peer Comparison -->
         <div style="margin-top:14px;padding-top:12px;border-top:1px solid var(--border)">
           <div class="slabel" style="margin-bottom:6px">👥 Peer Comparison <span style="font-weight:400;color:var(--muted)">(optional)</span></div>
           <div onclick="S._modal.hasPeer=!S._modal.hasPeer;rerender()" style="display:inline-flex;align-items:center;gap:8px;padding:9px 14px;border-radius:10px;border:1.5px solid ${m.hasPeer?'var(--fba-green)':'var(--border)'};background:${m.hasPeer?'var(--fba-mid)':'var(--surface2)'};cursor:pointer;font-size:.82rem;font-weight:700;margin-bottom:8px;transition:all .12s">
@@ -1655,7 +1712,7 @@ function buildModal(){
           <button class="btn btn-ghost btn-xs" onclick="S._modal.selectedBehs=['__ontask__'];rerender()">On Task Only</button>
           <button class="btn btn-ghost btn-xs" onclick="S._modal.selectedBehs=[];rerender()">Clear</button>
         </div>
-        <p style="font-size:.7rem;color:var(--muted);margin:0 0 6px 0;line-height:1.4">✅ <strong>On Task</strong> is always available for interval recording. Other behaviors come from your library.</p>
+        <p style="font-size:.7rem;color:var(--muted);margin:0 0 6px 0;line-height:1.4">✅ <strong>On Task</strong> is always available for interval recording. Other behaviors come from the library.</p>
         <div style="max-height:160px;overflow-y:auto;display:flex;flex-wrap:wrap;gap:5px;padding:2px">
           ${allBehsForContext(true).map(b=>{
             const on=(m.selectedBehs||[]).includes(b.id);
@@ -1717,7 +1774,7 @@ function buildModal(){
       ${S.customs.length===0?`<div style="background:var(--surface2);border:1.5px dashed var(--border);border-radius:10px;padding:14px;text-align:center;margin-bottom:10px">
         <div style="font-size:1.4rem;margin-bottom:4px">📋</div>
         <div style="font-weight:700;font-size:.84rem;color:var(--muted)">Your library is empty</div>
-        <div style="font-size:.72rem;color:var(--muted);margin-top:4px">Add behaviors below — they'll be available across every student and session type.</div>
+        <div style="font-size:.72rem;color:var(--muted);margin-top:4px">Add behaviors below — they'll be available across every student and session type. You can also import starter behaviors from each student's settings.</div>
       </div>`:`<div style="display:flex;flex-direction:column;gap:6px;margin-bottom:12px;max-height:260px;overflow-y:auto">
         ${S.customs.map(b=>{
           const hasDef=!!(b.definition&&b.definition.trim());
@@ -1878,11 +1935,6 @@ function buildModal(){
       <p class="muted mb3" style="font-size:.72rem">Enter counts, durations, and/or intensity for each observed behavior.</p>
 
       <div style="max-height:240px;overflow-y:auto;margin-bottom:12px">
-        ${allB.length===0?`<div style="background:var(--surface2);border:1.5px dashed var(--border);border-radius:10px;padding:18px 14px;text-align:center">
-          <div style="font-size:1.4rem;margin-bottom:6px">📋</div>
-          <div style="font-weight:700;font-size:.84rem;color:var(--muted)">No behaviors in your library</div>
-          <div style="font-size:.72rem;color:var(--muted);margin-top:4px;line-height:1.5">Add behaviors in <strong>Settings → Behavior Library</strong> first, then return here to enter data.</div>
-        </div>`:''}
         ${allB.map(b=>{
           const e=entries[b.id]||{};
           const hasData=(e.freq||0)>0||(e.durMin||0)>0||e.intensity;
@@ -1936,7 +1988,12 @@ function buildModal(){
 
       if(tab==='behaviors'){
         const selSet=new Set(sel);
-        // Show each behavior as a toggleable row, with reorder arrows for selected ones
+        // The pool now only shows behaviors already in the user's library —
+        // students don't browse the full library and check things; instead,
+        // they explicitly add behaviors via "+ Custom Behavior" or the starter
+        // dropdown. To preserve the existing "select from library" UX as a
+        // path-of-least-resistance for users with a populated library, we
+        // still render library behaviors as toggleable rows.
         const rows=pool.map((b,i)=>{
           const on=selSet.has(b.id);
           const selIdx=sel.indexOf(b.id);
@@ -1970,7 +2027,43 @@ function buildModal(){
               <div style="font-size:.65rem;font-weight:700;margin-top:4px;color:var(--text2)">${esc(b.label)}</div>
             </div>`:'';}).join('')}
           </div>
-        </div>`:'<p class="muted mt3" style="font-size:.78rem;text-align:center">No behaviors selected — all behaviors will show</p>';
+        </div>`:`<div style="margin-top:14px;background:#fef3c7;border:1.5px solid #fcd34d;border-radius:10px;padding:12px 14px">
+          <div style="font-weight:800;font-size:.84rem;color:#92400e">⚠ No behaviors configured</div>
+          <div style="font-size:.74rem;color:#92400e;margin-top:4px;line-height:1.5">This student must have at least one behavior before any observation session can be started. Add behaviors below — either import from the starter list or create a new one.</div>
+        </div>`;
+
+        // ── Starter list dropdown ──────────────────────────────────────────
+        // Static list of 9 historical defaults. Each row reads the user's
+        // library to detect whether the behavior has already been imported.
+        // Tapping an unimported entry adds it to the library AND attaches it
+        // to this student. Operational definitions stay blank — only
+        // behaviorists/admins can fill them in later via the library editor.
+        const starterOpen=m.starterOpen||false;
+        const starterList=`<div style="background:var(--surface2);border:1.5px solid var(--border);border-radius:10px;margin-top:10px;overflow:hidden">
+          <div onclick="S._modal.starterOpen=${!starterOpen};rerender()" style="display:flex;align-items:center;gap:8px;padding:10px 12px;cursor:pointer;background:${starterOpen?'var(--accent-soft)':'transparent'};transition:background .15s">
+            <span style="font-size:1.1rem">📚</span>
+            <div style="flex:1">
+              <div style="font-weight:700;font-size:.84rem;color:var(--text)">Add from starter list</div>
+              <div style="font-size:.7rem;color:var(--muted)">9 common SPED behaviors — tap one to add it to this student</div>
+            </div>
+            <span style="font-size:.78rem;color:var(--muted)">${starterOpen?'▲':'▼'}</span>
+          </div>
+          ${starterOpen?`<div style="padding:8px 10px 10px;border-top:1px solid var(--border);display:flex;flex-direction:column;gap:5px">
+            ${STARTER_BEHAVIORS.map(s=>{
+              const existing=S.customs.find(x=>x.seedId===s.seedId)||S.customs.find(x=>x.label===s.label);
+              const existingId=existing?existing.id:null;
+              const alreadyOnStudent=existingId?(c.behaviors||[]).includes(existingId):false;
+              return`<div onclick="${alreadyOnStudent?'':"importStarterBehavior('"+s.seedId+"','"+c.id+"')"}" style="display:flex;align-items:center;gap:9px;padding:8px 10px;border-radius:8px;border:1px solid var(--border);background:${alreadyOnStudent?'#ecfdf5':'#fff'};cursor:${alreadyOnStudent?'default':'pointer'};opacity:${alreadyOnStudent?.7:1};transition:all .12s" ${alreadyOnStudent?'':'onmouseover="this.style.borderColor=\'var(--accent)\';this.style.background=\'var(--accent-soft)\'" onmouseout="this.style.borderColor=\'var(--border)\';this.style.background=\'#fff\'"'}>
+                <span style="font-size:1.1rem">${s.icon}</span>
+                <span style="flex:1;font-weight:600;font-size:.82rem">${esc(s.label)}</span>
+                ${alreadyOnStudent
+                  ? '<span style="font-size:.65rem;color:#065f46;font-weight:700">✓ Added</span>'
+                  : '<span style="font-size:.78rem;color:var(--accent);font-weight:700">+ Add</span>'}
+              </div>`;
+            }).join('')}
+            <p style="font-size:.68rem;color:var(--muted);margin:6px 4px 0;line-height:1.5">Operational definitions are blank by default — a behaviorist or admin can add them later in <strong>Settings → Behavior Library</strong>.</p>
+          </div>`:''}
+        </div>`;
 
         // ── Inline add/edit form ─────────────────────────────────────────
         const editingId=m.editingBehId||null; // custom behavior being edited
@@ -1980,10 +2073,11 @@ function buildModal(){
           <div style="background:var(--surface2);border:1.5px solid var(--accent);border-radius:12px;padding:14px;margin-top:10px">
             <div class="slabel mb2" style="color:var(--accent)">${editingId?'Edit Custom Behavior':'New Custom Behavior'}</div>
             <input class="input mb2" id="cs-beh-label" placeholder="Behavior name…" value="${esc(editingId?(S.customs.find(x=>x.id===editingId)||{}).label||'':'')}"/>
-            <div style="font-size:.72rem;font-weight:700;letter-spacing:1.5px;text-transform:uppercase;color:var(--muted);margin-bottom:6px">Icon</div>
+            <div style="font-size:.72rem;font-weight:700;letter-spacing:1.5px;text-transform:uppercase;color:var(--muted);margin-bottom:6px">Icon <span style="font-weight:400;text-transform:none;letter-spacing:0;font-size:.7rem;margin-left:4px">(optional)</span></div>
             <div style="display:flex;flex-wrap:wrap;gap:5px;margin-bottom:12px">
+              <div onclick="pickClientBehIcon('')" id="csiopt-none" style="padding:6px 10px;border-radius:7px;border:1.5px solid ${(editingId?(S.customs.find(x=>x.id===editingId)||{}).icon:m.newBehIcon)===''||(editingId?(S.customs.find(x=>x.id===editingId)||{}).icon:m.newBehIcon)===undefined?'var(--accent)':'var(--border)'};background:#fff;cursor:pointer;font-size:.7rem;font-weight:700;color:var(--muted);transition:all .12s">No icon</div>
               ${ICON_OPTS.map(ic=>{
-                const curIcon=editingId?(S.customs.find(x=>x.id===editingId)||{}).icon||'📌':m.newBehIcon||'📌';
+                const curIcon=editingId?((S.customs.find(x=>x.id===editingId)||{}).icon||''):(m.newBehIcon||'');
                 return`<div onclick="pickClientBehIcon('${ic}')" id="csiopt-${encodeURIComponent(ic)}" style="padding:6px;border-radius:7px;border:1.5px solid ${curIcon===ic?'var(--accent)':'var(--border)'};background:${curIcon===ic?'var(--accent-soft)':'#fff'};cursor:pointer;font-size:1.1rem;transition:all .12s">${ic}</div>`;
               }).join('')}
             </div>
@@ -2004,12 +2098,20 @@ function buildModal(){
             </div>
           </div>`:
           `<div style="margin-top:10px;display:flex;gap:8px;flex-wrap:wrap">
-            <button class="btn btn-ghost btn-sm" onclick="selectAllClientBehs('${c.id}')">Select All</button>
-            <button class="btn btn-ghost btn-sm" onclick="clearClientBehs('${c.id}')">Clear</button>
+            ${pool.length>0?`<button class="btn btn-ghost btn-sm" onclick="selectAllClientBehs('${c.id}')">Select All</button>
+            <button class="btn btn-ghost btn-sm" onclick="clearClientBehs('${c.id}')">Clear</button>`:''}
             <button class="btn btn-primary btn-sm" style="margin-left:auto" onclick="startAddClientBeh()">+ Custom Behavior</button>
           </div>`;
 
-        tabContent=`<div style="max-height:280px;overflow-y:auto;padding-right:4px">${rows}</div>
+        // Empty-library hint sits above the rows when the user has no library.
+        const emptyLibHint=pool.length===0?`<div style="background:var(--surface2);border:1.5px dashed var(--border);border-radius:10px;padding:14px;text-align:center;margin-bottom:8px">
+          <div style="font-size:1.2rem;margin-bottom:4px">📋</div>
+          <div style="font-weight:700;font-size:.82rem;color:var(--muted)">No behaviors in your library yet</div>
+          <div style="font-size:.7rem;color:var(--muted);margin-top:3px;line-height:1.5">Add a custom behavior or import one from the starter list below.</div>
+        </div>`:'';
+
+        tabContent=`${emptyLibHint}<div style="max-height:280px;overflow-y:auto;padding-right:4px">${rows}</div>
+          ${(!addingNew&&!editingId)?starterList:''}
           ${addOrEditForm}
           ${(!addingNew&&!editingId)?preview:''}`;
       }
@@ -2235,7 +2337,6 @@ function buildRecord(){
     // Optional icon: render the icon span only when an icon exists.
     const iconSpan=b.icon?`<span class="beh-icon">${b.icon}</span>`:'';
     if(inc){
-      // Active incident — show ✅ + opposite label + timer + (for durfreq) hit count
       const hitBadge=(measure==='durfreq'&&inc.hitCount>0)
         ? `<span style="position:absolute;top:4px;right:6px;background:var(--red);color:#fff;font-size:.68rem;font-weight:800;padding:1px 7px;border-radius:10px">${inc.hitCount} hit${inc.hitCount===1?'':'s'}</span>`
         : '';
@@ -2271,7 +2372,6 @@ function buildRecord(){
         const incMeasure=inc.measure||'duration';
         const isDurFreq=incMeasure==='durfreq';
         const hitCount=inc.hitCount||0;
-        // Icon is optional — render space only if present, with a leading space.
         const iconPrefix=inc.behIcon?inc.behIcon+' ':'';
         return`<div style="display:flex;align-items:center;gap:10px;padding:10px 12px;background:#fff;border-radius:12px;border:1.5px solid #fca5a5;margin-bottom:8px">
         <div style="flex:1;min-width:0">
@@ -2323,10 +2423,10 @@ function buildRecord(){
     const ei=events.length-1-ri;
     const intPills=(ev.type==='duration'||ev.type==='intensity'||ev.type==='frequency')?
       '<div style="display:flex;gap:3px;margin-top:4px">'+[1,2,3,4].map(l=>'<div onclick="setEvIntensity('+ei+','+l+')" style="padding:2px 8px;border-radius:6px;font-size:.65rem;font-weight:700;cursor:pointer;background:'+(ev.intensity===l?INT_COLORS[l]:'var(--surface2)')+';color:'+(ev.intensity===l?INT_TEXT[l]:'var(--muted)')+'">'+INT_LABELS[l]+'</div>').join('')+'</div>':'';
-    // Badge: latency events from old data still display "LAT"; new events are FREQ/DUR/INT
+    // Latency events from old data still display "LAT"; new events are FREQ/DUR/INT
     const evBadgeClass=ev.type==='frequency'?'freq':ev.type==='duration'?'dur':ev.type==='intensity'?'int':'lat';
     const evBadgeLabel=ev.type==='frequency'?'FREQ':ev.type==='duration'?'DUR':ev.type==='intensity'?'INT':'LAT';
-    // Hit count display for durfreq events (stored on duration events with hitCount)
+    // Hit count display for durfreq events
     const hitCountStr=(ev.type==='duration'&&ev.hitCount&&ev.hitCount>0)?' · '+ev.hitCount+' hit'+(ev.hitCount===1?'':'s'):'';
     return `<div class="ev-row" style="position:relative">
     <span class="ev-badge b-${evBadgeClass}">${evBadgeLabel}</span>
@@ -2351,11 +2451,10 @@ function buildRecord(){
     <textarea class="input" placeholder="Document emerging behavioral function hypotheses, patterns observed, ecological variables…" oninput="S.fbaHypothesis=this.value" style="min-height:70px;border-color:var(--fba-mid)">${esc(S.fbaHypothesis||'')}</textarea>
   </div>`:'';
 
-  // "Add behavior on the fly" — available in every live recording mode so the
+  // "Add behavior on the fly" — available in every live recording mode so an
   // observer can capture an unexpected behavior without leaving the session.
-  // The new behavior is added to the user's library AND to this session's
-  // tracked list. (For initial-assessment sessions it's also added to the
-  // S._initialBehs scratch list — see liveAddBeh().)
+  // The new behavior is added to the user's library AND attached to the
+  // active student so the button appears immediately.
   const addBehOnFly='<div style="display:flex;gap:6px;margin-bottom:12px;align-items:center"><input class="input" id="live-add-beh" placeholder="Add new behavior on the fly…" style="flex:1;font-size:.82rem;padding:8px 10px" onkeydown="if(event.key===\'Enter\')liveAddBeh()"/><button class="btn btn-primary btn-xs" onclick="liveAddBeh()" style="white-space:nowrap">+ Add</button></div>';
 
   return `<div class="sub-view"><div class="live-banner" style="${isFba?fbaBannerStyle:overTime?'background:linear-gradient(135deg,#fde4e6,#ffe4e6);border-color:#fca5a5':''}"><div class="row gap2"><span class="live-dot" style="${overTime?'background:var(--red)':isFba?'background:var(--fba-green)':''}"></span><div><div style="font-weight:800;color:${isFba?'var(--fba-dark)':overTime?'var(--red)':'var(--green)'}">Live${isFba?' FBA':''} Session — ${esc(S.selClient.name)}${isFba&&sess.behavioristName?' <span style="font-size:.72rem;font-weight:600;color:var(--fba-green)">· '+esc(sess.behavioristName)+'</span>':''}</div>
@@ -4003,6 +4102,11 @@ function bulkDeleteStudents(){
 
 // ── Manual Data Entry ──────────────────────────────────────────────────────
 function openManualEntry(cid){
+  // Manual Entry counts as an observation session — same hard block applies.
+  if(!studentHasBehaviors(cid)){
+    alert('This student has no behaviors configured.\n\nOpen the student\'s settings (gear icon) and add at least one behavior — either import from the starter list or create a custom one — before entering manual data.');
+    return;
+  }
   S._modal={type:'manualEntry',cid,entries:{},date:'',time:'09:00',location:'',length:'',notes:''};
   rerender();
 }
@@ -4200,9 +4304,8 @@ function linkBehaviorist(clientId){
 }
 function openEditBeh(bid,isPreset){
   // PRESETS is now empty — the previous "preset" path was for hardcoded
-  // defaults. All behaviors now live in S.customs (the user's library).
-  // The isPreset param is ignored but kept in the signature for any
-  // legacy callers; preset-style buttons in the library row pass false.
+  // defaults. All behaviors now live in S.customs. The isPreset param is
+  // ignored but kept in the signature for any legacy callers.
   const b=S.customs.find(b=>b.id===bid);
   if(!b)return;
   S._modal={type:'editBeh',beh:{...b},preset:false};rerender();
@@ -4213,7 +4316,6 @@ function pickIcon(ic){
   if(!S._modal||!S._modal.beh)return;
   // ic may be empty string — that's the explicit "No icon" choice.
   S._modal.beh.icon=ic||'';
-  // update UI without full rerender
   document.querySelectorAll('.icon-opt').forEach(el=>el.classList.remove('selected'));
   const targetId=ic?('iopt-'+encodeURIComponent(ic)):'iopt-none';
   const target=document.getElementById(targetId);
@@ -4223,7 +4325,7 @@ function saveBehModal(){
   if(!S._modal)return;
   const label=(document.getElementById('m-beh-label')?.value||'').trim();
   if(!label){alert('Please enter a behavior name.');return;}
-  // Icon is optional — empty string is allowed (button shows label only).
+  // Icon optional — empty string is allowed (button shows label only).
   const icon=S._modal.beh.icon||'';
   const newMeasure=S._modal._newMeasure||'duration';
   // Operational definition: only behaviorists/admins can write/change it.
@@ -4232,14 +4334,12 @@ function saveBehModal(){
 
   if(S._modal.type==='addBeh'){
     const newId=uid();
-    // Non-behaviorists create with blank definition. Behaviorists can fill it in.
     const definition=(canEditDefinition()&&definitionFromForm!==null)?definitionFromForm:'';
     S.customs.push({id:newId,label,icon,custom:true,definition});
     S._measureTypes[newId]=newMeasure;
   } else if(S._modal.type==='editBeh'){
     S.customs=S.customs.map(b=>{
       if(b.id!==S._modal.beh.id) return b;
-      // Label and icon are always editable. Definition only when permitted.
       const next={...b,label,icon};
       if(canEditDefinition()&&definitionFromForm!==null) next.definition=definitionFromForm;
       return next;
@@ -4250,8 +4350,7 @@ function saveBehModal(){
 function deleteBehModal(){
   if(!S._modal)return;
   const bid=S._modal.beh.id;
-  // Built-in (e.g. On Task) cannot be deleted.
-  if(S._modal.beh.builtin) return;
+  if(S._modal.beh.builtin) return; // built-ins cannot be deleted
   if(!confirm('Delete this behavior from your library? It will also be removed from any students who reference it.')) return;
   S.customs=S.customs.filter(b=>b.id!==bid);
   // Cascade: remove from any student's selected behaviors.
@@ -4260,10 +4359,11 @@ function deleteBehModal(){
 }
 
 // Session type
-// selectedBehs default: pre-fill with the user's full library so the Initial
-// Assessment selector starts populated. Empty library is fine — the selector
-// shows an empty-state hint when allBehs() is empty.
-function openSessType(cid){S._modal={type:'sessType',cid,sel:null,plannedMins:null,location:'',locationOther:'',selectedBehs:allBehs().map(b=>b.id),quickBehName:''};rerender();}
+// Session type
+// selectedBehs starts empty and gets populated when the user picks a session
+// type (see selectSessType). Initial Assessment defaults to the student's
+// configured behaviors; Interval pre-selects On Task.
+function openSessType(cid){S._modal={type:'sessType',cid,sel:null,plannedMins:null,location:'',locationOther:'',selectedBehs:[],quickBehName:''};rerender();}
 function updateSessLocation(val){
   if(!S._modal)return;
   S._modal.location=val;
@@ -4325,11 +4425,16 @@ function selectSessType(t){
     return;
   }
   S._modal.sel=t;
-  // Reset behavior selection per session type
-  if(t==='initial') S._modal.selectedBehs=allBehs().map(b=>b.id);
-  // For interval recording, pre-select On Task (always available) — observer can
-  // expand to additional library behaviors. Group/multi interval reseed happens
-  // in the multi modal.
+  // Reset behavior selection per session type.
+  // For Initial Assessment: pre-fill with the student's current behavior list
+  // (or empty if none — empty triggers the hard block at confirmStartSession).
+  if(t==='initial'){
+    const cid=S._modal.cid;
+    const c=cid?(S.clients||[]).find(x=>x.id===cid):null;
+    S._modal.selectedBehs=(c&&Array.isArray(c.behaviors))?[...c.behaviors]:[];
+  }
+  // Interval recording: pre-select On Task (always available built-in).
+  // Observer can expand to additional library behaviors.
   if(t==='interval') S._modal.selectedBehs=['__ontask__'];
   rerender();
 }
@@ -4342,19 +4447,15 @@ function toggleSessBeh(bid){
   rerender();
 }
 
-
 function liveAddBeh(){
   const inp=document.getElementById('live-add-beh');
   const label=(inp?.value||'').trim();
   if(!label) return;
-  // New behavior — icon optional (left blank), no operational definition yet.
+  // Mid-session add — icon optional, definition blank.
   const newBeh={id:uid(),label,icon:'',custom:true,definition:''};
   S.customs.push(newBeh);
-  // Default measure to duration for any new mid-session behavior; observer can
-  // change it later in Settings → Behavior Library.
   if(!S._measureTypes) S._measureTypes={};
   S._measureTypes[newBeh.id]='duration';
-  // Track in the per-session selection lists used by various session types.
   if(Array.isArray(S._initialBehs)) S._initialBehs.push(newBeh.id);
   if(S.activeSess){
     S.activeSess.selectedBehs=(S.activeSess.selectedBehs||[]).concat(newBeh.id);
@@ -4377,8 +4478,7 @@ function quickAddSessBeh(){
   const inp=document.getElementById('sess-quick-beh');
   const label=(inp?.value||'').trim();
   if(!label) return;
-  // Create new behavior in the user's library — icon optional, definition blank
-  // (only behaviorists/admins can fill it in via Settings → Behavior Library).
+  // Icon optional, definition blank — only behaviorists fill in definitions.
   const newBeh={id:uid(),label,icon:'',custom:true,definition:''};
   S.customs.push(newBeh);
   if(!S._measureTypes) S._measureTypes={};
@@ -4720,8 +4820,8 @@ function intervalLiveAddBeh(){
   const inp=document.getElementById('iv-live-add-input');
   const label=(inp?.value||'').trim();
   if(!label) return;
-  // Icon optional, definition blank — only behaviorists can fill in the
-  // operational definition later via Settings → Behavior Library.
+  // Icon optional, definition blank — only behaviorists fill in definitions
+  // later via Settings → Behavior Library.
   const newBeh={id:uid(),label,icon:'',custom:true,definition:''};
   S.customs.push(newBeh);
   sess.behaviorIds.push(newBeh.id);
@@ -4893,7 +4993,6 @@ function buildIntervalRecord(){
       const beh=intPool.find(b=>b.id===bid);
       if(!beh) return '';
       const scored=cur && cur.scores[cid] && cur.scores[cid][bid];
-      // Use .beh-btn CSS class so aspect-ratio, density token, and grid math all apply
       return `<div onclick="intervalScore('${cid}','${bid}')"
         class="beh-btn${scored?' beh-scored':''}"
         style="
@@ -5102,6 +5201,25 @@ function confirmStartSession(){
   const cid=S._modal.cid;
   const type=S._modal.sel;
 
+  // ── Hard block: student must have behaviors configured ─────────────────
+  // Per product direction, observations cannot begin until the student has
+  // at least one behavior in their profile. Interval recording is exempt
+  // because On Task is always available as a built-in option.
+  if(type!=='interval' && !studentHasBehaviors(cid)){
+    alert('This student has no behaviors configured.\n\nOpen the student\'s settings (gear icon) and add at least one behavior — either import from the starter list or create a custom one — before starting an observation.');
+    return;
+  }
+  // For interval recording, also require *some* behavior selection (On Task
+  // counts). The selector pre-fills On Task by default; if the user manually
+  // unchecks everything, block the start with a clear message.
+  if(type==='interval'){
+    const sel=S._modal.selectedBehs||[];
+    if(sel.length===0){
+      alert('Please select at least one behavior to score during interval recording.\n\nOn Task is always available, or you can configure additional behaviors in the student\'s settings first.');
+      return;
+    }
+  }
+
   // ── INTERVAL RECORDING branch (single-student) ────────────────────────
   if(type==='interval'){
     const m=S._modal;
@@ -5267,9 +5385,8 @@ function _endIncidentDurationOnly(bid){
   if(!inc) return;
   const durMs=Date.now()-inc.startMs;
   delete S.incidents[bid];
-  // Build the event record. For duration+frequency incidents, attach the
-  // accumulated hit count so analytics and CSV export can surface it
-  // ("self-injury episode: 47 sec, 3 hits").
+  // Build event record. Duration+Frequency incidents carry hitCount so analytics
+  // and CSV export can surface both values.
   const ev={
     id:uid(),type:'duration',
     behaviorId:inc.behId,behaviorLabel:inc.behLabel,behaviorIcon:inc.behIcon||'',
@@ -5278,7 +5395,7 @@ function _endIncidentDurationOnly(bid){
   };
   if(inc.measure==='durfreq'){
     ev.hitCount=inc.hitCount||0;
-    ev.measureMode='durfreq'; // explicit so summaries can distinguish from plain duration
+    ev.measureMode='durfreq';
   }
   S.activeSess.events.push(ev);
   rerender();
@@ -5290,7 +5407,6 @@ function _endIncidentById(bid){
   const durMs=Date.now()-inc.startMs;
   delete S.incidents[bid];
   // Intensity-mode incident — log a duration event then queue the rating prompt.
-  // (Intensity behaviors don't use durfreq; this path doesn't carry hitCount.)
   S.activeSess.events.push({
     id:uid(),type:'duration',
     behaviorId:inc.behId,behaviorLabel:inc.behLabel,behaviorIcon:inc.behIcon||'',
@@ -5369,6 +5485,24 @@ function confirmStartMultiSession(){
   const cids=S._modal.clientIds||[];
   const type=S._modal.sel;
   if(cids.length<2||!type)return;
+
+  // ── Hard block: every student in the group must have behaviors ─────────
+  // Same rule as single-student sessions. Interval is exempt because On Task
+  // is always available.
+  if(type!=='interval'){
+    const missing=cids.filter(cid=>!studentHasBehaviors(cid))
+      .map(cid=>(S.clients.find(x=>x.id===cid)||{}).name||'Unknown');
+    if(missing.length){
+      alert('The following student(s) have no behaviors configured:\n\n• '+missing.join('\n• ')+'\n\nOpen each student\'s settings (gear icon) and add behaviors before starting a group observation.');
+      return;
+    }
+  } else {
+    const sel=S._modal.selectedBehs||[];
+    if(sel.length===0){
+      alert('Please select at least one behavior to score during interval recording.\n\nOn Task is always available.');
+      return;
+    }
+  }
 
   // ── INTERVAL RECORDING branch (group) ────────────────────────────────
   if(type==='interval'){
@@ -5639,7 +5773,8 @@ function startAddClientBeh(){
   if(!S._modal) return;
   S._modal.addingBeh=true;
   S._modal.editingBehId=null;
-  S._modal.newBehIcon='📌';
+  S._modal.newBehIcon=''; // blank by default — emoji is optional
+  S._modal._newMeasure='duration';
   rerender();
 }
 
@@ -5649,7 +5784,7 @@ function startEditClientBeh(bid){
   if(!b) return;
   S._modal.editingBehId=bid;
   S._modal.addingBeh=false;
-  S._modal.newBehIcon=b.icon;
+  S._modal.newBehIcon=b.icon||'';
   rerender();
 }
 
@@ -5663,32 +5798,35 @@ function cancelClientBehEdit(){
 
 function pickClientBehIcon(ic){
   if(!S._modal) return;
-  S._modal.newBehIcon=ic;
-  // Update icon picker highlight without full rerender
-  document.querySelectorAll('[id^="csiopt-"]').forEach(el=>{
-    const isSelected=el.id===('csiopt-'+encodeURIComponent(ic));
-    el.style.borderColor=isSelected?'var(--accent)':'var(--border)';
-    el.style.background=isSelected?'var(--accent-soft)':'#fff';
-  });
+  // ic may be empty string — that's the "No icon" choice.
+  S._modal.newBehIcon=ic||'';
+  // Update icon picker highlight without full rerender.
+  document.querySelectorAll('[id^="csiopt-"]').forEach(el=>el.style.borderColor='var(--border)');
+  document.querySelectorAll('[id^="csiopt-"]').forEach(el=>el.style.background='#fff');
+  const targetId=ic?('csiopt-'+encodeURIComponent(ic)):'csiopt-none';
+  const target=document.getElementById(targetId);
+  if(target){target.style.borderColor='var(--accent)';target.style.background=ic?'var(--accent-soft)':'#fff';}
 }
 
 function saveClientCustomBeh(cid){
   if(!S._modal) return;
   const label=(document.getElementById('cs-beh-label')?.value||'').trim();
   if(!label){alert('Please enter a behavior name.');return;}
-  const icon=S._modal.newBehIcon||'📌';
+  const icon=S._modal.newBehIcon||''; // emoji optional
   const editingId=S._modal.editingBehId;
 
   if(editingId){
-    // Update existing custom behavior
+    // Update existing custom behavior — preserve definition (only behaviorist
+    // can edit definitions, and they do so via the library editor, not here).
     S.customs=S.customs.map(b=>b.id===editingId?{...b,label,icon}:b);
   } else {
-    // Create new custom behavior and auto-add to this client's selection
-    const newBeh={id:uid(),label,icon,custom:true};
+    // Create new custom behavior and auto-attach to this student.
+    // Operational definition is blank — only behaviorists/admins fill it in
+    // later via Settings → Behavior Library.
+    const newBeh={id:uid(),label,icon,custom:true,definition:''};
     const newMeasure=S._modal._newMeasure||'duration';
     S._measureTypes[newBeh.id]=newMeasure;
     S.customs.push(newBeh);
-    // Auto-select for this client
     S.clients=S.clients.map(c=>{
       if(c.id!==cid) return c;
       const behs=[...(c.behaviors||[]),newBeh.id];
@@ -5700,6 +5838,14 @@ function saveClientCustomBeh(cid){
   S._modal.editingBehId=null;
   S._modal.newBehIcon=null;
   persist();
+  rerender();
+}
+
+// Imports a starter behavior into the user's library AND attaches it to the
+// given student. If the same starter (by seedId or label) is already in the
+// library, just attach it to the student instead of duplicating.
+function importStarterBehavior(seedId,clientId){
+  addStarterBehaviorToStudent(seedId,clientId);
   rerender();
 }
 
@@ -5824,8 +5970,8 @@ function saveStrength(sessId,val){
 function exportSessionCSV(sessId){
   const sess=S.sessions.find(s=>s.id===sessId);
   if(!sess)return;
-  // Hits column added for Duration+Frequency events (head-hit count, etc.).
-  // Latency column retained so historical sessions with latency data still export cleanly.
+  // Hits column added for Duration+Frequency events. Latency column retained
+  // so historical sessions still export cleanly.
   const rows=[['Time','Type','Behavior','Duration(ms)','Hits','Intensity','Latency(ms)','Antecedent','Consequence','Note']];
   (sess.events||[]).forEach(ev=>{
     rows.push([
@@ -6535,18 +6681,22 @@ async function boot(){
   S._measureTypes= stored._measureTypes||{};
   // _role is NOT loaded from stored data — Supabase user_roles table is the source of truth
 
-  // ── Behavior Library migration ──────────────────────────────────────────
-  // Seed the 9 default behaviors into the user's library on first load (or
-  // re-seed any that are missing). Existing students whose `behaviors` arrays
-  // reference 'elo','phy', etc. continue to resolve. Definitions are blank
-  // until a behaviorist fills them in.
-  const _seedAdded=seedDefaultBehaviors();
-  // Coerce any legacy 'latency' measure types to 'duration' (latency is removed)
+  // ── Behavior library housekeeping ──────────────────────────────────────
+  // Older versions of the app auto-seeded the 9 starter behaviors into
+  // S.customs on first load. Per product direction, the library should now
+  // start truly empty — starter behaviors are an opt-in per-student import.
+  // This call removes any seeded entries that aren't in active use; anything
+  // referenced by a student or session is preserved.
+  let _purged=0;
+  try{ _purged=purgeUnusedSeededBehaviors(); }catch(e){ console.warn('library purge failed',e); }
+
+  // Coerce any legacy 'latency' measure types to 'duration'. Latency is no
+  // longer offered as a measurement type; historical events still display.
   let _coerced=0;
   Object.keys(S._measureTypes||{}).forEach(k=>{
-    if(S._measureTypes[k]==='latency'){S._measureTypes[k]='duration';_coerced++;}
+    if(S._measureTypes[k]==='latency'){ S._measureTypes[k]='duration'; _coerced++; }
   });
-  if(_seedAdded||_coerced){ persist(); }
+  if(_purged||_coerced){ persist(); }
 
   // Show user info in header
   renderUserBadge();
