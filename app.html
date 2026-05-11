@@ -915,6 +915,18 @@ function getBehMeasure(bid){return S._measureTypes[bid]||'duration';}
 function setBehMeasure(bid,mode){S._measureTypes[bid]=mode;persist();rerender();}
 function isBehaviorist(){return S._role==='behaviorist'||S._role==='admin';}
 function isAdmin(){return S._role==='admin';}
+// A session counts as "behaviorist-collected" if EITHER:
+//   • it was tagged with the legacy sessType==='fba' (kept for backward compat
+//     with sessions created before the role-based model), OR
+//   • it was created while the user held the behaviorist or admin role
+//     (the new _collectorRole field, stamped at session creation).
+// FBA/BIP/Goals generation and the readiness score both use this filter.
+function isBehavioristCollected(s){
+  if(!s) return false;
+  if(s.sessType==='fba') return true;
+  if(s._collectorRole==='behaviorist' || s._collectorRole==='admin') return true;
+  return false;
+}
 // Returns behaviors for a specific client — their custom selection, or all if none configured
 function clientBehs(cid){
   const c=S.clients.find(x=>x.id===cid);
@@ -1145,22 +1157,25 @@ function buildModal(){
     const cid=m.cid;
     const cg=clientGoals(cid);
     const hasGoals=cg.length>0;
+    // ── Session types ────────────────────────────────────────────────────
+    // Behaviorist-specific tools are no longer separate session "types" —
+    // they're embedded in the behaviorist's role. Setting events + hypothesis
+    // notes appear as optional fields inside any session a behaviorist runs.
+    // Teachers see 3 types. Behaviorists see the same 3 + Interval Recording
+    // (which IS a distinct methodology, not a permission level).
     const TYPES=[
       {id:'initial', icon:'🔍', label:'Initial Assessment',
        desc:'Track any behavior to identify patterns and build a behavioral profile. Generates goal recommendations at the end.',
-       color:'var(--purple)', soft:'var(--purple-soft)', always:true},
-      {id:'interval', icon:'⏲️', label:'Interval Recording',
-       desc:isBehaviorist()?'Time-based sampling — Momentary, Partial Interval, or Whole Interval. Scores behavior presence at fixed intervals.':'Interval recording is a behaviorist tool. Contact your behavior support specialist.',
-       color:'var(--fba-green)', soft:'var(--fba-soft)', always:true, blocked:!isBehaviorist()},
+       color:'var(--purple)', soft:'var(--purple-soft)'},
+      ...(isBehaviorist()?[{id:'interval', icon:'⏲️', label:'Interval Recording',
+       desc:'Time-based sampling — Momentary, Partial Interval, or Whole Interval. Scores behavior presence at fixed intervals.',
+       color:'var(--fba-green)', soft:'var(--fba-soft)'}]:[]),
       {id:'general', icon:'📋', label:'General Tracking',
        desc:'Track the student\'s configured behaviors in a structured observation — no goal pressure, pure data collection.',
-       color:'var(--amber)', soft:'var(--amber-soft)', always:true},
+       color:'var(--amber)', soft:'var(--amber-soft)'},
       {id:'manual', icon:'📝', label:'Manual Entry',
        desc:'Enter observation data from a paper tracking sheet — date, time, location, and behavior counts.',
-       color:'var(--orange)', soft:'var(--orange-soft)', always:true, isManual:true},
-      {id:'fba', icon:'🧠', label:'Behaviorist Observation',
-       desc:isBehaviorist()?'Structured behavioral observation with setting events, antecedent categories, and hypothesis tools. Requires licensed behaviorist affirmation.':'Behaviorist observations can only be started by a licensed behaviorist. Contact your behavior support specialist.',
-       color:'var(--fba-green)', soft:'var(--fba-soft)', always:true, blocked:!isBehaviorist()},
+       color:'var(--orange)', soft:'var(--orange-soft)', isManual:true},
     ];
     inner=`<h2 style="margin-bottom:4px">Start Session</h2>
       <p class="muted mb4" style="font-size:.8rem">Choose the observation type for this session.</p>
@@ -1366,59 +1381,16 @@ function buildModal(){
   }
 
   if(m.type==='fbaGenerating'){
-    // Stage-aware progress messaging: "questions" = quick first call to identify gaps,
-    // "draft" = the longer second call producing the full document.
-    const isQuestions = m.stage==='questions';
-    const headline = isQuestions
-      ? 'Reviewing data for '+(m.label||'Document')+'…'
-      : 'Generating '+(m.label||'Document')+'…';
-    const subline  = isQuestions
-      ? 'Identifying any clarifying questions needed before drafting. This usually takes 5–10 seconds.'
-      : 'Drafting your document using the session data and your answers. This takes about 15–30 seconds.';
     inner=`<div style="text-align:center;padding:20px 10px">
       <div style="font-size:2.2rem;margin-bottom:14px;animation:spin 1.2s linear infinite;display:inline-block">⚙️</div>
-      <div style="font-weight:800;font-size:1rem;color:var(--fba-dark);margin-bottom:8px">${esc(headline)}</div>
-      <p style="font-size:.8rem;color:var(--muted);line-height:1.6;max-width:320px;margin:0 auto">${esc(subline)}</p>
-    </div>`;
-    showClose=false;
-  }
-
-  if(m.type==='fbaQuestions'){
-    // Clarifying-questions form: 3–5 questions surfaced by Claude based on
-    // a TRIMMED data summary (no narrative PII). Answers are kept in memory
-    // only and discarded when the modal closes.
-    const qs = m.questions||[];
-    inner=`<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px">
-      <div>
-        <h2 style="margin:0;color:var(--fba-dark)">A few questions before drafting</h2>
-        <p style="font-size:.74rem;color:var(--muted);margin-top:2px">${esc(m.label||'Document')} · ${qs.length} question${qs.length===1?'':'s'} · skip any you can't answer</p>
-      </div>
-      <button class="btn btn-ghost btn-sm" onclick="closeModal()">✕</button>
-    </div>
-    <div style="background:var(--fba-soft);border:1.5px solid var(--fba-mid);border-radius:8px;padding:8px 10px;margin-bottom:12px">
-      <div style="font-size:.72rem;color:var(--fba-green);line-height:1.5">💡 Your answers go straight into the draft. Anything you leave blank will be marked <strong>[BEHAVIORIST TO COMPLETE]</strong> in the final document instead of being invented by the AI. Answers are not saved — they're only used for this generation.</div>
-    </div>
-    <div style="max-height:380px;overflow-y:auto;margin-bottom:14px;padding-right:4px">
-      ${qs.map((q,i)=>`<div style="margin-bottom:14px">
-        <label style="display:block;font-weight:700;font-size:.84rem;color:var(--text);line-height:1.45;margin-bottom:6px">
-          <span style="display:inline-block;background:var(--fba-green);color:#fff;font-size:.68rem;font-weight:800;padding:2px 7px;border-radius:8px;margin-right:6px;vertical-align:1px">${i+1}</span>${esc(q)}
-        </label>
-        <textarea id="fba-q-${i}" placeholder="Your answer (optional)…" style="width:100%;min-height:64px;font-size:.82rem;line-height:1.5;padding:9px 11px;border:1.5px solid var(--border);border-radius:10px;font-family:inherit;resize:vertical"></textarea>
-      </div>`).join('')}
-    </div>
-    <div class="row gap2 wrap">
-      <button class="btn btn-primary btn-sm" style="flex:1;background:var(--fba-green);border-color:var(--fba-green)" onclick="submitFbaQuestions()">✨ Generate ${esc(m.label||'Draft')}</button>
-      <button class="btn btn-ghost btn-sm" onclick="runFbaDraftGeneration([]);">Skip All & Generate</button>
-      <button class="btn btn-ghost btn-sm" onclick="closeModal()">Cancel</button>
+      <div style="font-weight:800;font-size:1rem;color:var(--fba-dark);margin-bottom:8px">Generating ${esc(m.label||'Document')}…</div>
+      <p style="font-size:.8rem;color:var(--muted);line-height:1.6;max-width:300px;margin:0 auto">Analyzing behaviorist session data and drafting your document. This takes about 15–30 seconds.</p>
     </div>`;
     showClose=false;
   }
 
   if(m.type==='fbaDocResult'){
     const txt=m.content||'';
-    // Pseudonymization notice — student name was sent to AI as "FirstName LastInitial."
-    // so the behaviorist knows to find-and-replace if district format needs the full name.
-    const ctxName = S._aiCtx && S._aiCtx.pseudoName;
     inner=`<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px">
       <div>
         <h2 style="margin:0;color:var(--fba-dark)">${esc(m.label||'Generated Document')}</h2>
@@ -1426,13 +1398,10 @@ function buildModal(){
       </div>
       <button class="btn btn-ghost btn-sm" onclick="closeModal()">✕</button>
     </div>
-    <div style="background:var(--fba-soft);border:1.5px solid var(--fba-mid);border-radius:8px;padding:4px 6px;margin-bottom:8px">
+    <div style="background:var(--fba-soft);border:1.5px solid var(--fba-mid);border-radius:8px;padding:4px 6px;margin-bottom:10px">
       <div style="font-size:.7rem;color:var(--fba-green);padding:6px 8px;font-style:italic">⚠ This is an AI-generated draft. All content must be reviewed, edited, and approved by the licensed behaviorist before use in any official document.</div>
     </div>
-    <div style="background:#fff8e7;border:1.5px solid #f5d97a;border-radius:8px;padding:6px 10px;margin-bottom:10px">
-      <div style="font-size:.7rem;color:#8a6a14;line-height:1.5">🔒 <strong>Privacy:</strong> Student name was sent to the AI as a pseudonym (first name + last initial) to minimize PII. If your district requires the full name in the final document, use find-and-replace before saving.</div>
-    </div>
-    <textarea id="doc-result-text" style="width:100%;min-height:320px;font-size:.78rem;line-height:1.6;padding:12px;border:1.5px solid var(--border);border-radius:10px;font-family:inherit;resize:vertical">${esc(txt)}</textarea>
+    <textarea id="doc-result-text" style="width:100%;min-height:340px;font-size:.78rem;line-height:1.6;padding:12px;border:1.5px solid var(--border);border-radius:10px;font-family:inherit;resize:vertical">${esc(txt)}</textarea>
     <div class="row gap2 mt3 wrap">
       <button class="btn btn-primary btn-sm" style="flex:1;background:var(--fba-green);border-color:var(--fba-green)" onclick="copyDocResult()">📋 Copy to Clipboard</button>
       <button class="btn btn-ghost btn-sm" onclick="downloadDocResult('${esc(m.label||'Document')}')">⬇ Download .txt</button>
@@ -1441,80 +1410,55 @@ function buildModal(){
     showClose=false;
   }
 
-  if(m.type==='fbaDocError'){
-    // Friendly error UI with diagnostic info + a real Retry path.
-    // The retry preserves any Q&A answers the behaviorist already typed.
-    const msg = m.message||'Unknown error';
-    // Pull out the [error_type] prefix if present so we can show a friendlier headline
-    const typeMatch = msg.match(/^\[([a-z_]+)\]\s*(.*)$/);
-    const errType = typeMatch ? typeMatch[1] : '';
-    const errBody = typeMatch ? typeMatch[2] : msg;
-    let friendly = 'The AI service returned an error.';
-    let hint = '';
-    if(errType==='authentication_error'){
-      friendly = 'The server is not configured to reach the AI service.';
-      hint = 'The ANTHROPIC_API_KEY environment variable is missing or invalid on the server. This is a deployment issue, not something you can fix in the app.';
-    } else if(errType==='rate_limit_error'){
-      friendly = 'Too many requests in a short period.';
-      hint = 'Wait about a minute, then try again.';
-    } else if(errType==='overloaded_error' || errType==='api_error'){
-      friendly = 'The AI service is temporarily overloaded.';
-      hint = 'This usually clears in a minute or two. Try again shortly.';
-    } else if(errType==='invalid_request_error'){
-      friendly = 'The request was rejected as invalid.';
-      hint = 'The session data may be too large or formatted unexpectedly. Try with fewer sessions, or contact support if it keeps happening.';
-    } else if(/timed out|unreadable|HTTP 5/i.test(msg)){
-      friendly = 'The server didn\'t respond in time.';
-      hint = 'Large drafts can occasionally time out at the proxy layer. Try again — if it keeps failing, try with shorter session notes.';
-    }
-    inner=`<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px">
-      <div>
-        <h2 style="margin:0;color:var(--red)">⚠ Generation Failed</h2>
-        <p style="font-size:.74rem;color:var(--muted);margin-top:2px">${esc(m.label||'Document')}</p>
-      </div>
-      <button class="btn btn-ghost btn-sm" onclick="closeModal()">✕</button>
-    </div>
-    <div style="background:#fef2f2;border:1.5px solid #fca5a5;border-radius:10px;padding:12px 14px;margin-bottom:12px">
-      <div style="font-weight:700;font-size:.86rem;color:#991b1b;margin-bottom:6px">${esc(friendly)}</div>
-      ${hint?`<div style="font-size:.78rem;color:#7f1d1d;line-height:1.5;margin-bottom:8px">${esc(hint)}</div>`:''}
-      <details style="margin-top:6px">
-        <summary style="cursor:pointer;font-size:.72rem;color:var(--muted);font-weight:600">Technical details</summary>
-        <div style="margin-top:6px;padding:8px 10px;background:#fff;border-radius:6px;font-family:'Courier New',monospace;font-size:.7rem;color:#444;word-break:break-word">${esc(errBody||msg)}</div>
-      </details>
-    </div>
-    <div class="row gap2 wrap">
-      ${m.canRetry?`<button class="btn btn-primary btn-sm" style="flex:1;background:var(--fba-green);border-color:var(--fba-green)" onclick="retryFbaDraft()">↻ Try Again</button>`:''}
-      <button class="btn btn-ghost btn-sm" onclick="closeModal()">Close</button>
-    </div>`;
+  if(m.type==='fbaAffirm'){
+    // Legacy per-session affirmation modal. The flow that triggered this
+    // (selectSessType('fba')) has been removed, so this modal is no longer
+    // reachable through the normal app flow. If it is somehow triggered
+    // (cached state, deep link, etc.), redirect the user to the home view
+    // rather than showing a stale UI.
+    setTimeout(()=>{ S._modal=null; rerender(); }, 0);
+    inner=`<div style="text-align:center;padding:24px"><div style="font-size:.85rem;color:var(--muted)">Redirecting…</div></div>`;
     showClose=false;
   }
 
-  if(m.type==='fbaAffirm'){
-    inner=`<div style="text-align:center;margin-bottom:10px">
+  if(m.type==='behAttest'){
+    // ONE-TIME behaviorist licensure attestation.
+    // Replaces the per-session affirmation that used to fire on every FBA
+    // session start. Captures: user_id (auth), attestation timestamp,
+    // attested name. All three are written to user_roles in Supabase as a
+    // durable audit record. After this is recorded, the modal never appears
+    // again for this user — they get straight to work.
+    const authedName = _currentUser && (_currentUser.user_metadata?.full_name||_currentUser.email) || '';
+    inner=`<div style="text-align:center;margin-bottom:14px">
         <div style="font-size:2.4rem;margin-bottom:6px">🧠</div>
-        <h2 style="margin-bottom:4px;color:var(--fba-dark)">Behaviorist Observation Session</h2>
-        <p style="font-size:.78rem;color:var(--muted);line-height:1.5;max-width:320px;margin:0 auto">Functional Behavior Assessment sessions are intended for use by licensed behaviorists only.</p>
+        <h2 style="margin-bottom:4px;color:var(--fba-dark)">Behaviorist Licensure Attestation</h2>
+        <p style="font-size:.78rem;color:var(--muted);line-height:1.5;max-width:340px;margin:0 auto">You've been assigned the Behaviorist role. Before you can collect data that will feed FBA, BIP, or Behavior Goals generation, please confirm your professional credentials. <strong>This is a one-time attestation</strong> — you won't be asked again.</p>
       </div>
-      <div style="background:var(--fba-soft);border:1.5px solid var(--fba-mid);border-radius:12px;padding:14px 16px;margin-bottom:18px;text-align:left">
-        <div style="font-weight:800;font-size:.82rem;color:var(--fba-dark);margin-bottom:8px">📋 By proceeding, you affirm that:</div>
+      <div style="background:var(--fba-soft);border:1.5px solid var(--fba-mid);border-radius:12px;padding:14px 16px;margin-bottom:16px;text-align:left">
+        <div style="font-weight:800;font-size:.82rem;color:var(--fba-dark);margin-bottom:8px">📋 By proceeding, you attest that:</div>
         <ul style="font-size:.78rem;color:var(--text2);line-height:1.9;padding-left:18px">
-          <li>You are a licensed/credentialed behaviorist (BCBA, LEA Behaviorist, or equivalent)</li>
-          <li>This tracking will serve as primary Behaviorist observational data</li>
-          <li>Supplemental data from other session types are supporting resources only</li>
-          <li>Final FBA conclusions are your professional judgment as the behaviorist</li>
+          <li>You hold a current, valid behaviorist credential (BCBA, BCaBA, LEA Behaviorist, licensed school psychologist with behavioral specialty, or equivalent)</li>
+          <li>You are authorized by your district to conduct functional behavior assessments and develop behavior intervention plans</li>
+          <li>Your professional judgment — not this tool — is the final authority on FBA conclusions, BIP recommendations, and behavior goals</li>
+          <li>You understand that AI-generated documents are drafts that require your review, editing, and approval before any official use</li>
         </ul>
-        <div style="margin-top:10px;font-size:.73rem;color:var(--fba-green);font-style:italic;line-height:1.4">This tool provides data collection support. It does not replace clinical judgment, direct interviews, or comprehensive assessment.</div>
       </div>
-      <div class="slabel" style="margin-bottom:6px">Behaviorist Name <span style="color:var(--red)">*</span></div>
-      <input class="input" id="fba-beh-name" placeholder="Enter your full name…" style="margin-bottom:16px" oninput="S._fbaGate.behavioristName=this.value"/>
-      <label style="display:flex;align-items:flex-start;gap:10px;cursor:pointer;padding:12px 14px;background:var(--surface2);border:2px solid var(--border);border-radius:10px;margin-bottom:20px;transition:border-color .15s" onclick="this.style.borderColor=document.getElementById('fba-affirm-check').checked?'var(--fba-green)':'var(--border)'">
-        <input type="checkbox" id="fba-affirm-check" style="margin-top:2px;accent-color:var(--fba-green);width:16px;height:16px;flex-shrink:0"/>
-        <span style="font-size:.78rem;color:var(--text2);line-height:1.5">I affirm the above statements and confirm I am authorized to conduct this Behaviorist observation. I understand that only <strong>Behaviorist Observation sessions</strong> will count toward FBA progress metrics, and that any supplemental session data is for reference only.</span>
+      <div style="background:#fff8e7;border:1.5px solid #f5d97a;border-radius:10px;padding:10px 14px;margin-bottom:16px">
+        <div style="font-size:.74rem;color:#8a6a14;line-height:1.5">🔒 <strong>Recorded for audit:</strong> Your name, the date and time you attest, and your authenticated account ID will be saved to your user record. Anthropic does not receive this attestation — it stays in your district's Supabase database.</div>
+      </div>
+      <div class="slabel" style="margin-bottom:6px">Your Name <span style="color:var(--red)">*</span></div>
+      <input class="input" id="beh-attest-name" placeholder="Enter your full professional name…" value="${esc(authedName)}" style="margin-bottom:14px"/>
+      <div class="slabel" style="margin-bottom:6px">Credential / License Type <span style="color:var(--muted);font-weight:400">(optional)</span></div>
+      <input class="input" id="beh-attest-cred" placeholder="e.g. BCBA #12345, LEA Behaviorist, etc." style="margin-bottom:16px"/>
+      <label style="display:flex;align-items:flex-start;gap:10px;cursor:pointer;padding:12px 14px;background:var(--surface2);border:2px solid var(--border);border-radius:10px;margin-bottom:18px;transition:border-color .15s" onclick="setTimeout(()=>{this.style.borderColor=document.getElementById('beh-attest-check').checked?'var(--fba-green)':'var(--border)'},0)">
+        <input type="checkbox" id="beh-attest-check" style="margin-top:2px;accent-color:var(--fba-green);width:16px;height:16px;flex-shrink:0"/>
+        <span style="font-size:.78rem;color:var(--text2);line-height:1.5">I confirm that the statements above are true and accurate. I understand that providing false attestation may constitute professional misconduct and could affect my district's use of this tool.</span>
       </label>
       <div class="row gap2">
-        <button class="btn btn-primary" style="flex:1;background:var(--fba-green);border-color:var(--fba-green)" onclick="confirmFbaAffirm()">🧠 Begin Session</button>
-        <button class="btn btn-ghost" onclick="cancelFbaAffirm()">Cancel</button>
+        <button class="btn btn-primary" style="flex:1;background:var(--fba-green);border-color:var(--fba-green)" onclick="confirmBehAttestation()">✓ I Attest</button>
+        <button class="btn btn-ghost" onclick="declineBehAttestation()">Not Now</button>
       </div>`;
+    showClose=false;
   }
 
   if(m.type==='multiSess'){
@@ -1731,6 +1675,26 @@ function buildModal(){
       </div>
       <button class="btn btn-primary btn-sm" onclick="openAddBeh();closeModal()">+ Add Custom Behavior</button>
     </div>
+
+    <hr class="divider" style="margin:18px 0"/>
+
+    <!-- Behaviorist Attestation Status (audit transparency) -->
+    ${isBehaviorist()?`<div class="slabel" style="color:var(--fba-dark)">🛡️ Licensure Attestation</div>
+    <div style="background:${S._behAttestedAt?'var(--fba-soft)':'#fff8e7'};border:1.5px solid ${S._behAttestedAt?'var(--fba-mid)':'#f5d97a'};border-radius:10px;padding:12px 14px;margin-bottom:14px">
+      ${S._behAttestedAt?`<div style="display:flex;align-items:flex-start;gap:8px">
+        <span style="font-size:1.1rem">✓</span>
+        <div style="flex:1">
+          <div style="font-weight:700;font-size:.82rem;color:var(--fba-dark);margin-bottom:2px">Attested ${S._behAttestedName?'as '+esc(S._behAttestedName):''}</div>
+          <div style="font-size:.72rem;color:var(--fba-green);line-height:1.5">On ${esc(new Date(S._behAttestedAt).toLocaleString())} — recorded to your authenticated account for audit purposes. This satisfies per-session FBA affirmation requirements.</div>
+        </div>
+      </div>`:`<div style="display:flex;align-items:flex-start;gap:8px">
+        <span style="font-size:1.1rem">⚠</span>
+        <div style="flex:1">
+          <div style="font-weight:700;font-size:.82rem;color:#8a6a14;margin-bottom:2px">Attestation Pending</div>
+          <div style="font-size:.72rem;color:#8a6a14;line-height:1.5">You haven't yet confirmed your behaviorist credentials. <a href="#" onclick="S._modal={type:'behAttest'};rerender();return false" style="color:var(--fba-green);font-weight:700;text-decoration:underline">Attest now →</a></div>
+        </div>
+      </div>`}
+    </div>`:''}
 
     <hr class="divider" style="margin:18px 0"/>
 
@@ -2227,13 +2191,11 @@ function buildRecord(){
         <span style="position:absolute;top:4px;left:4px;width:7px;height:7px;border-radius:50%;background:var(--red);animation:pulse 1s infinite"></span>
       </div>`;
     } else if(measure==='frequency'){
-      // Frequency buttons get a pronounced orange "FREQUENCY" pill + a labeled count badge
-      // (replaces faint "tap to count" muted text — was hard to read at glance during live recording)
-      return`<div class="beh-btn beh-freq ${activeIncs.length>0?'beh-dimmed':''}" onclick="startIncident('${b.id}')" style="position:relative;border-color:#e25d2e;background:linear-gradient(180deg,#fff6f0 0%,#ffe9db 100%)">
+      return`<div class="beh-btn ${activeIncs.length>0?'beh-dimmed':''}" onclick="startIncident('${b.id}')" style="position:relative">
         <span class="beh-icon">${b.icon}</span>
         <span class="beh-label">${esc(b.label)}</span>
-        ${freqCount>0?`<span style="position:absolute;top:4px;right:6px;background:#e25d2e;color:#fff;font-size:.62rem;font-weight:800;padding:2px 8px;border-radius:10px;letter-spacing:.3px;box-shadow:0 1px 3px rgba(226,93,46,.35)">${freqCount} ${freqCount===1?'incident':'incidents'}</span>`:''}
-        <span style="display:inline-block;margin-top:2px;padding:2px 9px;background:#e25d2e;color:#fff;font-size:.6rem;font-weight:800;letter-spacing:.6px;border-radius:8px;text-transform:uppercase">🔢 Frequency</span>
+        ${freqCount>0?`<span style="position:absolute;top:4px;right:6px;background:var(--accent);color:#fff;font-size:.68rem;font-weight:800;padding:1px 7px;border-radius:10px">${freqCount}</span>`:''}
+        <span style="font-size:.6rem;color:var(--muted);margin-top:1px">${mIcon} tap to count</span>
       </div>`;
     } else {
       return`<div class="beh-btn ${activeIncs.length>0?'beh-dimmed':''}" onclick="startIncident('${b.id}')" style="position:relative">
@@ -2308,6 +2270,34 @@ function buildRecord(){
   const remainMs=plannedMs?Math.max(0,plannedMs-elapsedNow):null;
   const overTime=plannedMs&&elapsedNow>plannedMs;
   const fbaBannerStyle=isFba?'background:linear-gradient(135deg,var(--fba-soft),#d0f0e4);border-color:var(--fba-mid)':'';
+  // Optional "Behaviorist Notes" panel — appears for any session a
+  // behaviorist runs (not just legacy sessType==='fba'). Collapsed by default
+  // so it doesn't crowd the live recording UI. Contains setting events +
+  // working hypothesis. Data is included in BIP/Goals/FBA generation when
+  // present, ignored when blank.
+  const showBehNotes = isBehaviorist();
+  const behNotesOpen = !!S._behNotesOpen;
+  const behNotesField = showBehNotes ? `<div class="card mb3" style="background:var(--fba-soft);border:1.5px solid var(--fba-mid);padding:0">
+    <div onclick="S._behNotesOpen=!S._behNotesOpen;rerender()" style="display:flex;align-items:center;justify-content:space-between;padding:11px 15px;cursor:pointer;user-select:none">
+      <div style="display:flex;align-items:center;gap:8px">
+        <span style="font-size:1rem">🧠</span>
+        <div>
+          <div class="slabel" style="margin:0;color:var(--fba-dark)">Behaviorist Notes</div>
+          <div style="font-size:.7rem;color:var(--fba-green);font-style:italic">Optional · used in BIP / Goals / FBA generation if filled</div>
+        </div>
+      </div>
+      <span style="font-size:.8rem;color:var(--fba-green);font-weight:700">${behNotesOpen?'▼':'▶'}</span>
+    </div>
+    ${behNotesOpen?`<div style="padding:0 15px 13px 15px">
+      <div class="slabel" style="margin-bottom:5px;margin-top:4px">Setting Events</div>
+      <input class="input" placeholder="e.g. poor sleep, schedule change, missed meds…" value="${esc(S.fbaSettingEventsNote||'')}" oninput="S.fbaSettingEventsNote=this.value" style="border-color:var(--fba-mid);margin-bottom:10px"/>
+      <div class="slabel" style="margin-bottom:5px">Developing Hypothesis</div>
+      <textarea class="input" placeholder="Working hypothesis about behavioral function, observed patterns, ecological variables…" oninput="S.fbaHypothesis=this.value" style="min-height:70px;border-color:var(--fba-mid)">${esc(S.fbaHypothesis||'')}</textarea>
+    </div>`:''}
+  </div>` : '';
+  // Legacy fbaHypField (only shows for sessType==='fba') — kept for backward
+  // compat with the old FBA session type, but new behaviorist-collected
+  // sessions use behNotesField above instead.
   const fbaHypField=isFba?`<div class="card mb3" style="background:var(--fba-soft);border:1.5px solid var(--fba-mid);padding:13px 15px">
     <div class="row between mb2">
       <div class="slabel" style="margin:0;color:var(--fba-dark)">🔬 Developing Hypothesis</div>
@@ -2319,7 +2309,7 @@ function buildRecord(){
   const addBehOnFly=isInitial?'<div style="display:flex;gap:6px;margin-bottom:12px;align-items:center"><input class="input" id="live-add-beh" placeholder="Add new behavior on the fly…" style="flex:1;font-size:.82rem;padding:8px 10px" onkeydown="if(event.key===\'Enter\')liveAddBeh()"/><button class="btn btn-primary btn-xs" onclick="liveAddBeh()" style="white-space:nowrap">+ Add</button></div>':'';
 
   return `<div class="sub-view"><div class="live-banner" style="${isFba?fbaBannerStyle:overTime?'background:linear-gradient(135deg,#fde4e6,#ffe4e6);border-color:#fca5a5':''}"><div class="row gap2"><span class="live-dot" style="${overTime?'background:var(--red)':isFba?'background:var(--fba-green)':''}"></span><div><div style="font-weight:800;color:${isFba?'var(--fba-dark)':overTime?'var(--red)':'var(--green)'}">Live${isFba?' FBA':''} Session — ${esc(S.selClient.name)}${isFba&&sess.behavioristName?' <span style="font-size:.72rem;font-weight:600;color:var(--fba-green)">· '+esc(sess.behavioristName)+'</span>':''}</div>
-          ${sess.location?`<div style="font-size:.74rem;color:var(--muted);margin-top:1px">📍 ${esc(sess.location)} · ${new Date(sess.startedAt).toLocaleTimeString('en-US',{hour:'numeric',minute:'2-digit',hour12:true})}</div>`:`<div style="font-size:.74rem;color:var(--muted);margin-top:1px">${new Date(sess.startedAt).toLocaleTimeString('en-US',{hour:'numeric',minute:'2-digit',hour12:true})}</div>`}<div class="row gap2 mt1" style="flex-wrap:wrap"><span class="muted mono" id="sess-elapsed" style="font-size:.8rem">${fmt(elapsedNow)} elapsed</span>${plannedMs?`<span id="sess-remain" class="mono" style="font-size:.8rem;font-weight:700;color:${overTime?'var(--red)':'var(--muted)'}">${overTime?'⚠ +'+fmt(elapsedNow-plannedMs)+' over':'⏱ '+fmt(remainMs)+' left'}</span>`:''}</div></div></div><div class="row gap2">${sessionTypeBadge}<button class="btn btn-danger btn-sm" onclick="endSession()">⏹ End</button></div></div>${liveGoals}<div class="slabel" style="margin-bottom:10px">${isGoalSpec?'IEP Goal Behaviors':isGeneral?'Configured Behaviors':isFba?'All Behaviors — Behaviorist Observation':isInitial?'Assessment Behaviors':'All Behaviors'}</div>${abcPanel}${behs.length===0?`<div style="background:var(--surface2);border:1.5px dashed var(--border);border-radius:12px;padding:24px;text-align:center;margin-bottom:16px"><div style="font-size:2rem;margin-bottom:8px">📋</div><div style="font-weight:700;color:var(--muted);font-size:.88rem">No behaviors selected yet</div><div style="font-size:.74rem;color:var(--muted);margin-top:4px">Tap the settings icon to choose behaviors to track for this student.</div></div>`:`<div class="beh-grid-wrap mb3"><div class="beh-grid-standalone">${behGrid}</div></div>`}${addBehOnFly}${activeCards}${evFeed}${fbaHypField||''}</div>`;
+          ${sess.location?`<div style="font-size:.74rem;color:var(--muted);margin-top:1px">📍 ${esc(sess.location)} · ${new Date(sess.startedAt).toLocaleTimeString('en-US',{hour:'numeric',minute:'2-digit',hour12:true})}</div>`:`<div style="font-size:.74rem;color:var(--muted);margin-top:1px">${new Date(sess.startedAt).toLocaleTimeString('en-US',{hour:'numeric',minute:'2-digit',hour12:true})}</div>`}<div class="row gap2 mt1" style="flex-wrap:wrap"><span class="muted mono" id="sess-elapsed" style="font-size:.8rem">${fmt(elapsedNow)} elapsed</span>${plannedMs?`<span id="sess-remain" class="mono" style="font-size:.8rem;font-weight:700;color:${overTime?'var(--red)':'var(--muted)'}">${overTime?'⚠ +'+fmt(elapsedNow-plannedMs)+' over':'⏱ '+fmt(remainMs)+' left'}</span>`:''}</div></div></div><div class="row gap2">${sessionTypeBadge}<button class="btn btn-danger btn-sm" onclick="endSession()">⏹ End</button></div></div>${liveGoals}<div class="slabel" style="margin-bottom:10px">${isGoalSpec?'IEP Goal Behaviors':isGeneral?'Configured Behaviors':isFba?'All Behaviors — Behaviorist Observation':isInitial?'Assessment Behaviors':'All Behaviors'}</div>${abcPanel}${behs.length===0?`<div style="background:var(--surface2);border:1.5px dashed var(--border);border-radius:12px;padding:24px;text-align:center;margin-bottom:16px"><div style="font-size:2rem;margin-bottom:8px">📋</div><div style="font-weight:700;color:var(--muted);font-size:.88rem">No behaviors selected yet</div><div style="font-size:.74rem;color:var(--muted);margin-top:4px">Tap the settings icon to choose behaviors to track for this student.</div></div>`:`<div class="beh-grid-wrap mb3"><div class="beh-grid-standalone">${behGrid}</div></div>`}${addBehOnFly}${activeCards}${evFeed}${behNotesField||''}${fbaHypField||''}</div>`;
 }
 
 // ── MULTI-CLIENT RECORD ────────────────────────────────────────────────────
@@ -2705,7 +2695,9 @@ function buildReports(){
   const initSess=filtered.filter(s=>s.sessType==='initial').length;
   const genSess=filtered.filter(s=>s.sessType==='general').length;
   const trackSess=filtered.filter(s=>s.sessType==='tracking').length;
-  const fbaSess=filtered.filter(s=>s.sessType==='fba').length;
+  // Behaviorist count includes legacy sessType==='fba' AND new sessions
+  // collected by behaviorist-role users — both feed BIP/Goals/FBA generation.
+  const fbaSess=filtered.filter(isBehavioristCollected).length;
 
   return`<div class="row between mb3"><div class="slabel" style="margin:0;align-self:center">Session Report</div><button class="btn btn-orange btn-sm" onclick="doExportPDF()">⬇ PDF</button></div>
   <div class="card mb3">
@@ -3098,9 +3090,11 @@ function buildFBA(){
     <div style="font-size:.78rem;color:var(--muted);margin-top:2px">behaviorist sessions and analysis are managed by the behavior specialist. You can view this data but cannot create behaviorist sessions or generate reports.</div></div>
   </div>`:'';
   const allSessions=S.sessions.filter(s=>s.clientId===c.id);
-  // Only FBA-type sessions count toward FBA progress criteria
-  const sessions=allSessions.filter(s=>s.sessType==='fba');
-  const suppSessions=allSessions.filter(s=>s.sessType!=='fba');
+  // Sessions eligible for FBA readiness/generation: any session collected by
+  // a behaviorist user, plus legacy sessType==='fba' sessions. See
+  // isBehavioristCollected() definition for full rationale.
+  const sessions=allSessions.filter(isBehavioristCollected);
+  const suppSessions=allSessions.filter(s=>!isBehavioristCollected(s));
   const allEv=sessions.flatMap(s=>s.events||[]);
   const suppEv=suppSessions.flatMap(s=>s.events||[]);
   const goals=clientGoals(c.id);
@@ -3357,7 +3351,7 @@ function buildFBA(){
         </div>
       </div>`).join('')}
     </div>
-  </div>`:'<div class="card mt3" style="background:var(--fba-soft);border:1.5px solid var(--fba-mid);padding:14px 16px;text-align:center"><div style="font-size:1.5rem;margin-bottom:8px">🧠</div><div style="font-weight:700;color:var(--fba-dark);margin-bottom:4px">No Behaviorist Sessions Yet</div><p style="font-size:.78rem;color:var(--text2);line-height:1.5">Start an <strong>FBA Observation</strong> session from the student card. Only behaviorist sessions count toward this readiness score. Other session types are supplemental.</p></div>'}
+  </div>`:'<div class="card mt3" style="background:var(--fba-soft);border:1.5px solid var(--fba-mid);padding:14px 16px;text-align:center"><div style="font-size:1.5rem;margin-bottom:8px">🧠</div><div style="font-weight:700;color:var(--fba-dark);margin-bottom:4px">No Behaviorist Sessions Yet</div><p style="font-size:.78rem;color:var(--text2);line-height:1.5">Any session you collect as a behaviorist counts here automatically. Start a session from the student card — use the optional <strong>Behaviorist Notes</strong> panel during recording to capture setting events and your working hypothesis.</p></div>'}
 
   <!-- AI Document Generation -->
   <div class="card mt3" style="background:var(--fba-soft);border:1.5px solid var(--fba-mid);padding:16px">
@@ -3584,36 +3578,12 @@ function clearTemplate(kind){
 }
 
 // ── AI DOCUMENT GENERATION ─────────────────────────────────────────────────
-// Privacy notes (per Sure Step compliance defaults):
-//  • Student names are pseudonymized to "FirstName LastInitial." before being
-//    sent to the Anthropic API. The behaviorist can find-and-replace the
-//    pseudonym in the final document if their district format requires the
-//    full name. See pseudonymizeName() below.
-//  • Two-call pattern: Call 1 sends a TRIMMED context (counts & structure only,
-//    no antecedent/consequence narrative text) to ask Claude what clarifying
-//    questions to put to the behaviorist. Call 2 sends the FULL context + the
-//    behaviorist's answers to generate the draft. Trimming Call 1 reduces
-//    transmission of narrative fields that sometimes contain incidentally-
-//    captured PII (teacher names, peer names, family context).
-//  • Q&A answers are kept in memory only (S._modal) — not persisted to
-//    localStorage or Supabase — and are discarded when the modal closes.
-
-function pseudonymizeName(fullName){
-  if(!fullName) return 'Student';
-  const parts = String(fullName).trim().split(/\s+/);
-  if(parts.length===1) return parts[0];
-  const first = parts[0];
-  const lastInitial = parts[parts.length-1].charAt(0).toUpperCase();
-  return first+' '+lastInitial+'.';
-}
-
-// Entry point — kicks off the two-step generation flow (questions → draft)
 function generateFbaDoc(docType, clientId){
   const client = S.clients.find(c=>c.id===clientId);
   if(!client){ alert('Student not found.'); return; }
 
-  const fbaSessions = S.sessions.filter(s=>s.clientId===clientId && s.sessType==='fba');
-  const suppSessions = S.sessions.filter(s=>s.clientId===clientId && s.sessType!=='fba');
+  const fbaSessions = S.sessions.filter(s=>s.clientId===clientId && isBehavioristCollected(s));
+  const suppSessions = S.sessions.filter(s=>s.clientId===clientId && !isBehavioristCollected(s));
   const allEv = fbaSessions.flatMap(s=>s.events||[]);
   const goals = (S.goals||[]).filter(g=>g.clientId===clientId);
 
@@ -3622,7 +3592,7 @@ function generateFbaDoc(docType, clientId){
     return;
   }
 
-  // ── Build behavior aggregates (used by both trimmed and full contexts) ──
+  // Build behavior summary
   const byB = {};
   allEv.forEach(ev=>{
     if(!byB[ev.behaviorLabel]) byB[ev.behaviorLabel]={label:ev.behaviorLabel,icon:ev.behaviorIcon||'',freq:0,durs:[],ints:[],ants:[],cons:[]};
@@ -3632,43 +3602,6 @@ function generateFbaDoc(docType, clientId){
     if(ev.antecedent&&ev.antecedent.trim()) byB[ev.behaviorLabel].ants.push(ev.antecedent);
     if(ev.consequence&&ev.consequence.trim()) byB[ev.behaviorLabel].cons.push(ev.consequence);
   });
-
-  const settingEventsCount = fbaSessions.filter(s=>s.settingEvents&&s.settingEvents.length).length;
-  const hypothesisCount = fbaSessions.filter(s=>s.fbaHypothesis&&s.fbaHypothesis.trim()).length;
-  const locations = [...new Set(fbaSessions.map(s=>s.location||'').filter(Boolean))];
-  const behaviorists = [...new Set(fbaSessions.map(s=>s.behavioristName||'').filter(Boolean))];
-
-  const pseudoName = pseudonymizeName(client.name);
-
-  // ── TRIMMED context (Call 1 — for question generation) ──────────────────
-  // Counts, structure, and what data IS / ISN'T available. No narrative text.
-  const behSkeleton = Object.values(byB).map(b=>{
-    const avgDur = b.durs.length ? Math.round(b.durs.reduce((a,v)=>a+v,0)/b.durs.length/1000) : null;
-    const avgInt = b.ints.length ? (b.ints.reduce((a,v)=>a+v,0)/b.ints.length).toFixed(1) : null;
-    const bits = [`${b.label}: ${b.freq} incidents`];
-    if(avgDur) bits.push(`avg duration ${avgDur}s`);
-    if(avgInt) bits.push(`avg intensity ${avgInt}/4`);
-    bits.push(`${b.ants.length} antecedents recorded`);
-    bits.push(`${b.cons.length} consequences recorded`);
-    return '- '+bits.join(', ');
-  }).join('\n');
-
-  const trimmedContext = `STUDENT: ${pseudoName}
-FBA SESSIONS COMPLETED: ${fbaSessions.length}
-SUPPLEMENTAL SESSIONS: ${suppSessions.length}
-SETTINGS OBSERVED: ${locations.join(', ')||'not specified'}
-DATE RANGE: ${fbaSessions.length?new Date(fbaSessions[0].startedAt).toLocaleDateString()+' – '+new Date(fbaSessions[fbaSessions.length-1].startedAt).toLocaleDateString():''}
-TOTAL EVENTS LOGGED: ${allEv.length}
-
-BEHAVIORS OBSERVED (counts only):
-${behSkeleton||'No events recorded'}
-
-DATA AVAILABILITY:
-- Setting events documented: ${settingEventsCount>0?'yes ('+settingEventsCount+' sessions)':'no'}
-- Behaviorist hypothesis notes: ${hypothesisCount>0?'yes ('+hypothesisCount+' sessions)':'no'}
-- Existing IEP goals on file: ${goals.length}`;
-
-  // ── FULL context (Call 2 — for the actual draft) ────────────────────────
   const behSummary = Object.values(byB).map(b=>{
     const avgDur = b.durs.length ? Math.round(b.durs.reduce((a,v)=>a+v,0)/b.durs.length/1000) : null;
     const avgInt = b.ints.length ? (b.ints.reduce((a,v)=>a+v,0)/b.ints.length).toFixed(1) : null;
@@ -3690,7 +3623,10 @@ DATA AVAILABILITY:
     .map(s=>`[${new Date(s.startedAt).toLocaleDateString()} - ${s.behavioristName||'Behaviorist'}]: ${s.fbaHypothesis}`)
     .join('\n');
 
-  const fullContext = `STUDENT: ${pseudoName}
+  const locations = [...new Set(fbaSessions.map(s=>s.location||'').filter(Boolean))];
+  const behaviorists = [...new Set(fbaSessions.map(s=>s.behavioristName||'').filter(Boolean))];
+
+  const dataContext = `STUDENT: ${client.name}
 FBA SESSIONS: ${fbaSessions.length} (plus ${suppSessions.length} supplemental sessions)
 SETTINGS OBSERVED: ${locations.join(', ')||'not specified'}
 BEHAVIORIST(S): ${behaviorists.join(', ')||'not specified'}
@@ -3708,79 +3644,6 @@ ${hypotheses||'None recorded'}
 
 SUPPLEMENTAL DATA: ${suppSessions.length} additional sessions from other observation types available as reference.`;
 
-  const docLabels = {bip:'BIP Draft', goals:'Behavior Goals', summary:'FBA Summary'};
-  const docNames  = {bip:'Behavior Intervention Plan', goals:'Behavior Goals', summary:'FBA Summary'};
-
-  // Stash everything we'll need for Call 2 in the modal state — kept in memory,
-  // never persisted, discarded on modal close.
-  S._aiCtx = {
-    docType, clientId, pseudoName, realName:client.name,
-    fullContext, docLabels, docNames
-  };
-
-  // Step 1: ask Claude to produce 3–5 clarifying questions as JSON
-  const questionsPrompt = `You are an expert school behaviorist helping prepare a ${docNames[docType]} for a special education student. Before writing the document, identify 3 to 5 SHORT, SPECIFIC clarifying questions you would need the behaviorist to answer to produce a complete, defensible draft.
-
-Focus on information that is MISSING from the data summary below and that the data alone cannot supply — for example: student grade level, prior interventions attempted, replacement skills the student has demonstrated, crisis/safety history, family or medical context relevant to the behavior, current classroom supports, or any specifics required by your district's standard ${docNames[docType]} format.
-
-Do NOT ask questions that the data already answers. Do NOT ask more than 5 questions. Each question should be one sentence, plain language, answerable in 1–2 sentences by the behaviorist.
-
-Respond with ONLY a JSON array of question strings — no preamble, no markdown, no code fences. Example format:
-["What grade level is the student in?", "Has a previous BIP been implemented for this student?"]
-
-DATA SUMMARY:
-${trimmedContext}`;
-
-  // Show generating modal (Step 1)
-  S._modal = {type:'fbaGenerating', docType, clientId, label:docLabels[docType], stage:'questions'};
-  rerender();
-
-  callClaudeApi(questionsPrompt, 800)
-    .then(text=>{
-      // Parse JSON array of questions out of the response
-      let questions = [];
-      try{
-        const cleaned = text.replace(/^```json\s*/i,'').replace(/^```\s*/,'').replace(/\s*```\s*$/,'').trim();
-        // Find the first [ ... ] in the response
-        const match = cleaned.match(/\[[\s\S]*\]/);
-        if(match){
-          questions = JSON.parse(match[0]);
-        }
-      } catch(e){
-        console.warn('Question parse failed, skipping clarification step:', e.message);
-      }
-      questions = (questions||[]).filter(q=>typeof q==='string'&&q.trim()).slice(0,5);
-
-      if(questions.length===0){
-        // Couldn't parse — skip Q&A and go straight to draft
-        runFbaDraftGeneration([]);
-        return;
-      }
-
-      // Show clarifying-questions modal
-      S._modal = {
-        type:'fbaQuestions',
-        docType, clientId,
-        label:docLabels[docType],
-        questions,
-        answers:questions.map(()=>'')
-      };
-      rerender();
-    })
-    .catch(err=>{
-      // Couldn't get questions — fall back to direct draft so user isn't blocked
-      console.warn('Clarifying questions step failed, falling back to direct draft:', err);
-      runFbaDraftGeneration([]);
-    });
-}
-
-// Step 2: produce the actual draft, optionally incorporating Q&A answers
-function runFbaDraftGeneration(qaPairs){
-  const ctx = S._aiCtx;
-  if(!ctx){ alert('Generation state lost. Please try again.'); return; }
-
-  const {docType, clientId, fullContext, docLabels, docNames} = ctx;
-
   const templateContext = docType==='bip' && S._bipTemplate && !S._bipTemplate.startsWith('[Binary')
     ? '\n\nDISTRICT BIP TEMPLATE STRUCTURE TO FOLLOW:\n'+S._bipTemplate.slice(0,2000)
     : docType==='goals' && S._goalTemplate && !S._goalTemplate.startsWith('[Binary')
@@ -3791,126 +3654,64 @@ function runFbaDraftGeneration(qaPairs){
     : docType==='goals' && S._goalTemplateName ? ' Follow the format of the uploaded template: '+S._goalTemplateName+'.'
     : '';
 
-  // Compose the behaviorist's answers (if any) into the prompt context
-  const answeredQa = (qaPairs||[]).filter(p=>p.answer&&p.answer.trim());
-  const qaContext = answeredQa.length
-    ? '\n\nBEHAVIORIST CLARIFICATIONS (use these as authoritative inputs):\n'+
-      answeredQa.map(p=>`Q: ${p.question}\nA: ${p.answer.trim()}`).join('\n\n')
-    : '';
-
   const prompts = {
     bip: `You are an expert school behaviorist writing a Behavior Intervention Plan (BIP) for a special education student. Use the Behaviorist observation data below to write a complete, professional BIP draft.${templateNameHint}
 
 Include: (1) Student background and behavior description, (2) Identified behavioral function(s) based on ABC data, (3) Antecedent-based strategies (prevention), (4) Teaching replacement behaviors, (5) Consequence strategies, (6) Crisis response protocol if warranted, (7) Progress monitoring plan.
 
-Write in professional IEP language. Be specific and evidence-based. Use the actual data provided. If the behaviorist's clarifications provide information not in the data, incorporate it. If something is still unknown after the clarifications, write "[BEHAVIORIST TO COMPLETE]" rather than inventing detail.${templateContext}
+Write in professional IEP language. Be specific and evidence-based. Use the actual data provided.${templateContext}
 
 FBA DATA:
-${fullContext}${qaContext}`,
+${dataContext}`,
 
     goals: `You are a special education specialist writing measurable behavior goals for an IEP based on completed FBA data. Use the observation data below to write 2-4 specific, measurable, attainable, relevant, time-bound (SMART) behavior goals.${templateNameHint}
 
 For each goal include: (1) Baseline from FBA data, (2) Annual goal statement with measurable criteria, (3) Short-term objectives (2-3 per goal), (4) Measurement method, (5) Evaluation schedule.
 
-Write in standard IEP goal language. Base all baselines on the actual session data. If the behaviorist's clarifications provide information not in the data, incorporate it. If something is still unknown after the clarifications, write "[BEHAVIORIST TO COMPLETE]" rather than inventing detail.${templateContext}
+Write in standard IEP goal language. Base all baselines on the actual session data.${templateContext}
 
 FBA DATA:
-${fullContext}${qaContext}`,
+${dataContext}`,
 
     summary: `You are a school behaviorist writing a professional FBA Summary narrative. Use the observation data below to write a clear, defensible FBA summary suitable for an IEP team.
 
 Include: (1) Reason for referral and assessment overview, (2) Assessment methods used, (3) Behavioral descriptions and patterns, (4) Antecedent and consequence analysis, (5) Hypothesized behavioral function(s) with rationale, (6) Summary and recommendations.
 
-Write in clear professional language accessible to parents and educators alike. If the behaviorist's clarifications provide information not in the data, incorporate it. If something is still unknown after the clarifications, write "[BEHAVIORIST TO COMPLETE]" rather than inventing detail.
+Write in clear professional language accessible to parents and educators alike.
 
 FBA DATA:
-${fullContext}${qaContext}`
+${dataContext}`
   };
 
-  S._modal = {type:'fbaGenerating', docType, clientId, label:docLabels[docType], stage:'draft'};
+  const docLabels = {bip:'BIP Draft', goals:'Behavior Goals', summary:'FBA Summary'};
+
+  // Show a generating modal
+  S._modal = {type:'fbaGenerating', docType, clientId, label:docLabels[docType]};
   rerender();
 
-  callClaudeApi(prompts[docType], 2000)
-    .then(text=>{
-      // Discard the in-memory generation context now that we have the draft
-      const finalText = text || '';
-      S._aiCtx = null;
-      S._modal = {type:'fbaDocResult', docType, clientId, label:docLabels[docType], content:finalText};
-      rerender();
-    })
-    .catch(err=>{
-      S._modal = {
-        type:'fbaDocError',
-        docType, clientId,
-        label:docLabels[docType],
-        message:err.message||'Unknown error',
-        canRetry:true,
-        qaPairs:qaPairs||[]
-      };
-      rerender();
-    });
-}
-
-// ── Shared Anthropic proxy caller — returns text content or throws ─────────
-function callClaudeApi(promptText, maxTokens){
-  return fetch('/api/claude', {
+  fetch('/api/claude', {
     method:'POST',
     headers:{'Content-Type':'application/json'},
     body:JSON.stringify({
       model:'claude-sonnet-4-20250514',
-      max_tokens:maxTokens||2000,
-      messages:[{role:'user',content:promptText}]
+      max_tokens:2000,
+      messages:[{role:'user',content:prompts[docType]}]
     })
   })
-  .then(r=>{
-    // r.json() can throw on empty/malformed bodies (proxy timeouts, 502, etc).
-    // Catch that explicitly so the user sees an accurate error rather than a
-    // generic "unexpected token" parse error.
-    return r.json().catch(()=>{
-      throw new Error('Server returned an unreadable response (HTTP '+r.status+'). The request may have timed out or the proxy may be offline.');
-    });
-  })
+  .then(r=>r.json())
   .then(data=>{
-    if(data && data.error){
-      // Anthropic structured error — surface code + message accurately.
-      // Common codes:
-      //   • invalid_request_error — bad payload (we should fix client-side)
-      //   • authentication_error  — proxy missing/wrong ANTHROPIC_API_KEY env var
-      //   • rate_limit_error      — slow down
-      //   • overloaded_error      — API congestion, retry
-      //   • api_error             — Anthropic side, retry
-      const type = data.error.type || 'error';
-      const msg  = data.error.message || 'Unknown error from AI service';
-      throw new Error('['+type+'] '+msg);
+    if(data.error){
+      S._modal={type:'fbaDocResult', docType, clientId, label:docLabels[docType], content:'Error: '+data.error.message+'. Check your API key in Settings.'};
+    } else {
+      const text = (data.content||[]).map(b=>b.text||'').join('');
+      S._modal={type:'fbaDocResult', docType, clientId, label:docLabels[docType], content:text};
     }
-    if(!data || !data.content){
-      throw new Error('AI service returned no content. Try again — if this keeps happening, the request may be too large.');
-    }
-    const text = (data.content||[]).map(b=>b.text||'').join('');
-    if(!text.trim()){
-      throw new Error('AI service returned an empty response. Try again.');
-    }
-    return text;
+    rerender();
+  })
+  .catch(err=>{
+    S._modal={type:'fbaDocResult', docType, clientId, label:docLabels[docType], content:'Network error: '+err.message};
+    rerender();
   });
-}
-
-// Called from the clarifying-questions modal when behaviorist clicks Generate
-function submitFbaQuestions(){
-  const m = S._modal;
-  if(!m || m.type!=='fbaQuestions') return;
-  // Read latest values from the textareas (state may not be synced if user types fast)
-  const updated = m.questions.map((q,i)=>{
-    const el = document.getElementById('fba-q-'+i);
-    return {question:q, answer:el?el.value:''};
-  });
-  runFbaDraftGeneration(updated);
-}
-
-// Called from the error modal's Retry button
-function retryFbaDraft(){
-  const m = S._modal;
-  if(!m || m.type!=='fbaDocError') return;
-  runFbaDraftGeneration(m.qaPairs||[]);
 }
 
 // ── PDF Export ─────────────────────────────────────────────────────────────
@@ -4384,23 +4185,58 @@ function setPlannedMins(n){
 }
 function _oldSelectSessType(){} // removed — merged into new selectSessType above
 function confirmFbaAffirm(){
-  const nameEl=document.getElementById('fba-beh-name');
-  const chkEl=document.getElementById('fba-affirm-check');
-  if(!nameEl||!nameEl.value.trim()){alert('Please enter your name as the behaviorist before proceeding.');return;}
-  if(!chkEl||!chkEl.checked){alert('Please check the affirmation box to proceed.');return;}
-  S._fbaGate.behavioristName=nameEl.value.trim();
-  S._fbaGate.affirmed=true;
-  // Restore the session setup modal with FBA pre-selected
-  const g=S._fbaGate;
-  S._modal={type:g.prevType||'sessType', cid:g.prevCid, clientIds:g.prevClientIds, sel:'fba', behavioristName:g.behavioristName, plannedMins:null, location:'', locationOther:''};
-  rerender();
-  const btn=document.getElementById('start-sess-btn');
-  if(btn)btn.disabled=false;
+  // Legacy per-session affirmation handler — flow no longer reaches this.
+  // Kept as a safe no-op so any orphaned button references don't throw.
+  if(S._modal&&S._modal.type==='fbaAffirm'){ S._modal=null; rerender(); }
 }
 function cancelFbaAffirm(){
-  const g=S._fbaGate||{};
-  S._modal={type:g.prevType||'sessType', cid:g.prevCid, clientIds:g.prevClientIds, sel:null, plannedMins:null, location:'', locationOther:''};
-  S._fbaGate=null;
+  // Legacy per-session affirmation cancel — kept as safe no-op.
+  if(S._modal&&S._modal.type==='fbaAffirm'){ S._modal=null; rerender(); }
+}
+
+// ── ONE-TIME BEHAVIORIST ATTESTATION ───────────────────────────────────────
+// Writes a durable, timestamped attestation to the user_roles row. Required
+// once per behaviorist or admin user. After this is recorded, the user is
+// never asked again — see boot() for the trigger condition.
+async function confirmBehAttestation(){
+  const nameEl = document.getElementById('beh-attest-name');
+  const credEl = document.getElementById('beh-attest-cred');
+  const chkEl  = document.getElementById('beh-attest-check');
+  const name = nameEl ? nameEl.value.trim() : '';
+  const cred = credEl ? credEl.value.trim() : '';
+  if(!name){ alert('Please enter your name.'); return; }
+  if(!chkEl || !chkEl.checked){ alert('Please check the confirmation box to proceed.'); return; }
+  const now = new Date().toISOString();
+  try{
+    // Write attestation columns to user_roles. Requires these columns on the
+    // table — see the migration SQL provided alongside this file. If the
+    // columns don't exist, this throws and we surface a clear error so you
+    // know to run the migration before redeploying.
+    const {error} = await sb.from('user_roles').update({
+      behaviorist_attested_at: now,
+      behaviorist_attestation_name: name,
+      behaviorist_attestation_credential: cred || null
+    }).eq('user_id', _currentUser.id);
+    if(error) throw error;
+    S._behAttestedAt = now;
+    S._behAttestedName = name;
+    S._modal = null;
+    rerender();
+  } catch(e){
+    // Surface a useful message; don't silently swallow. If you see this
+    // error, the user_roles table is missing the attestation columns — run
+    // the migration SQL in the project's deployment notes.
+    console.error('Attestation write failed:', e);
+    alert('Could not save attestation: '+(e.message||e)+'\n\nThe user_roles table may be missing the attestation columns. Contact your administrator.');
+  }
+}
+
+function declineBehAttestation(){
+  // User chose "Not Now". We dismiss the modal but DO NOT mark them as
+  // attested — they'll see it again on next login. We also flag the session
+  // state so they aren't immediately re-prompted on this same load.
+  S._modal = null;
+  S._behAttestDeferredThisSession = true;
   rerender();
 }
 
@@ -4413,19 +4249,11 @@ function selectSessType(t){
     openManualEntry(cid);
     return;
   }
-  // FBA: gate behind behaviorist affirmation modal
-  if(t==='fba'){
-    S._fbaGate={
-      prevType:S._modal.type,
-      prevCid:S._modal.cid||null,
-      prevClientIds:S._modal.clientIds||[],
-      behavioristName:'',
-      affirmed:false
-    };
-    S._modal={type:'fbaAffirm'};
-    rerender();
-    return;
-  }
+  // Note: the legacy 'fba' session type and its per-session affirmation modal
+  // have been removed. Behaviorist Observation is no longer a separate type —
+  // setting events + hypothesis notes appear as optional fields inside any
+  // session a behaviorist user runs. Licensure is attested once per account
+  // via the first-login attestation flow, not per-session.
   S._modal.sel=t;
   // Reset behavior selection for initial — default to all presets
   if(t==='initial') S._modal.selectedBehs=[...PRESETS.map(b=>b.id)];
@@ -5205,12 +5033,20 @@ function confirmStartSession(){
   const locOther=document.getElementById('sess-location-other');
   const location=locRaw==='Other'?(locOther?locOther.value.trim()||'Other':'Other'):locRaw;
   const selectedBehs=S._modal.selectedBehs||[];
-  const behavioristName=S._modal.behavioristName||S._fbaGate?.behavioristName||'';
+  // Auth-sourced behaviorist name — replaces the typed name from the
+  // legacy fbaAffirm modal. This ties every session to the authenticated
+  // user, which is stronger audit trail than a typed string.
+  const authedName=_currentUser&&(_currentUser.user_metadata?.full_name||_currentUser.email)||'';
+  const behavioristName=isBehaviorist()?authedName:'';
+  // _collectorRole records which role the user held at session-creation time.
+  // Generation logic uses this (NOT just sessType==='fba') to determine which
+  // sessions are eligible to feed BIP / Goals / FBA Summary drafts.
+  const _collectorRole=S._role||'teacher';
   const startedAt=Date.now();
   S._initialBehs=type==='initial'?selectedBehs:[];
   S._modal=null;
   S.selClient=S.clients.find(c=>c.id===cid);
-  S.activeSess={id:uid(),clientId:cid,clientName:S.selClient.name,startedAt,endedAt:null,events:[],note:'',sessType:type,plannedMins,location,behavioristName,selectedBehs};
+  S.activeSess={id:uid(),clientId:cid,clientName:S.selClient.name,startedAt,endedAt:null,events:[],note:'',sessType:type,plannedMins,location,behavioristName,selectedBehs,_collectorRole};
   S.sessType=type;
   S.sessNote='';S.activeBeh=null;S.measureMode=null;S.abcA='';S.abcC='';
   S.incidents={};S.intensityPrompts=[];S.durRunning=false;S.durElapsed=0;
@@ -5229,7 +5065,14 @@ function endSession(){
   S.intensityPrompts=[];
   S.durRunning=false;S.durElapsed=0;
   S.activeSess.endedAt=Date.now();
-  if(S.sessType==='fba'){S.activeSess.settingEvents=S.fbaSettingEvents||[];S.activeSess.settingEventsNote=S.fbaSettingEventsNote||'';S.activeSess.fbaHypothesis=S.fbaHypothesis||'';}
+  // Capture optional Behaviorist Notes (setting events + hypothesis) from any
+  // session a behaviorist ran. Previously only sessType==='fba' sessions did
+  // this; now the panel is available on every behaviorist-collected session.
+  if(S.sessType==='fba' || S.activeSess._collectorRole==='behaviorist' || S.activeSess._collectorRole==='admin'){
+    S.activeSess.settingEvents=S.fbaSettingEvents||[];
+    S.activeSess.settingEventsNote=S.fbaSettingEventsNote||'';
+    S.activeSess.fbaHypothesis=S.fbaHypothesis||'';
+  }
   clearInterval(_tick);
   // Show notes prompt
   S._modal={type:'endNotes'};
@@ -6541,8 +6384,18 @@ async function boot(){
 
   // Load role from Supabase
   try{
-    const {data:roleData}=await sb.from('user_roles').select('role').eq('user_id',_currentUser.id).single();
-    if(roleData) S._role=roleData.role;
+    // Pull role + attestation columns. The behaviorist_attested_at column is
+    // populated the first time a user with behaviorist (or admin) role
+    // confirms their licensure attestation. If the column doesn't exist yet
+    // in your Supabase schema, the query still returns role (PostgREST
+    // ignores unknown selected columns gracefully on the client side, but the
+    // catch block below also handles a hard failure).
+    const {data:roleData}=await sb.from('user_roles').select('role, behaviorist_attested_at, behaviorist_attestation_name').eq('user_id',_currentUser.id).single();
+    if(roleData){
+      S._role=roleData.role;
+      S._behAttestedAt=roleData.behaviorist_attested_at||null;
+      S._behAttestedName=roleData.behaviorist_attestation_name||null;
+    }
     else {
       // Check for invite code in URL
       const params=new URLSearchParams(window.location.search);
@@ -6602,6 +6455,22 @@ async function boot(){
 
   // Dismiss splash screen
   setTimeout(dismissSplash, 2000);
+
+  // ── First-login attestation for behaviorists ─────────────────────────────
+  // If a behaviorist or admin user hasn't yet attested to their licensure,
+  // surface the one-time attestation modal now. Replaces the per-session
+  // affirmation that was previously gating every FBA observation. Once
+  // attested, the timestamp is written to user_roles and this never appears
+  // again for that user. The attestation is auditable via Supabase.
+  if(isBehaviorist() && !S._behAttestedAt){
+    // Wait until splash is gone so the modal isn't hidden behind it
+    setTimeout(()=>{
+      // Don't interrupt a session in progress (edge case on slow reloads)
+      if(S.view==='record') return;
+      S._modal={type:'behAttest'};
+      rerender();
+    }, 2400);
+  }
 }
 
 function renderUserBadge(){
