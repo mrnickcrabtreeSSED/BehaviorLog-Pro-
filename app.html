@@ -797,32 +797,17 @@ window.addEventListener('offline',function(){
 });
 
 // ── Constants ──────────────────────────────────────────────────────────────
-// PRESETS — empty by design. Behaviors are entered explicitly by users in
-// Settings → Behavior Library, or imported from the static STARTER_BEHAVIORS
-// list per-student in Settings → Student → Behaviors. The empty const is
-// retained for any legacy spread/iteration call-sites.
-const PRESETS=[];
-
-// STARTER_BEHAVIORS — the 9 historical defaults, now offered as an opt-in
-// import list in per-student behavior settings. Selecting one adds it to the
-// user's library AND attaches it to that student. Operational definitions are
-// intentionally blank — only behaviorists/admins write definitions, on their
-// own account, after the behavior has been imported.
-const STARTER_BEHAVIORS=[
-  {seedId:'elo',label:'Elopement',         icon:'🏃'},
-  {seedId:'phy',label:'Physical Aggression',icon:'👊'},
-  {seedId:'si', label:'Self-Injury',       icon:'🤕'},
-  {seedId:'non',label:'Noncompliance',     icon:'🚫'},
-  {seedId:'tan',label:'Tantrum/Meltdown',  icon:'😤'},
-  {seedId:'vba',label:'Verbal Aggression', icon:'📣'},
-  {seedId:'pro',label:'Prop. Destruction', icon:'💥'},
-  {seedId:'ste',label:'Repetitive Behavior',icon:'🌀'},
-  {seedId:'oft',label:'Off-Task',          icon:'🌫️'},
+const PRESETS=[
+  {id:'elo',label:'Elopement',       icon:'🏃'},
+  {id:'phy',label:'Physical Aggression', icon:'👊'},
+  {id:'si', label:'Self-Injury',     icon:'🤕'},
+  {id:'non',label:'Noncompliance',   icon:'🚫'},
+  {id:'tan',label:'Tantrum/Meltdown',icon:'😤'},
+  {id:'vba',label:'Verbal Aggression',icon:'📣'},
+  {id:'pro',label:'Prop. Destruction',icon:'💥'},
+  {id:'ste',label:'Repetitive Behavior',      icon:'🌀'},
+  {id:'oft',label:'Off-Task',        icon:'🌫️'},
 ];
-
-// ON_TASK — built-in behavior available in Interval Recording regardless of
-// library state. Stored under a stable id so historical interval scores resolve.
-const ON_TASK_BEH={id:'__ontask__',label:'On Task',icon:'✅',builtin:true,definition:'Student is engaged in the assigned task or activity, attending appropriately to instruction or materials.'};
 // ICON_OPTS: curated set — no new emoji outside this list (see README §5)
 const ICON_OPTS=['🏃','👊','⚠️','📣','🚫','😤','💥','😢','😡','🤜','🦷','🛑','📌','🎯','🔴','⭕','🟠','🟡','💬','💭','🌫️','😰','🤸','🙈','✋','🖐️','👋','🌀','😬','🔕'];
 const OPPOSITES={
@@ -925,128 +910,16 @@ function fmtDate(ts){return new Date(ts).toLocaleDateString('en-US',{month:'shor
 function fmtDateS(ts){return new Date(ts).toLocaleDateString('en-US',{month:'short',day:'numeric'});}
 function fmtTime(ts){return new Date(ts).toLocaleTimeString('en-US',{hour:'numeric',minute:'2-digit'});}
 function isToday(ts){return new Date(ts).toISOString().slice(0,10)===new Date().toISOString().slice(0,10);}
-// allBehs returns the user's full Behavior Library (per-user, RLS-protected
-// via user_data). PRESETS is empty and kept only for any legacy spread refs.
 function allBehs(){return[...PRESETS,...S.customs];}
-// Returns the library plus any built-ins for a given context. Use forInterval=true
-// when surfacing options in Interval Recording so On Task is always available
-// even when the library is otherwise empty.
-function allBehsForContext(forInterval){
-  const lib=allBehs();
-  if(forInterval && !lib.some(b=>b.id===ON_TASK_BEH.id)) return [ON_TASK_BEH,...lib];
-  return lib;
-}
-function getBehMeasure(bid){
-  const m=S._measureTypes[bid]||'duration';
-  // Latency is removed — coerce any legacy 'latency' value to 'duration'.
-  // Historical latency events still display correctly in feeds and CSV.
-  if(m==='latency') return 'duration';
-  return m;
-}
-function setBehMeasure(bid,mode){
-  if(mode==='latency') mode='duration'; // safety: latency is no longer offered
-  S._measureTypes[bid]=mode;persist();rerender();
-}
-// Permission: only behaviorists and admins can write/edit operational definitions.
-function canEditDefinition(){return isBehaviorist();}
-// Returns the operational definition for a behavior id (library + built-ins).
-function getBehDefinition(bid){
-  if(bid===ON_TASK_BEH.id) return ON_TASK_BEH.definition||'';
-  const b=S.customs.find(x=>x.id===bid);
-  return (b&&b.definition)||'';
-}
+function getBehMeasure(bid){return S._measureTypes[bid]||'duration';}
+function setBehMeasure(bid,mode){S._measureTypes[bid]=mode;persist();rerender();}
 function isBehaviorist(){return S._role==='behaviorist'||S._role==='admin';}
 function isAdmin(){return S._role==='admin';}
-
-// One-time auto-purge of unused seeded library entries. Older versions of this
-// app auto-seeded the 9 starter behaviors into S.customs on first load. Per
-// product direction, the library should now start truly empty — starter
-// behaviors are an opt-in per-student import. This function removes any
-// `seeded:true` entry that:
-//   (a) is not selected by any student, AND
-//   (b) is not referenced by any session event.
-// Anything actively in use is preserved so existing data isn't broken.
-function purgeUnusedSeededBehaviors(){
-  if(!Array.isArray(S.customs)||S.customs.length===0) return 0;
-  const seededIds=new Set(S.customs.filter(b=>b.seeded).map(b=>b.id));
-  if(seededIds.size===0) return 0;
-  // Collect every behavior id that is in use.
-  const inUse=new Set();
-  (S.clients||[]).forEach(c=>{
-    (c.behaviors||[]).forEach(id=>inUse.add(id));
-  });
-  (S.sessions||[]).forEach(s=>{
-    (s.events||[]).forEach(ev=>{ if(ev.behaviorId) inUse.add(ev.behaviorId); });
-    (s.selectedBehs||[]).forEach(id=>inUse.add(id));
-  });
-  // Remove seeded entries that aren't in use.
-  const before=S.customs.length;
-  S.customs=S.customs.filter(b=>!b.seeded||inUse.has(b.id));
-  return before-S.customs.length;
-}
-
-// Add a starter behavior to the user's library and attach it to the given
-// student. If the same starter (by seedId) is already in the library, just
-// attach the existing entry rather than creating a duplicate.
-function addStarterBehaviorToStudent(seedId,clientId){
-  const starter=STARTER_BEHAVIORS.find(s=>s.seedId===seedId);
-  if(!starter) return null;
-  // Prefer matching by seedId. Fall back to label match for any historical
-  // entry that predates the seedId tag (e.g. previously-seeded libraries).
-  let beh=S.customs.find(b=>b.seedId===seedId)
-       || S.customs.find(b=>b.label===starter.label);
-  if(!beh){
-    beh={
-      id:uid(),
-      seedId:starter.seedId,
-      label:starter.label,
-      icon:starter.icon,
-      custom:true,
-      definition:''   // blank — behaviorist fills in later
-    };
-    S.customs.push(beh);
-    if(!S._measureTypes) S._measureTypes={};
-    if(!S._measureTypes[beh.id]) S._measureTypes[beh.id]='duration';
-  }
-  // Attach to student if not already attached.
-  S.clients=S.clients.map(c=>{
-    if(c.id!==clientId) return c;
-    const list=Array.isArray(c.behaviors)?[...c.behaviors]:[];
-    if(!list.includes(beh.id)) list.push(beh.id);
-    return{...c,behaviors:list};
-  });
-  persist();
-  return beh;
-}
-
-// Returns true if this student has at least one behavior configured. Interval
-// recording is the only session type that has a built-in (On Task), so it can
-// proceed even with zero student behaviors — every other session type cannot.
-function studentHasBehaviors(cid){
-  const c=(S.clients||[]).find(x=>x.id===cid);
-  return !!(c && Array.isArray(c.behaviors) && c.behaviors.length>0);
-}
-
-// Returns true if a session record should count toward the BIP/FBA build-out
-// for this student. Two cases:
-//   (1) Legacy "Behaviorist Observation" sessions (sessType==='fba') — back
-//       when FBA was a session type. Preserved for backward compatibility.
-//   (2) Any session tagged fbaContext:true — set when a behaviorist routed
-//       through the FBA affirmation + sub-type picker, regardless of whether
-//       the recording mechanic was Interval, General, or Manual Entry.
-function isFbaForBuildOut(sess){
-  return !!sess && (sess.sessType==='fba' || sess.fbaContext===true);
-}
-
-// Returns behaviors for a specific client — strict per-student selection.
-// New behavior: students start with NO behaviors. Empty array = empty grid.
-// (Previously this fell back to allBehs() when a student had none configured,
-// which silently auto-populated every student with the full library. Per
-// product direction, student profiles must be configured explicitly before
-// observations can begin.)
+// Returns behaviors for a specific client — their custom selection, or all if none configured
 function clientBehs(cid){
   const c=S.clients.find(x=>x.id===cid);
-  if(!c||!Array.isArray(c.behaviors)) return [];
+  if(!c||!c.behaviors||!c.behaviors.length) return allBehs();
+  // Return behaviors in the client's chosen order, filtering out deleted customs
   const pool=allBehs();
   return c.behaviors.map(bid=>pool.find(b=>b.id===bid)).filter(Boolean);
 }
@@ -1201,7 +1074,7 @@ function buildApp(){
       +'<div style="background:#fff;border-radius:22px;padding:28px 26px;max-width:420px;width:100%;box-shadow:0 24px 64px rgba(20,20,26,.16)">'
         +(S.intensityPrompts.length>1?'<div style="background:var(--accent-soft);border-radius:8px;padding:5px 10px;font-size:.72rem;color:var(--accent);font-weight:600;text-align:center;margin-bottom:12px">'+S.intensityPrompts.length+' behaviors ended — rate each</div>':'')
         +'<div style="text-align:center;margin-bottom:16px">'
-          +(ip.behIcon?'<div style="font-size:2.4rem;margin-bottom:6px">'+ip.behIcon+'</div>':'')
+          +'<div style="font-size:2.4rem;margin-bottom:6px">'+ip.behIcon+'</div>'
           +'<div style="font-weight:800;font-size:1.05rem;color:var(--text)">'+esc(ip.behLabel)+'</div>'
           +'<div style="color:var(--green);font-weight:700;font-size:.85rem;margin-top:4px">✓ Ended &nbsp;·&nbsp; '+fmt(ip.durMs)+' duration</div>'
         +'</div>'
@@ -1243,45 +1116,27 @@ function buildModal(){
   let showClose=true;
 
   if(m.type==='editBeh'||m.type==='addBeh'){
-    const b=m.beh||{label:'',icon:'',definition:''};
+    const b=m.beh||{label:'',icon:'📌'};
     const isEdit=m.type==='editBeh';
     const curMeasure=isEdit?getBehMeasure(b.id):(m._newMeasure||'duration');
-    // Operational definition: only behaviorists/admins can edit. Non-behaviorists
-    // see read-only with a notice that a behaviorist will fill it in.
-    const canEditDef=canEditDefinition();
-    const curDef=isEdit?getBehDefinition(b.id):(m._newDefinition||'');
-    const measureOptions=[
-      {id:'frequency',icon:'🔢',label:'Frequency',desc:'Tap = +1 count'},
-      {id:'duration', icon:'⏱', label:'Duration', desc:'Tap start/stop timer'},
-      {id:'intensity',icon:'📊',label:'Intensity',desc:'Timer + severity rating'},
-      {id:'durfreq',  icon:'⏱➕',label:'Duration + Freq',desc:'Time the episode + count actions inside it'},
-    ];
     inner=`<h2 style="margin-bottom:18px">${isEdit?'Edit Behavior':'New Behavior'}</h2>
       <div class="slabel">Label</div>
       <input class="input mb3" id="m-beh-label" value="${esc(b.label)}" placeholder="Behavior name…"/>
-      <div class="slabel">Icon <span style="font-weight:400;text-transform:none;letter-spacing:0;color:var(--muted);font-size:.72rem;margin-left:4px">(optional)</span></div>
-      <div class="icon-grid mb2">
-        <div class="icon-opt${!b.icon?' selected':''}" onclick="pickIcon('')" id="iopt-none" style="font-size:.7rem;font-weight:700;color:var(--muted);display:flex;align-items:center;justify-content:center">No icon</div>
+      <div class="slabel">Icon</div>
+      <div class="icon-grid mb4">
         ${ICON_OPTS.map(ic=>`<div class="icon-opt${b.icon===ic?' selected':''}" onclick="pickIcon('${ic}')" id="iopt-${encodeURIComponent(ic)}">${ic}</div>`).join('')}
       </div>
-      <p style="font-size:.7rem;color:var(--muted);margin-bottom:14px">If no icon is selected, the button will display the behavior name only.</p>
-      <div class="slabel">Operational Definition ${canEditDef?'':'<span style="font-weight:400;text-transform:none;letter-spacing:0;color:var(--muted);font-size:.72rem;margin-left:4px">(behaviorist-only)</span>'}</div>
-      ${canEditDef
-        ? `<textarea id="m-beh-definition" class="input" style="min-height:80px;resize:vertical;font-family:inherit;font-size:.84rem;line-height:1.4;margin-bottom:6px" placeholder="Describe what this behavior looks like in observable, measurable terms (e.g., 'Any forceful contact with another person — hitting, kicking, biting, pushing — that occurs without consent and could cause harm.')">${esc(curDef)}</textarea>
-           <p style="font-size:.7rem;color:var(--muted);margin-bottom:16px">Definitions help all observers count consistently. Keep it observable and behavior-specific (no inferred motives).</p>`
-        : `<div style="background:var(--surface2);border:1px solid var(--border);border-radius:10px;padding:10px 12px;margin-bottom:14px;min-height:60px;font-size:.82rem;line-height:1.4;color:${curDef?'var(--text)':'var(--muted)'}">${curDef?esc(curDef):'<em>No operational definition yet. A behaviorist or administrator will fill this in.</em>'}</div>`
-      }
       <div class="slabel">Measurement Type</div>
-      <div style="display:grid;grid-template-columns:repeat(2,1fr);gap:6px;margin-bottom:18px">
-        ${measureOptions.map(mt=>`<div onclick="${isEdit?"setBehMeasure('"+b.id+"','"+mt.id+"');S._modal.beh._m='"+mt.id+"'":"S._modal._newMeasure='"+mt.id+"'"};rerender()" style="padding:10px 8px;border-radius:10px;border:2px solid ${curMeasure===mt.id?'var(--accent)':'var(--border)'};background:${curMeasure===mt.id?'var(--accent-soft)':'var(--surface2)'};text-align:center;cursor:pointer;transition:all .15s">
-          <div style="font-size:1.2rem">${mt.icon}</div>
+      <div style="display:flex;gap:6px;margin-bottom:18px">
+        ${[{id:'frequency',icon:'🔢',label:'Frequency',desc:'Tap = +1 count'},{id:'duration',icon:'⏱',label:'Duration',desc:'Tap start/stop timer'},{id:'intensity',icon:'📊',label:'Intensity',desc:'Timer + severity rating'}].concat(isBehaviorist()?[{id:'latency',icon:'🔄',label:'Latency',desc:'Time to behavior onset'}]:[]).map(mt=>`<div onclick="${isEdit?"setBehMeasure('"+b.id+"','"+mt.id+"');S._modal.beh._m='"+mt.id+"'":"S._modal._newMeasure='"+mt.id+"'"};rerender()" style="flex:1;padding:10px 8px;border-radius:10px;border:2px solid ${curMeasure===mt.id?'var(--accent)':'var(--border)'};background:${curMeasure===mt.id?'var(--accent-soft)':'var(--surface2)'};text-align:center;cursor:pointer;transition:all .15s">
+          <div style="font-size:1.3rem">${mt.icon}</div>
           <div style="font-size:.75rem;font-weight:700;margin-top:4px;color:${curMeasure===mt.id?'var(--accent)':'var(--text)'}">${mt.label}</div>
-          <div style="font-size:.65rem;color:var(--muted);margin-top:2px;line-height:1.3">${mt.desc}</div>
+          <div style="font-size:.65rem;color:var(--muted);margin-top:2px">${mt.desc}</div>
         </div>`).join('')}
       </div>
       <div class="row gap2">
         <button class="btn btn-primary" style="flex:1" onclick="saveBehModal()">Save</button>
-        ${isEdit&&!m.beh.preset&&!m.beh.builtin?`<button class="btn btn-danger" onclick="deleteBehModal()">Delete</button>`:''}
+        ${isEdit&&!m.beh.preset?`<button class="btn btn-danger" onclick="deleteBehModal()">Delete</button>`:''}
         <button class="btn btn-ghost" onclick="closeModal()">Cancel</button>
       </div>`;
   }
@@ -1304,7 +1159,7 @@ function buildModal(){
        desc:'Enter observation data from a paper tracking sheet — date, time, location, and behavior counts.',
        color:'var(--orange)', soft:'var(--orange-soft)', always:true, isManual:true},
       {id:'fba', icon:'🧠', label:'Behaviorist Observation',
-       desc:isBehaviorist()?'After your behaviorist affirmation, choose how to record (Interval, General, or Manual Entry). All three count toward the FBA and BIP build-out for this student.':'Behaviorist observations can only be started by a licensed behaviorist. Contact your behavior support specialist.',
+       desc:isBehaviorist()?'Structured behavioral observation with setting events, antecedent categories, and hypothesis tools. Requires licensed behaviorist affirmation.':'Behaviorist observations can only be started by a licensed behaviorist. Contact your behavior support specialist.',
        color:'var(--fba-green)', soft:'var(--fba-soft)', always:true, blocked:!isBehaviorist()},
     ];
     inner=`<h2 style="margin-bottom:4px">Start Session</h2>
@@ -1364,18 +1219,16 @@ function buildModal(){
       <!-- Behavior selection for Initial Assessment -->
       <div style="margin-top:14px;margin-bottom:6px">
         <div class="slabel" style="margin-bottom:6px">Behaviors to Assess</div>
-        ${allBehs().length===0?`<div style="background:#fef3c7;border:1.5px solid #fcd34d;border-radius:10px;padding:12px 14px;margin-bottom:8px">
-          <div style="font-weight:800;font-size:.82rem;color:#92400e">⚠ Behavior library is empty</div>
-          <div style="font-size:.74rem;color:#92400e;margin-top:4px;line-height:1.5">Add behaviors to the student in <strong>Settings → Behaviors</strong> first — either import from the starter list or create custom ones.</div>
-        </div>`:`<div class="row gap2 mb2" style="flex-wrap:wrap">
-          <button class="btn btn-ghost btn-xs" onclick="S._modal.selectedBehs=allBehs().map(b=>b.id);rerender()">Select All</button>
+        <div class="row gap2 mb2" style="flex-wrap:wrap">
+          <button class="btn btn-ghost btn-xs" onclick="S._modal.selectedBehs=[...PRESETS.map(b=>b.id),...S.customs.map(b=>b.id)];rerender()">Select All</button>
+          <button class="btn btn-ghost btn-xs" onclick="S._modal.selectedBehs=[...PRESETS.map(b=>b.id)];rerender()">Defaults Only</button>
           <button class="btn btn-ghost btn-xs" onclick="S._modal.selectedBehs=[];rerender()">Clear</button>
-        </div>`}
+        </div>
         <div style="max-height:180px;overflow-y:auto;display:flex;flex-wrap:wrap;gap:5px;padding:2px">
           ${allBehs().map(b=>{
             const on=(m.selectedBehs||[]).includes(b.id);
             return`<div onclick="toggleSessBeh('${b.id}')" style="display:inline-flex;align-items:center;gap:5px;padding:6px 11px;border-radius:8px;border:1.5px solid ${on?'var(--accent)':'var(--border)'};background:${on?'var(--accent-soft)':'var(--surface2)'};cursor:pointer;font-size:.78rem;font-weight:700;transition:all .12s">
-              ${on?'<span style="color:var(--accent);font-size:.7rem">✓</span>':''}${b.icon?b.icon+' ':''}${esc(b.label)}
+              ${on?'<span style="color:var(--accent);font-size:.7rem">✓</span>':''}${b.icon} ${esc(b.label)}
             </div>`;
           }).join('')}
         </div>
@@ -1467,17 +1320,15 @@ function buildModal(){
 
         <div class="slabel" style="margin-bottom:6px">Behaviors to Score</div>
         <div class="row gap2 mb2" style="flex-wrap:wrap">
-          <button class="btn btn-ghost btn-xs" onclick="S._modal.selectedBehs=allBehsForContext(true).map(b=>b.id);rerender()">Select All</button>
-          <button class="btn btn-ghost btn-xs" onclick="S._modal.selectedBehs=['__ontask__'];rerender()">On Task Only</button>
+          <button class="btn btn-ghost btn-xs" onclick="S._modal.selectedBehs=[...PRESETS.map(b=>b.id),...S.customs.map(b=>b.id)];rerender()">Select All</button>
+          <button class="btn btn-ghost btn-xs" onclick="S._modal.selectedBehs=[...PRESETS.map(b=>b.id)];rerender()">Defaults Only</button>
           <button class="btn btn-ghost btn-xs" onclick="S._modal.selectedBehs=[];rerender()">Clear</button>
         </div>
-        <p style="font-size:.7rem;color:var(--muted);margin:0 0 6px 0;line-height:1.4">✅ <strong>On Task</strong> is always available for interval recording. Other behaviors come from the student's library.</p>
         <div style="max-height:160px;overflow-y:auto;display:flex;flex-wrap:wrap;gap:5px;padding:2px">
-          ${allBehsForContext(true).map(b=>{
+          ${allBehs().map(b=>{
             const on=(m.selectedBehs||[]).includes(b.id);
-            const isOnTask=b.id==='__ontask__';
-            return`<div onclick="toggleSessBeh('${b.id}')" style="display:inline-flex;align-items:center;gap:5px;padding:6px 11px;border-radius:8px;border:1.5px solid ${on?'var(--fba-green)':(isOnTask?'var(--accent)':'var(--border)')};background:${on?'var(--fba-mid)':(isOnTask?'var(--accent-soft)':'var(--surface2)')};cursor:pointer;font-size:.78rem;font-weight:700;transition:all .12s">
-              ${on?'<span style="color:var(--fba-green);font-size:.7rem">✓</span>':''}${b.icon?b.icon+' ':''}${esc(b.label)}${isOnTask?' <span style="font-size:.6rem;color:var(--muted);font-weight:600">built-in</span>':''}
+            return`<div onclick="toggleSessBeh('${b.id}')" style="display:inline-flex;align-items:center;gap:5px;padding:6px 11px;border-radius:8px;border:1.5px solid ${on?'var(--fba-green)':'var(--border)'};background:${on?'var(--fba-mid)':'var(--surface2)'};cursor:pointer;font-size:.78rem;font-weight:700;transition:all .12s">
+              ${on?'<span style="color:var(--fba-green);font-size:.7rem">✓</span>':''}${b.icon} ${esc(b.label)}
             </div>`;
           }).join('')}
         </div>
@@ -1515,16 +1366,59 @@ function buildModal(){
   }
 
   if(m.type==='fbaGenerating'){
+    // Stage-aware progress messaging: "questions" = quick first call to identify gaps,
+    // "draft" = the longer second call producing the full document.
+    const isQuestions = m.stage==='questions';
+    const headline = isQuestions
+      ? 'Reviewing data for '+(m.label||'Document')+'…'
+      : 'Generating '+(m.label||'Document')+'…';
+    const subline  = isQuestions
+      ? 'Identifying any clarifying questions needed before drafting. This usually takes 5–10 seconds.'
+      : 'Drafting your document using the session data and your answers. This takes about 15–30 seconds.';
     inner=`<div style="text-align:center;padding:20px 10px">
       <div style="font-size:2.2rem;margin-bottom:14px;animation:spin 1.2s linear infinite;display:inline-block">⚙️</div>
-      <div style="font-weight:800;font-size:1rem;color:var(--fba-dark);margin-bottom:8px">Generating ${esc(m.label||'Document')}…</div>
-      <p style="font-size:.8rem;color:var(--muted);line-height:1.6;max-width:300px;margin:0 auto">Analyzing behaviorist session data and drafting your document. This takes about 15–30 seconds.</p>
+      <div style="font-weight:800;font-size:1rem;color:var(--fba-dark);margin-bottom:8px">${esc(headline)}</div>
+      <p style="font-size:.8rem;color:var(--muted);line-height:1.6;max-width:320px;margin:0 auto">${esc(subline)}</p>
+    </div>`;
+    showClose=false;
+  }
+
+  if(m.type==='fbaQuestions'){
+    // Clarifying-questions form: 3–5 questions surfaced by Claude based on
+    // a TRIMMED data summary (no narrative PII). Answers are kept in memory
+    // only and discarded when the modal closes.
+    const qs = m.questions||[];
+    inner=`<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px">
+      <div>
+        <h2 style="margin:0;color:var(--fba-dark)">A few questions before drafting</h2>
+        <p style="font-size:.74rem;color:var(--muted);margin-top:2px">${esc(m.label||'Document')} · ${qs.length} question${qs.length===1?'':'s'} · skip any you can't answer</p>
+      </div>
+      <button class="btn btn-ghost btn-sm" onclick="closeModal()">✕</button>
+    </div>
+    <div style="background:var(--fba-soft);border:1.5px solid var(--fba-mid);border-radius:8px;padding:8px 10px;margin-bottom:12px">
+      <div style="font-size:.72rem;color:var(--fba-green);line-height:1.5">💡 Your answers go straight into the draft. Anything you leave blank will be marked <strong>[BEHAVIORIST TO COMPLETE]</strong> in the final document instead of being invented by the AI. Answers are not saved — they're only used for this generation.</div>
+    </div>
+    <div style="max-height:380px;overflow-y:auto;margin-bottom:14px;padding-right:4px">
+      ${qs.map((q,i)=>`<div style="margin-bottom:14px">
+        <label style="display:block;font-weight:700;font-size:.84rem;color:var(--text);line-height:1.45;margin-bottom:6px">
+          <span style="display:inline-block;background:var(--fba-green);color:#fff;font-size:.68rem;font-weight:800;padding:2px 7px;border-radius:8px;margin-right:6px;vertical-align:1px">${i+1}</span>${esc(q)}
+        </label>
+        <textarea id="fba-q-${i}" placeholder="Your answer (optional)…" style="width:100%;min-height:64px;font-size:.82rem;line-height:1.5;padding:9px 11px;border:1.5px solid var(--border);border-radius:10px;font-family:inherit;resize:vertical"></textarea>
+      </div>`).join('')}
+    </div>
+    <div class="row gap2 wrap">
+      <button class="btn btn-primary btn-sm" style="flex:1;background:var(--fba-green);border-color:var(--fba-green)" onclick="submitFbaQuestions()">✨ Generate ${esc(m.label||'Draft')}</button>
+      <button class="btn btn-ghost btn-sm" onclick="runFbaDraftGeneration([]);">Skip All & Generate</button>
+      <button class="btn btn-ghost btn-sm" onclick="closeModal()">Cancel</button>
     </div>`;
     showClose=false;
   }
 
   if(m.type==='fbaDocResult'){
     const txt=m.content||'';
+    // Pseudonymization notice — student name was sent to AI as "FirstName LastInitial."
+    // so the behaviorist knows to find-and-replace if district format needs the full name.
+    const ctxName = S._aiCtx && S._aiCtx.pseudoName;
     inner=`<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px">
       <div>
         <h2 style="margin:0;color:var(--fba-dark)">${esc(m.label||'Generated Document')}</h2>
@@ -1532,14 +1426,65 @@ function buildModal(){
       </div>
       <button class="btn btn-ghost btn-sm" onclick="closeModal()">✕</button>
     </div>
-    <div style="background:var(--fba-soft);border:1.5px solid var(--fba-mid);border-radius:8px;padding:4px 6px;margin-bottom:10px">
+    <div style="background:var(--fba-soft);border:1.5px solid var(--fba-mid);border-radius:8px;padding:4px 6px;margin-bottom:8px">
       <div style="font-size:.7rem;color:var(--fba-green);padding:6px 8px;font-style:italic">⚠ This is an AI-generated draft. All content must be reviewed, edited, and approved by the licensed behaviorist before use in any official document.</div>
     </div>
-    <textarea id="doc-result-text" style="width:100%;min-height:340px;font-size:.78rem;line-height:1.6;padding:12px;border:1.5px solid var(--border);border-radius:10px;font-family:inherit;resize:vertical">${esc(txt)}</textarea>
+    <div style="background:#fff8e7;border:1.5px solid #f5d97a;border-radius:8px;padding:6px 10px;margin-bottom:10px">
+      <div style="font-size:.7rem;color:#8a6a14;line-height:1.5">🔒 <strong>Privacy:</strong> Student name was sent to the AI as a pseudonym (first name + last initial) to minimize PII. If your district requires the full name in the final document, use find-and-replace before saving.</div>
+    </div>
+    <textarea id="doc-result-text" style="width:100%;min-height:320px;font-size:.78rem;line-height:1.6;padding:12px;border:1.5px solid var(--border);border-radius:10px;font-family:inherit;resize:vertical">${esc(txt)}</textarea>
     <div class="row gap2 mt3 wrap">
       <button class="btn btn-primary btn-sm" style="flex:1;background:var(--fba-green);border-color:var(--fba-green)" onclick="copyDocResult()">📋 Copy to Clipboard</button>
       <button class="btn btn-ghost btn-sm" onclick="downloadDocResult('${esc(m.label||'Document')}')">⬇ Download .txt</button>
       <button class="btn btn-ghost btn-sm" onclick="closeModal()">Done</button>
+    </div>`;
+    showClose=false;
+  }
+
+  if(m.type==='fbaDocError'){
+    // Friendly error UI with diagnostic info + a real Retry path.
+    // The retry preserves any Q&A answers the behaviorist already typed.
+    const msg = m.message||'Unknown error';
+    // Pull out the [error_type] prefix if present so we can show a friendlier headline
+    const typeMatch = msg.match(/^\[([a-z_]+)\]\s*(.*)$/);
+    const errType = typeMatch ? typeMatch[1] : '';
+    const errBody = typeMatch ? typeMatch[2] : msg;
+    let friendly = 'The AI service returned an error.';
+    let hint = '';
+    if(errType==='authentication_error'){
+      friendly = 'The server is not configured to reach the AI service.';
+      hint = 'The ANTHROPIC_API_KEY environment variable is missing or invalid on the server. This is a deployment issue, not something you can fix in the app.';
+    } else if(errType==='rate_limit_error'){
+      friendly = 'Too many requests in a short period.';
+      hint = 'Wait about a minute, then try again.';
+    } else if(errType==='overloaded_error' || errType==='api_error'){
+      friendly = 'The AI service is temporarily overloaded.';
+      hint = 'This usually clears in a minute or two. Try again shortly.';
+    } else if(errType==='invalid_request_error'){
+      friendly = 'The request was rejected as invalid.';
+      hint = 'The session data may be too large or formatted unexpectedly. Try with fewer sessions, or contact support if it keeps happening.';
+    } else if(/timed out|unreadable|HTTP 5/i.test(msg)){
+      friendly = 'The server didn\'t respond in time.';
+      hint = 'Large drafts can occasionally time out at the proxy layer. Try again — if it keeps failing, try with shorter session notes.';
+    }
+    inner=`<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px">
+      <div>
+        <h2 style="margin:0;color:var(--red)">⚠ Generation Failed</h2>
+        <p style="font-size:.74rem;color:var(--muted);margin-top:2px">${esc(m.label||'Document')}</p>
+      </div>
+      <button class="btn btn-ghost btn-sm" onclick="closeModal()">✕</button>
+    </div>
+    <div style="background:#fef2f2;border:1.5px solid #fca5a5;border-radius:10px;padding:12px 14px;margin-bottom:12px">
+      <div style="font-weight:700;font-size:.86rem;color:#991b1b;margin-bottom:6px">${esc(friendly)}</div>
+      ${hint?`<div style="font-size:.78rem;color:#7f1d1d;line-height:1.5;margin-bottom:8px">${esc(hint)}</div>`:''}
+      <details style="margin-top:6px">
+        <summary style="cursor:pointer;font-size:.72rem;color:var(--muted);font-weight:600">Technical details</summary>
+        <div style="margin-top:6px;padding:8px 10px;background:#fff;border-radius:6px;font-family:'Courier New',monospace;font-size:.7rem;color:#444;word-break:break-word">${esc(errBody||msg)}</div>
+      </details>
+    </div>
+    <div class="row gap2 wrap">
+      ${m.canRetry?`<button class="btn btn-primary btn-sm" style="flex:1;background:var(--fba-green);border-color:var(--fba-green)" onclick="retryFbaDraft()">↻ Try Again</button>`:''}
+      <button class="btn btn-ghost btn-sm" onclick="closeModal()">Close</button>
     </div>`;
     showClose=false;
   }
@@ -1569,48 +1514,6 @@ function buildModal(){
       <div class="row gap2">
         <button class="btn btn-primary" style="flex:1;background:var(--fba-green);border-color:var(--fba-green)" onclick="confirmFbaAffirm()">🧠 Begin Session</button>
         <button class="btn btn-ghost" onclick="cancelFbaAffirm()">Cancel</button>
-      </div>`;
-  }
-
-  if(m.type==='fbaSubtype'){
-    // Sub-type picker shown after the FBA affirmation. The behaviorist chooses
-    // HOW to record the session — Interval, General, or Manual Entry. Whichever
-    // they pick, the resulting session is tagged with fbaContext:true so it
-    // counts toward the FBA/BIP build-out for this student.
-    const SUBTYPES=[
-      {id:'interval', icon:'⏲️', label:'Interval Recording',
-       desc:'Time-based sampling — Momentary, Partial, or Whole Interval. Best for measuring on-task behavior or behaviors with a clear time-bounded structure.',
-       color:'var(--fba-green)', soft:'var(--fba-soft)'},
-      {id:'general',  icon:'📋', label:'General Tracking',
-       desc:'Tap-to-start recording for frequency, duration, intensity, and ABC notes. Best for full continuous observation of all configured behaviors.',
-       color:'var(--amber)', soft:'var(--amber-soft)'},
-      {id:'manual',   icon:'📝', label:'Manual Entry',
-       desc:'Enter observation data from a paper tracking sheet — counts, durations, and intensity. Best for retrospective documentation.',
-       color:'var(--orange)', soft:'var(--orange-soft)'},
-    ];
-    const behName=(S._fbaGate&&S._fbaGate.behavioristName)||'';
-    inner=`<div style="text-align:center;margin-bottom:14px">
-        <div style="font-size:1.8rem;margin-bottom:4px">🧠</div>
-        <h2 style="margin-bottom:2px;color:var(--fba-dark)">Recording Method</h2>
-        <p style="font-size:.78rem;color:var(--muted);line-height:1.5;max-width:340px;margin:0 auto">${behName?'Behaviorist: <strong>'+esc(behName)+'</strong><br/>':''}Choose how you'd like to record this Behaviorist Observation. All three methods will count toward the FBA and BIP build-out for this student.</p>
-      </div>
-      <div style="display:flex;flex-direction:column;gap:8px;margin-bottom:18px">
-        ${SUBTYPES.map(tp=>`
-          <div class="sess-type-card" style="text-align:left;display:flex;align-items:center;gap:14px;padding:14px 16px;cursor:pointer"
-            onclick="pickFbaSubtype('${tp.id}')">
-            <div style="font-size:1.8rem;flex-shrink:0">${tp.icon}</div>
-            <div style="flex:1;min-width:0">
-              <div style="font-weight:800;font-size:.92rem;color:var(--text);margin-bottom:2px">${tp.label}</div>
-              <div style="font-size:.75rem;color:var(--muted);line-height:1.4">${tp.desc}</div>
-            </div>
-            <span style="font-size:1rem;color:var(--muted);flex-shrink:0">›</span>
-          </div>`).join('')}
-      </div>
-      <div style="background:var(--fba-soft);border:1.5px solid var(--fba-mid);border-radius:10px;padding:10px 12px;margin-bottom:14px;font-size:.74rem;color:var(--fba-dark);line-height:1.5">
-        🧠 <strong>Behaviorist Notes</strong> — Setting events and hypothesis fields will be available on the session summary screen regardless of which method you choose.
-      </div>
-      <div class="row gap2">
-        <button class="btn btn-ghost" style="flex:1" onclick="cancelFbaSubtype()">← Back</button>
       </div>`;
   }
 
@@ -1761,17 +1664,15 @@ function buildModal(){
 
         <div class="slabel" style="margin-bottom:6px">Behaviors to Score</div>
         <div class="row gap2 mb2" style="flex-wrap:wrap">
-          <button class="btn btn-ghost btn-xs" onclick="S._modal.selectedBehs=allBehsForContext(true).map(b=>b.id);rerender()">Select All</button>
-          <button class="btn btn-ghost btn-xs" onclick="S._modal.selectedBehs=['__ontask__'];rerender()">On Task Only</button>
+          <button class="btn btn-ghost btn-xs" onclick="S._modal.selectedBehs=[...PRESETS.map(b=>b.id),...S.customs.map(b=>b.id)];rerender()">Select All</button>
+          <button class="btn btn-ghost btn-xs" onclick="S._modal.selectedBehs=[...PRESETS.map(b=>b.id)];rerender()">Defaults Only</button>
           <button class="btn btn-ghost btn-xs" onclick="S._modal.selectedBehs=[];rerender()">Clear</button>
         </div>
-        <p style="font-size:.7rem;color:var(--muted);margin:0 0 6px 0;line-height:1.4">✅ <strong>On Task</strong> is always available for interval recording. Other behaviors come from the library.</p>
         <div style="max-height:160px;overflow-y:auto;display:flex;flex-wrap:wrap;gap:5px;padding:2px">
-          ${allBehsForContext(true).map(b=>{
+          ${allBehs().map(b=>{
             const on=(m.selectedBehs||[]).includes(b.id);
-            const isOnTask=b.id==='__ontask__';
-            return`<div onclick="toggleSessBeh('${b.id}')" style="display:inline-flex;align-items:center;gap:5px;padding:6px 11px;border-radius:8px;border:1.5px solid ${on?'var(--fba-green)':(isOnTask?'var(--accent)':'var(--border)')};background:${on?'var(--fba-mid)':(isOnTask?'var(--accent-soft)':'var(--surface2)')};cursor:pointer;font-size:.78rem;font-weight:700;transition:all .12s">
-              ${on?'<span style="color:var(--fba-green);font-size:.7rem">✓</span>':''}${b.icon?b.icon+' ':''}${esc(b.label)}${isOnTask?' <span style="font-size:.6rem;color:var(--muted);font-weight:600">built-in</span>':''}
+            return`<div onclick="toggleSessBeh('${b.id}')" style="display:inline-flex;align-items:center;gap:5px;padding:6px 11px;border-radius:8px;border:1.5px solid ${on?'var(--fba-green)':'var(--border)'};background:${on?'var(--fba-mid)':'var(--surface2)'};cursor:pointer;font-size:.78rem;font-weight:700;transition:all .12s">
+              ${on?'<span style="color:var(--fba-green);font-size:.7rem">✓</span>':''}${b.icon} ${esc(b.label)}
             </div>`;
           }).join('')}
         </div>
@@ -1820,33 +1721,15 @@ function buildModal(){
 
     <hr class="divider" style="margin:18px 0"/>
 
-    <!-- Behavior Library -->
+    <!-- Behavior Library tab -->
     <div style="margin-bottom:6px">
       <div class="slabel">Behavior Library</div>
-      <p style="font-size:.78rem;color:var(--muted);margin-bottom:8px;line-height:1.5">A glossary of behaviors and operational definitions used across all students and observation types. ${canEditDefinition()?'<strong>You can write or edit operational definitions.</strong>':'Behaviorists and admins write the operational definitions; teachers can add new behaviors with names and icons.'}</p>
-      ${S.customs.length===0?`<div style="background:var(--surface2);border:1.5px dashed var(--border);border-radius:10px;padding:14px;text-align:center;margin-bottom:10px">
-        <div style="font-size:1.4rem;margin-bottom:4px">📋</div>
-        <div style="font-weight:700;font-size:.84rem;color:var(--muted)">Your library is empty</div>
-        <div style="font-size:.72rem;color:var(--muted);margin-top:4px">Add behaviors below — they'll be available across every student and session type. You can also import starter behaviors from each student's settings.</div>
-      </div>`:`<div style="display:flex;flex-direction:column;gap:6px;margin-bottom:12px;max-height:260px;overflow-y:auto">
-        ${S.customs.map(b=>{
-          const hasDef=!!(b.definition&&b.definition.trim());
-          return`<div onclick="openEditBeh('${b.id}',false);closeModal();" style="display:flex;align-items:flex-start;gap:10px;padding:9px 11px;border-radius:9px;border:1.5px solid var(--border);background:var(--surface2);cursor:pointer;transition:all .12s" onmouseover="this.style.borderColor='var(--accent)';this.style.background='var(--accent-soft)'" onmouseout="this.style.borderColor='var(--border)';this.style.background='var(--surface2)'">
-            ${b.icon?`<span style="font-size:1.1rem;flex-shrink:0;line-height:1.2">${b.icon}</span>`:'<span style="width:18px;flex-shrink:0"></span>'}
-            <div style="flex:1;min-width:0">
-              <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap">
-                <span style="font-weight:700;font-size:.84rem">${esc(b.label)}</span>
-                ${hasDef
-                  ? '<span style="font-size:.62rem;background:var(--fba-soft);color:var(--fba-dark);padding:1px 6px;border-radius:8px;font-weight:700">✓ Defined</span>'
-                  : '<span style="font-size:.62rem;background:#fef3c7;color:#92400e;padding:1px 6px;border-radius:8px;font-weight:700">Awaiting definition</span>'}
-              </div>
-              ${hasDef?`<div style="font-size:.72rem;color:var(--muted);margin-top:3px;line-height:1.4;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${esc(b.definition)}</div>`:''}
-            </div>
-            <span style="font-size:.78rem;color:var(--muted);flex-shrink:0">✏️</span>
-          </div>`;
-        }).join('')}
-      </div>`}
-      <button class="btn btn-primary btn-sm" onclick="openAddBeh();closeModal()">+ Add Behavior</button>
+      <p style="font-size:.8rem;color:var(--muted);margin-bottom:12px">${allBehs().length} behaviors · tap to edit, or add custom ones</p>
+      <div style="display:flex;flex-wrap:wrap;gap:6px;margin-bottom:12px">
+        ${PRESETS.map(b=>`<div onclick="openEditBeh('${b.id}',true);closeModal();" style="display:inline-flex;align-items:center;gap:5px;padding:5px 11px;border-radius:8px;border:1.5px solid var(--border);background:var(--surface2);cursor:pointer;font-size:.78rem;font-weight:700;transition:all .15s" onmouseover="this.style.borderColor='var(--accent)';this.style.background='var(--accent-soft)'" onmouseout="this.style.borderColor='var(--border)';this.style.background='var(--surface2)'">${b.icon} ${esc(b.label)}</div>`).join('')}
+        ${S.customs.map(b=>`<div onclick="openEditBeh('${b.id}',false);closeModal();" style="display:inline-flex;align-items:center;gap:5px;padding:5px 11px;border-radius:8px;border:1.5px solid var(--purple);background:var(--purple-soft);cursor:pointer;font-size:.78rem;font-weight:700">${b.icon} ${esc(b.label)} ✏️</div>`).join('')}
+      </div>
+      <button class="btn btn-primary btn-sm" onclick="openAddBeh();closeModal()">+ Add Custom Behavior</button>
     </div>
 
     <hr class="divider" style="margin:18px 0"/>
@@ -1993,7 +1876,7 @@ function buildModal(){
           const hasData=(e.freq||0)>0||(e.durMin||0)>0||e.intensity;
           return`<div style="padding:10px 12px;border-radius:10px;border:1.5px solid ${hasData?'var(--accent)':'var(--border)'};background:${hasData?'var(--accent-soft)':'var(--surface2)'};margin-bottom:6px;transition:all .15s">
             <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px">
-              <span style="font-size:1.1rem">${b.icon||''}</span>
+              <span style="font-size:1.1rem">${b.icon}</span>
               <span style="font-weight:700;font-size:.85rem">${esc(b.label)}</span>
             </div>
             <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:6px">
@@ -2041,12 +1924,7 @@ function buildModal(){
 
       if(tab==='behaviors'){
         const selSet=new Set(sel);
-        // The pool now only shows behaviors already in the user's library —
-        // students don't browse the full library and check things; instead,
-        // they explicitly add behaviors via "+ Custom Behavior" or the starter
-        // dropdown. To preserve the existing "select from library" UX as a
-        // path-of-least-resistance for users with a populated library, we
-        // still render library behaviors as toggleable rows.
+        // Show each behavior as a toggleable row, with reorder arrows for selected ones
         const rows=pool.map((b,i)=>{
           const on=selSet.has(b.id);
           const selIdx=sel.indexOf(b.id);
@@ -2055,7 +1933,7 @@ function buildModal(){
               <div style="width:20px;height:20px;border-radius:5px;border:2px solid ${on?'var(--accent)':'var(--border2)'};background:${on?'var(--accent)':'#fff'};display:flex;align-items:center;justify-content:center;flex-shrink:0;transition:all .15s">
                 ${on?'<span style="color:#fff;font-size:.72rem;font-weight:900">✓</span>':''}
               </div>
-              <span style="font-size:1.1rem">${b.icon||''}</span>
+              <span style="font-size:1.1rem">${b.icon}</span>
               <span style="font-weight:700;font-size:.85rem;color:${on?'var(--accent)':'var(--text)'}">${esc(b.label)}</span>
             </div>
             <div style="display:flex;gap:2px;align-items:center">
@@ -2063,7 +1941,7 @@ function buildModal(){
                 <option value="frequency" ${getBehMeasure(b.id)==='frequency'?'selected':''}>🔢 Freq</option>
                 <option value="duration" ${getBehMeasure(b.id)==='duration'?'selected':''}>⏱ Dur</option>
                 <option value="intensity" ${getBehMeasure(b.id)==='intensity'?'selected':''}>📊 Int</option>
-                <option value="durfreq" ${getBehMeasure(b.id)==='durfreq'?'selected':''}>⏱➕ Dur+Freq</option>
+                ${isBehaviorist()?`<option value="latency" ${getBehMeasure(b.id)==='latency'?'selected':''}>🔄 Lat</option>`:''}
               </select>`:''}
               ${b.custom?`<button onclick="startEditClientBeh('${b.id}')" title="Edit" style="width:24px;height:24px;border:1px solid var(--border);border-radius:5px;background:#fff;cursor:pointer;font-size:.7rem;display:flex;align-items:center;justify-content:center">✏️</button>`:''}
               ${on?`<button onclick="moveClientBeh('${c.id}','${b.id}',-1)" ${selIdx===0?'disabled':''} style="width:24px;height:24px;border:1px solid var(--border);border-radius:5px;background:#fff;cursor:pointer;font-size:.7rem;display:flex;align-items:center;justify-content:center;opacity:${selIdx===0?.3:1}">↑</button>
@@ -2076,47 +1954,11 @@ function buildModal(){
           <div class="slabel mb2">Live Session Preview</div>
           <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:7px">
             ${sel.map(bid=>{const b=pool.find(x=>x.id===bid);return b?`<div style="padding:12px 6px;border-radius:10px;background:var(--surface2);border:1.5px solid var(--border);text-align:center">
-              <div style="font-size:1.4rem">${b.icon||'·'}</div>
+              <div style="font-size:1.4rem">${b.icon}</div>
               <div style="font-size:.65rem;font-weight:700;margin-top:4px;color:var(--text2)">${esc(b.label)}</div>
             </div>`:'';}).join('')}
           </div>
-        </div>`:`<div style="margin-top:14px;background:#fef3c7;border:1.5px solid #fcd34d;border-radius:10px;padding:12px 14px">
-          <div style="font-weight:800;font-size:.84rem;color:#92400e">⚠ No behaviors configured</div>
-          <div style="font-size:.74rem;color:#92400e;margin-top:4px;line-height:1.5">This student must have at least one behavior before any observation session can be started. Add behaviors below — either import from the starter list or create a new one.</div>
-        </div>`;
-
-        // ── Starter list dropdown ──────────────────────────────────────────
-        // Static list of 9 historical defaults. Each row reads the user's
-        // library to detect whether the behavior has already been imported.
-        // Tapping an unimported entry adds it to the library AND attaches it
-        // to this student. Operational definitions stay blank — only
-        // behaviorists/admins can fill them in later via the library editor.
-        const starterOpen=m.starterOpen||false;
-        const starterList=`<div style="background:var(--surface2);border:1.5px solid var(--border);border-radius:10px;margin-top:10px;overflow:hidden">
-          <div onclick="S._modal.starterOpen=${!starterOpen};rerender()" style="display:flex;align-items:center;gap:8px;padding:10px 12px;cursor:pointer;background:${starterOpen?'var(--accent-soft)':'transparent'};transition:background .15s">
-            <span style="font-size:1.1rem">📚</span>
-            <div style="flex:1">
-              <div style="font-weight:700;font-size:.84rem;color:var(--text)">Add from starter list</div>
-              <div style="font-size:.7rem;color:var(--muted)">9 common SPED behaviors — tap one to add it to this student</div>
-            </div>
-            <span style="font-size:.78rem;color:var(--muted)">${starterOpen?'▲':'▼'}</span>
-          </div>
-          ${starterOpen?`<div style="padding:8px 10px 10px;border-top:1px solid var(--border);display:flex;flex-direction:column;gap:5px">
-            ${STARTER_BEHAVIORS.map(s=>{
-              const existing=S.customs.find(x=>x.seedId===s.seedId)||S.customs.find(x=>x.label===s.label);
-              const existingId=existing?existing.id:null;
-              const alreadyOnStudent=existingId?(c.behaviors||[]).includes(existingId):false;
-              return`<div onclick="${alreadyOnStudent?'':"importStarterBehavior('"+s.seedId+"','"+c.id+"')"}" style="display:flex;align-items:center;gap:9px;padding:8px 10px;border-radius:8px;border:1px solid var(--border);background:${alreadyOnStudent?'#ecfdf5':'#fff'};cursor:${alreadyOnStudent?'default':'pointer'};opacity:${alreadyOnStudent?.7:1};transition:all .12s" ${alreadyOnStudent?'':'onmouseover="this.style.borderColor=\'var(--accent)\';this.style.background=\'var(--accent-soft)\'" onmouseout="this.style.borderColor=\'var(--border)\';this.style.background=\'#fff\'"'}>
-                <span style="font-size:1.1rem">${s.icon}</span>
-                <span style="flex:1;font-weight:600;font-size:.82rem">${esc(s.label)}</span>
-                ${alreadyOnStudent
-                  ? '<span style="font-size:.65rem;color:#065f46;font-weight:700">✓ Added</span>'
-                  : '<span style="font-size:.78rem;color:var(--accent);font-weight:700">+ Add</span>'}
-              </div>`;
-            }).join('')}
-            <p style="font-size:.68rem;color:var(--muted);margin:6px 4px 0;line-height:1.5">Operational definitions are blank by default — a behaviorist or admin can add them later in <strong>Settings → Behavior Library</strong>.</p>
-          </div>`:''}
-        </div>`;
+        </div>`:'<p class="muted mt3" style="font-size:.78rem;text-align:center">No behaviors selected — all behaviors will show</p>';
 
         // ── Inline add/edit form ─────────────────────────────────────────
         const editingId=m.editingBehId||null; // custom behavior being edited
@@ -2126,19 +1968,18 @@ function buildModal(){
           <div style="background:var(--surface2);border:1.5px solid var(--accent);border-radius:12px;padding:14px;margin-top:10px">
             <div class="slabel mb2" style="color:var(--accent)">${editingId?'Edit Custom Behavior':'New Custom Behavior'}</div>
             <input class="input mb2" id="cs-beh-label" placeholder="Behavior name…" value="${esc(editingId?(S.customs.find(x=>x.id===editingId)||{}).label||'':'')}"/>
-            <div style="font-size:.72rem;font-weight:700;letter-spacing:1.5px;text-transform:uppercase;color:var(--muted);margin-bottom:6px">Icon <span style="font-weight:400;text-transform:none;letter-spacing:0;font-size:.7rem;margin-left:4px">(optional)</span></div>
+            <div style="font-size:.72rem;font-weight:700;letter-spacing:1.5px;text-transform:uppercase;color:var(--muted);margin-bottom:6px">Icon</div>
             <div style="display:flex;flex-wrap:wrap;gap:5px;margin-bottom:12px">
-              <div onclick="pickClientBehIcon('')" id="csiopt-none" style="padding:6px 10px;border-radius:7px;border:1.5px solid ${(editingId?(S.customs.find(x=>x.id===editingId)||{}).icon:m.newBehIcon)===''||(editingId?(S.customs.find(x=>x.id===editingId)||{}).icon:m.newBehIcon)===undefined?'var(--accent)':'var(--border)'};background:#fff;cursor:pointer;font-size:.7rem;font-weight:700;color:var(--muted);transition:all .12s">No icon</div>
               ${ICON_OPTS.map(ic=>{
-                const curIcon=editingId?((S.customs.find(x=>x.id===editingId)||{}).icon||''):(m.newBehIcon||'');
+                const curIcon=editingId?(S.customs.find(x=>x.id===editingId)||{}).icon||'📌':m.newBehIcon||'📌';
                 return`<div onclick="pickClientBehIcon('${ic}')" id="csiopt-${encodeURIComponent(ic)}" style="padding:6px;border-radius:7px;border:1.5px solid ${curIcon===ic?'var(--accent)':'var(--border)'};background:${curIcon===ic?'var(--accent-soft)':'#fff'};cursor:pointer;font-size:1.1rem;transition:all .12s">${ic}</div>`;
               }).join('')}
             </div>
             <div style="font-size:.72rem;font-weight:700;letter-spacing:1.5px;text-transform:uppercase;color:var(--muted);margin-bottom:6px;margin-top:10px">Measurement Type</div>
-            <div style="display:grid;grid-template-columns:repeat(2,1fr);gap:5px;margin-bottom:12px">
-              ${[{id:'frequency',icon:'🔢',label:'Frequency'},{id:'duration',icon:'⏱',label:'Duration'},{id:'intensity',icon:'📊',label:'Intensity'},{id:'durfreq',icon:'⏱➕',label:'Dur + Freq'}].map(mt=>{
+            <div style="display:flex;gap:5px;margin-bottom:12px">
+              ${[{id:'frequency',icon:'🔢',label:'Frequency'},{id:'duration',icon:'⏱',label:'Duration'},{id:'intensity',icon:'📊',label:'Intensity'}].concat(isBehaviorist()?[{id:'latency',icon:'🔄',label:'Latency'}]:[]).map(mt=>{
                 const curMt=editingId?getBehMeasure(editingId):(m._newMeasure||'duration');
-                return`<div onclick="${editingId?"setBehMeasure('"+editingId+"','"+mt.id+"')":"S._modal._newMeasure='"+mt.id+"';rerender()"}" style="padding:8px 4px;border-radius:8px;border:2px solid ${curMt===mt.id?'var(--accent)':'var(--border)'};background:${curMt===mt.id?'var(--accent-soft)':'#fff'};text-align:center;cursor:pointer;transition:all .12s">
+                return`<div onclick="${editingId?"setBehMeasure('"+editingId+"','"+mt.id+"')":"S._modal._newMeasure='"+mt.id+"';rerender()"}" style="flex:1;padding:8px 4px;border-radius:8px;border:2px solid ${curMt===mt.id?'var(--accent)':'var(--border)'};background:${curMt===mt.id?'var(--accent-soft)':'#fff'};text-align:center;cursor:pointer;transition:all .12s">
                   <div style="font-size:1rem">${mt.icon}</div>
                   <div style="font-size:.68rem;font-weight:700;color:${curMt===mt.id?'var(--accent)':'var(--muted)'}">${mt.label}</div>
                 </div>`;
@@ -2151,20 +1992,12 @@ function buildModal(){
             </div>
           </div>`:
           `<div style="margin-top:10px;display:flex;gap:8px;flex-wrap:wrap">
-            ${pool.length>0?`<button class="btn btn-ghost btn-sm" onclick="selectAllClientBehs('${c.id}')">Select All</button>
-            <button class="btn btn-ghost btn-sm" onclick="clearClientBehs('${c.id}')">Clear</button>`:''}
+            <button class="btn btn-ghost btn-sm" onclick="selectAllClientBehs('${c.id}')">Select All</button>
+            <button class="btn btn-ghost btn-sm" onclick="clearClientBehs('${c.id}')">Clear</button>
             <button class="btn btn-primary btn-sm" style="margin-left:auto" onclick="startAddClientBeh()">+ Custom Behavior</button>
           </div>`;
 
-        // Empty-library hint sits above the rows when the user has no library.
-        const emptyLibHint=pool.length===0?`<div style="background:var(--surface2);border:1.5px dashed var(--border);border-radius:10px;padding:14px;text-align:center;margin-bottom:8px">
-          <div style="font-size:1.2rem;margin-bottom:4px">📋</div>
-          <div style="font-weight:700;font-size:.82rem;color:var(--muted)">No behaviors in your library yet</div>
-          <div style="font-size:.7rem;color:var(--muted);margin-top:3px;line-height:1.5">Add a custom behavior or import one from the starter list below.</div>
-        </div>`:'';
-
-        tabContent=`${emptyLibHint}<div style="max-height:280px;overflow-y:auto;padding-right:4px">${rows}</div>
-          ${(!addingNew&&!editingId)?starterList:''}
+        tabContent=`<div style="max-height:280px;overflow-y:auto;padding-right:4px">${rows}</div>
           ${addOrEditForm}
           ${(!addingNew&&!editingId)?preview:''}`;
       }
@@ -2384,34 +2217,29 @@ function buildRecord(){
     const inc=S.incidents[b.id];
     const oppLabel=getOpposite(b.label);
     const measure=getBehMeasure(b.id);
-    const mIcon=measure==='frequency'?'🔢':measure==='intensity'?'📊':measure==='durfreq'?'⏱➕':'⏱';
-    const measureLabel=measure==='durfreq'?'duration + freq':measure;
+    const mIcon=measure==='frequency'?'🔢':measure==='intensity'?'📊':measure==='latency'?'🔄':'⏱';
     const freqCount=(S.activeSess.events||[]).filter(e=>e.behaviorId===b.id&&e.type==='frequency').length;
-    // Optional icon: render the icon span only when an icon exists.
-    const iconSpan=b.icon?`<span class="beh-icon">${b.icon}</span>`:'';
     if(inc){
-      const hitBadge=(measure==='durfreq'&&inc.hitCount>0)
-        ? `<span style="position:absolute;top:4px;right:6px;background:var(--red);color:#fff;font-size:.68rem;font-weight:800;padding:1px 7px;border-radius:10px">${inc.hitCount} hit${inc.hitCount===1?'':'s'}</span>`
-        : '';
       return`<div class="beh-btn beh-recording" onclick="startIncident('${b.id}')" style="position:relative">
         <span class="beh-icon" style="font-size:1.6rem">✅</span>
         <span class="beh-label" style="color:#b91c1c;font-weight:800">${esc(oppLabel)}</span>
         <span id="inc-timer-${b.id}" style="font-family:'Courier New',monospace;font-size:.7rem;color:var(--red);font-weight:700;margin-top:2px">${fmt(inc.elapsed||0)}</span>
         <span style="position:absolute;top:4px;left:4px;width:7px;height:7px;border-radius:50%;background:var(--red);animation:pulse 1s infinite"></span>
-        ${hitBadge}
       </div>`;
     } else if(measure==='frequency'){
-      return`<div class="beh-btn ${activeIncs.length>0?'beh-dimmed':''}" onclick="startIncident('${b.id}')" style="position:relative">
-        ${iconSpan}
+      // Frequency buttons get a pronounced orange "FREQUENCY" pill + a labeled count badge
+      // (replaces faint "tap to count" muted text — was hard to read at glance during live recording)
+      return`<div class="beh-btn beh-freq ${activeIncs.length>0?'beh-dimmed':''}" onclick="startIncident('${b.id}')" style="position:relative;border-color:#e25d2e;background:linear-gradient(180deg,#fff6f0 0%,#ffe9db 100%)">
+        <span class="beh-icon">${b.icon}</span>
         <span class="beh-label">${esc(b.label)}</span>
-        ${freqCount>0?`<span style="position:absolute;top:4px;right:6px;background:var(--accent);color:#fff;font-size:.68rem;font-weight:800;padding:1px 7px;border-radius:10px">${freqCount}</span>`:''}
-        <span style="font-size:.6rem;color:var(--muted);margin-top:1px">${mIcon} tap to count</span>
+        ${freqCount>0?`<span style="position:absolute;top:4px;right:6px;background:#e25d2e;color:#fff;font-size:.62rem;font-weight:800;padding:2px 8px;border-radius:10px;letter-spacing:.3px;box-shadow:0 1px 3px rgba(226,93,46,.35)">${freqCount} ${freqCount===1?'incident':'incidents'}</span>`:''}
+        <span style="display:inline-block;margin-top:2px;padding:2px 9px;background:#e25d2e;color:#fff;font-size:.6rem;font-weight:800;letter-spacing:.6px;border-radius:8px;text-transform:uppercase">🔢 Frequency</span>
       </div>`;
     } else {
       return`<div class="beh-btn ${activeIncs.length>0?'beh-dimmed':''}" onclick="startIncident('${b.id}')" style="position:relative">
-        ${iconSpan}
+        <span class="beh-icon">${b.icon}</span>
         <span class="beh-label">${esc(b.label)}</span>
-        <span style="font-size:.6rem;color:var(--muted);margin-top:1px">${mIcon} ${measureLabel}</span>
+        <span style="font-size:.6rem;color:var(--muted);margin-top:1px">${mIcon} ${measure}</span>
       </div>`;
     }
   }).join('');
@@ -2421,34 +2249,21 @@ function buildRecord(){
   if(activeIncs.length>0){
     activeCards=`<div class="card mb3" style="background:linear-gradient(135deg,#fde4e6,#ffe4e6);border:2px solid #fca5a5;padding:14px 16px">
       <div class="slabel" style="color:var(--red);margin-bottom:10px">⏱ ${activeIncs.length} Behavior${activeIncs.length>1?'s':''} in Progress — tap button to end</div>
-      ${activeIncs.map(inc=>{
-        const incMeasure=inc.measure||'duration';
-        const isDurFreq=incMeasure==='durfreq';
-        const hitCount=inc.hitCount||0;
-        const iconPrefix=inc.behIcon?inc.behIcon+' ':'';
-        return`<div style="display:flex;align-items:center;gap:10px;padding:10px 12px;background:#fff;border-radius:12px;border:1.5px solid #fca5a5;margin-bottom:8px">
+      ${activeIncs.map(inc=>`<div style="display:flex;align-items:center;gap:10px;padding:10px 12px;background:#fff;border-radius:12px;border:1.5px solid #fca5a5;margin-bottom:8px">
         <div style="flex:1;min-width:0">
-          <div style="font-weight:800;font-size:.88rem;color:var(--red)">${iconPrefix}${esc(inc.behLabel)}</div>
+          <div style="font-weight:800;font-size:.88rem;color:var(--red)">${inc.behIcon} ${esc(inc.behLabel)}</div>
           <div style="margin-top:6px"><div class="slabel" style="font-size:.65rem">Antecedent (A — captured at start)</div>
             <div style="font-size:.78rem;color:var(--muted);margin-top:1px">${inc.abcA?esc(inc.abcA):'<em>none</em>'}</div>
           </div>
           <div style="margin-top:6px"><div class="slabel" style="font-size:.65rem">Notes during behavior</div>
             <textarea style="width:100%;font-size:.78rem;padding:5px 8px;border-radius:8px;border:1px solid var(--border);resize:none;font-family:inherit;margin-top:2px;height:48px" placeholder="Describe what's happening…" oninput="updateIncNote('${inc.behId}',this.value)">${esc(inc.note||'')}</textarea>
           </div>
-          ${isDurFreq?`<div style="margin-top:8px;display:flex;align-items:center;gap:8px;background:var(--surface2);border-radius:8px;padding:6px 8px">
-            <span style="font-size:.7rem;font-weight:700;color:var(--red)">+1 each occurrence</span>
-            <button onclick="incrementIncidentHit('${inc.behId}')" style="margin-left:auto;background:var(--red);color:#fff;border:none;border-radius:8px;padding:6px 14px;font-weight:800;font-size:.85rem;cursor:pointer;font-family:inherit">+1 Hit</button>
-          </div>`:''}
         </div>
         <div style="text-align:center;flex-shrink:0">
           <div id="inc-timer-${inc.behId}" style="font-family:'Courier New',monospace;font-size:1.4rem;font-weight:800;color:var(--red);line-height:1">${fmt(inc.elapsed||0)}</div>
           <div style="font-size:.6rem;color:var(--muted);margin-top:2px">duration</div>
-          ${isDurFreq?`<div style="margin-top:8px;padding-top:6px;border-top:1px solid #fca5a5">
-            <div style="font-family:'Courier New',monospace;font-size:1.4rem;font-weight:800;color:var(--red);line-height:1">${hitCount}</div>
-            <div style="font-size:.6rem;color:var(--muted);margin-top:2px">hits</div>
-          </div>`:''}
         </div>
-      </div>`}).join('')}
+      </div>`).join('')}
     </div>`;
   }
 
@@ -2457,11 +2272,13 @@ function buildRecord(){
   let abcPanel='';
   if(activeIncs.length===0){
     const mTools=[{id:'FREQ',label:'🔢 Frequency',all:true}];
+    if(isBehaviorist()) mTools.push({id:'LAT',label:'⏱ Latency',all:false});
     const mBtns=mTools.map(m=>`<button class="btn btn-sm${S.measureMode===m.id?' btn-primary':' btn-ghost'}" onclick="setMeasure('${m.id}')">${m.label}</button>`).join('');
     let ctrl='';
     if(S.measureMode==='FREQ')ctrl=`<div class="muted mt2" style="text-align:center;font-size:.78rem;padding:8px;background:var(--surface2);border-radius:8px">🔢 <strong>Frequency mode active</strong> — tap any behavior button to log +1 count</div>`;
+    if(S.measureMode==='LAT')ctrl=`<div style="text-align:center;margin-top:10px"><p class="muted mb2" style="font-size:.8rem">Latency timer</p><div class="timer" id="lat-timer">${fmt(S.latElapsed)}</div><button class="btn mt2" style="width:100%;justify-content:center;font-size:.92rem;padding:12px;${S.latRunning?'background:#fee2e2;color:var(--red);border:1.5px solid #fca5a5':'background:var(--purple-soft);color:var(--purple);border:1.5px solid #ddd6fe'}" onclick="toggleLat()">${S.latRunning?'⏹ Stop & Log':'▶ Start Latency'}</button></div>`;
     abcPanel=`<div class="card mb3" style="padding:14px 16px${isFba?';background:var(--fba-soft);border-color:var(--fba-mid)':''}">
-      <div class="slabel" style="margin-bottom:6px${isFba?';color:var(--fba-dark)':''}">Antecedent <span class="muted" style="font-weight:400;text-transform:none;letter-spacing:0;font-size:.75rem;margin-left:6px">What's happening before — captured when you tap a behavior</span></div>
+      <div class="slabel" style="margin-bottom:6px${isFba?';color:var(--fba-dark)':''}">Antecedent <span class="muted" style="font-weight:400;text-transform:none;letter-spacing:0;font-size:.75rem;margin-left:6px">What’s happening before — captured when you tap a behavior</span></div>
       <input class="input mb3" id="abc-a" placeholder="Describe what happened before the behavior…" value="${esc(S.abcA)}" oninput="S.abcA=this.value" style="${isFba?'border-color:var(--fba-mid)':''}"/>
       <div class="row between"><span class="slabel" style="margin:0">Additional Tools</span><div class="row gap1">${mBtns}</div></div>${ctrl}
     </div>`;
@@ -2476,16 +2293,11 @@ function buildRecord(){
     const ei=events.length-1-ri;
     const intPills=(ev.type==='duration'||ev.type==='intensity'||ev.type==='frequency')?
       '<div style="display:flex;gap:3px;margin-top:4px">'+[1,2,3,4].map(l=>'<div onclick="setEvIntensity('+ei+','+l+')" style="padding:2px 8px;border-radius:6px;font-size:.65rem;font-weight:700;cursor:pointer;background:'+(ev.intensity===l?INT_COLORS[l]:'var(--surface2)')+';color:'+(ev.intensity===l?INT_TEXT[l]:'var(--muted)')+'">'+INT_LABELS[l]+'</div>').join('')+'</div>':'';
-    // Latency events from old data still display "LAT"; new events are FREQ/DUR/INT
-    const evBadgeClass=ev.type==='frequency'?'freq':ev.type==='duration'?'dur':ev.type==='intensity'?'int':'lat';
-    const evBadgeLabel=ev.type==='frequency'?'FREQ':ev.type==='duration'?'DUR':ev.type==='intensity'?'INT':'LAT';
-    // Hit count display for durfreq events
-    const hitCountStr=(ev.type==='duration'&&ev.hitCount&&ev.hitCount>0)?' · '+ev.hitCount+' hit'+(ev.hitCount===1?'':'s'):'';
     return `<div class="ev-row" style="position:relative">
-    <span class="ev-badge b-${evBadgeClass}">${evBadgeLabel}</span>
+    <span class="ev-badge b-${ev.type==='frequency'?'freq':ev.type==='duration'?'dur':ev.type==='intensity'?'int':'lat'}">${ev.type==='frequency'?'FREQ':ev.type==='duration'?'DUR':ev.type==='intensity'?'INT':'LAT'}</span>
     <div style="flex:1">
       <div style="font-size:.84rem;font-weight:700">${ev.behaviorIcon||''} ${esc(ev.behaviorLabel||'')}</div>
-      <div class="muted" style="font-size:.74rem">${fmtTime(ev.timestamp)}${ev.type==='duration'?' · '+fmt(ev.durationMs):''}${hitCountStr}${ev.type==='intensity'&&ev.intensity?' · '+INT_LABELS[ev.intensity]:''}${ev.type==='latency'?' · '+fmt(ev.latencyMs):''}${ev.consequence?' · C: '+esc(ev.consequence):''}${ev.note?'<br><span style="color:var(--text2)">📝 '+esc(ev.note)+'</span>':''}</div>
+      <div class="muted" style="font-size:.74rem">${fmtTime(ev.timestamp)}${ev.type==='duration'?' · '+fmt(ev.durationMs):''}${ev.type==='intensity'&&ev.intensity?' · '+INT_LABELS[ev.intensity]:''}${ev.type==='latency'?' · '+fmt(ev.latencyMs):''}${ev.consequence?' · C: '+esc(ev.consequence):''}${ev.note?'<br><span style="color:var(--text2)">📝 '+esc(ev.note)+'</span>':''}</div>
       <input style="width:100%;margin-top:4px;padding:4px 8px;border:1px solid var(--border);border-radius:6px;font-size:.72rem;font-family:inherit;background:var(--surface2)" placeholder="Antecedent — what happened before…" value="${esc(ev.antecedent||'')}" oninput="setEvField(${ei},'antecedent',this.value)"/>
       ${intPills}
     </div>
@@ -2504,11 +2316,7 @@ function buildRecord(){
     <textarea class="input" placeholder="Document emerging behavioral function hypotheses, patterns observed, ecological variables…" oninput="S.fbaHypothesis=this.value" style="min-height:70px;border-color:var(--fba-mid)">${esc(S.fbaHypothesis||'')}</textarea>
   </div>`:'';
 
-  // "Add behavior on the fly" — available in every live recording mode so an
-  // observer can capture an unexpected behavior without leaving the session.
-  // The new behavior is added to the user's library AND attached to the
-  // active student so the button appears immediately.
-  const addBehOnFly='<div style="display:flex;gap:6px;margin-bottom:12px;align-items:center"><input class="input" id="live-add-beh" placeholder="Add new behavior on the fly…" style="flex:1;font-size:.82rem;padding:8px 10px" onkeydown="if(event.key===\'Enter\')liveAddBeh()"/><button class="btn btn-primary btn-xs" onclick="liveAddBeh()" style="white-space:nowrap">+ Add</button></div>';
+  const addBehOnFly=isInitial?'<div style="display:flex;gap:6px;margin-bottom:12px;align-items:center"><input class="input" id="live-add-beh" placeholder="Add new behavior on the fly…" style="flex:1;font-size:.82rem;padding:8px 10px" onkeydown="if(event.key===\'Enter\')liveAddBeh()"/><button class="btn btn-primary btn-xs" onclick="liveAddBeh()" style="white-space:nowrap">+ Add</button></div>':'';
 
   return `<div class="sub-view"><div class="live-banner" style="${isFba?fbaBannerStyle:overTime?'background:linear-gradient(135deg,#fde4e6,#ffe4e6);border-color:#fca5a5':''}"><div class="row gap2"><span class="live-dot" style="${overTime?'background:var(--red)':isFba?'background:var(--fba-green)':''}"></span><div><div style="font-weight:800;color:${isFba?'var(--fba-dark)':overTime?'var(--red)':'var(--green)'}">Live${isFba?' FBA':''} Session — ${esc(S.selClient.name)}${isFba&&sess.behavioristName?' <span style="font-size:.72rem;font-weight:600;color:var(--fba-green)">· '+esc(sess.behavioristName)+'</span>':''}</div>
           ${sess.location?`<div style="font-size:.74rem;color:var(--muted);margin-top:1px">📍 ${esc(sess.location)} · ${new Date(sess.startedAt).toLocaleTimeString('en-US',{hour:'numeric',minute:'2-digit',hour12:true})}</div>`:`<div style="font-size:.74rem;color:var(--muted);margin-top:1px">${new Date(sess.startedAt).toLocaleTimeString('en-US',{hour:'numeric',minute:'2-digit',hour12:true})}</div>`}<div class="row gap2 mt1" style="flex-wrap:wrap"><span class="muted mono" id="sess-elapsed" style="font-size:.8rem">${fmt(elapsedNow)} elapsed</span>${plannedMs?`<span id="sess-remain" class="mono" style="font-size:.8rem;font-weight:700;color:${overTime?'var(--red)':'var(--muted)'}">${overTime?'⚠ +'+fmt(elapsedNow-plannedMs)+' over':'⏱ '+fmt(remainMs)+' left'}</span>`:''}</div></div></div><div class="row gap2">${sessionTypeBadge}<button class="btn btn-danger btn-sm" onclick="endSession()">⏹ End</button></div></div>${liveGoals}<div class="slabel" style="margin-bottom:10px">${isGoalSpec?'IEP Goal Behaviors':isGeneral?'Configured Behaviors':isFba?'All Behaviors — Behaviorist Observation':isInitial?'Assessment Behaviors':'All Behaviors'}</div>${abcPanel}${behs.length===0?`<div style="background:var(--surface2);border:1.5px dashed var(--border);border-radius:12px;padding:24px;text-align:center;margin-bottom:16px"><div style="font-size:2rem;margin-bottom:8px">📋</div><div style="font-weight:700;color:var(--muted);font-size:.88rem">No behaviors selected yet</div><div style="font-size:.74rem;color:var(--muted);margin-top:4px">Tap the settings icon to choose behaviors to track for this student.</div></div>`:`<div class="beh-grid-wrap mb3"><div class="beh-grid-standalone">${behGrid}</div></div>`}${addBehOnFly}${activeCards}${evFeed}${fbaHypField||''}</div>`;
@@ -2588,22 +2396,16 @@ function buildMultiRecord(){
   const behGrid=behs.map(b=>{
     const inc=slotIncs[b.id];
     const oppLabel=getOpposite(b.label);
-    const measure=getBehMeasure(b.id);
-    const iconSpan=b.icon?`<span class="beh-icon">${b.icon}</span>`:'';
     if(inc){
-      const hitBadge=(measure==='durfreq'&&inc.hitCount>0)
-        ? `<span style="position:absolute;top:4px;right:6px;background:var(--red);color:#fff;font-size:.68rem;font-weight:800;padding:1px 7px;border-radius:10px">${inc.hitCount} hit${inc.hitCount===1?'':'s'}</span>`
-        : '';
       return`<div class="beh-btn beh-recording" onclick="mStartIncident('${b.id}')" style="position:relative">
         <span class="beh-icon" style="font-size:1.6rem">✅</span>
         <span class="beh-label" style="color:#b91c1c;font-weight:800">${esc(oppLabel)}</span>
         <span id="inc-timer-m-${b.id}" style="font-family:'Courier New',monospace;font-size:.7rem;color:var(--red);font-weight:700;margin-top:2px">${fmt(inc.elapsed||0)}</span>
         <span style="position:absolute;top:4px;left:4px;width:7px;height:7px;border-radius:50%;background:var(--red);animation:pulse 1s infinite"></span>
-        ${hitBadge}
       </div>`;
     } else {
       return`<div class="beh-btn ${activeSlotIncs.length>0?'beh-dimmed':''}" onclick="mStartIncident('${b.id}')">
-        ${iconSpan}
+        <span class="beh-icon">${b.icon}</span>
         <span class="beh-label">${esc(b.label)}</span>
       </div>`;
     }
@@ -2614,34 +2416,21 @@ function buildMultiRecord(){
   if(activeSlotIncs.length>0){
     activeCards=`<div class="card mb3" style="background:linear-gradient(135deg,#fde4e6,#ffe4e6);border:2px solid #fca5a5;padding:14px 16px">
       <div class="slabel" style="color:var(--red);margin-bottom:10px">⏱ ${activeSlotIncs.length} Behavior${activeSlotIncs.length>1?'s':''} in Progress — tap button to end</div>
-      ${activeSlotIncs.map(inc=>{
-        const incMeasure=inc.measure||'duration';
-        const isDurFreq=incMeasure==='durfreq';
-        const hitCount=inc.hitCount||0;
-        const iconPrefix=inc.behIcon?inc.behIcon+' ':'';
-        return`<div style="display:flex;align-items:center;gap:10px;padding:10px 12px;background:#fff;border-radius:12px;border:1.5px solid #fca5a5;margin-bottom:8px">
+      ${activeSlotIncs.map(inc=>`<div style="display:flex;align-items:center;gap:10px;padding:10px 12px;background:#fff;border-radius:12px;border:1.5px solid #fca5a5;margin-bottom:8px">
         <div style="flex:1;min-width:0">
-          <div style="font-weight:800;font-size:.88rem;color:var(--red)">${iconPrefix}${esc(inc.behLabel)}</div>
+          <div style="font-weight:800;font-size:.88rem;color:var(--red)">${inc.behIcon} ${esc(inc.behLabel)}</div>
           <div style="margin-top:6px"><div class="slabel" style="font-size:.65rem">Antecedent (captured at start)</div>
             <div style="font-size:.78rem;color:var(--muted);margin-top:1px">${inc.abcA?esc(inc.abcA):'<em>none</em>'}</div>
           </div>
           <div style="margin-top:6px"><div class="slabel" style="font-size:.65rem">Notes during behavior</div>
             <textarea style="width:100%;font-size:.78rem;padding:5px 8px;border-radius:8px;border:1px solid var(--border);resize:none;font-family:inherit;margin-top:2px;height:48px" placeholder="Describe what's happening…" oninput="mUpdateIncNote('${inc.behId}',this.value)">${esc(inc.note||'')}</textarea>
           </div>
-          ${isDurFreq?`<div style="margin-top:8px;display:flex;align-items:center;gap:8px;background:var(--surface2);border-radius:8px;padding:6px 8px">
-            <span style="font-size:.7rem;font-weight:700;color:var(--red)">+1 each occurrence</span>
-            <button onclick="mIncrementIncidentHit('${inc.behId}')" style="margin-left:auto;background:var(--red);color:#fff;border:none;border-radius:8px;padding:6px 14px;font-weight:800;font-size:.85rem;cursor:pointer;font-family:inherit">+1 Hit</button>
-          </div>`:''}
         </div>
         <div style="text-align:center;flex-shrink:0">
           <div id="inc-timer-m-${inc.behId}" style="font-family:'Courier New',monospace;font-size:1.4rem;font-weight:800;color:var(--red);line-height:1">${fmt(inc.elapsed||0)}</div>
           <div style="font-size:.6rem;color:var(--muted);margin-top:2px">duration</div>
-          ${isDurFreq?`<div style="margin-top:8px;padding-top:6px;border-top:1px solid #fca5a5">
-            <div style="font-family:'Courier New',monospace;font-size:1.4rem;font-weight:800;color:var(--red);line-height:1">${hitCount}</div>
-            <div style="font-size:.6rem;color:var(--muted);margin-top:2px">hits</div>
-          </div>`:''}
         </div>
-      </div>`}).join('')}
+      </div>`).join('')}
     </div>`;
   }
 
@@ -2650,9 +2439,11 @@ function buildMultiRecord(){
   if(activeSlotIncs.length===0){
     const mm=slot.measureMode;
     const mTools2=[{id:'FREQ',label:'🔢 Frequency'}];
+    if(isBehaviorist()) mTools2.push({id:'LAT',label:'⏱ Latency'});
     const mBtns=mTools2.map(m=>`<button class="btn btn-sm${mm===m.id?' btn-primary':' btn-ghost'}" onclick="mSetMeasure('${m.id}')">${m.label}</button>`).join('');
     let ctrl='';
     if(mm==='FREQ')ctrl=`<div class="muted mt2" style="text-align:center;font-size:.78rem;padding:8px;background:var(--surface2);border-radius:8px">🔢 <strong>Frequency mode</strong> — tap behavior buttons to count</div>`;
+    if(mm==='LAT')ctrl=`<div style="text-align:center;margin-top:10px"><p class="muted mb2" style="font-size:.8rem">Latency timer</p><div class="timer" id="lat-timer">${fmt(slot.latElapsed||0)}</div><button class="btn mt2" style="width:100%;justify-content:center;font-size:.92rem;padding:12px;${slot.latRunning?'background:#fee2e2;color:var(--red);border:1.5px solid #fca5a5':'background:var(--purple-soft);color:var(--purple);border:1.5px solid #ddd6fe'}" onclick="mToggleLat()">${slot.latRunning?'⏹ Stop & Log':'▶ Start Latency'}</button></div>`;
     measurePanel=`<div class="card mb3" style="padding:14px 16px">
       <div class="slabel" style="margin-bottom:10px">Antecedent <span class="muted" style="font-weight:400;text-transform:none;letter-spacing:0;font-size:.75rem;margin-left:6px">What's happening before — captured when you tap a behavior</span></div>
       <input class="input mb3" placeholder="Describe what happened before the behavior…" value="${esc(slot.abcA||'')}" oninput="setCs({abcA:this.value})"/>
@@ -2664,12 +2455,7 @@ function buildMultiRecord(){
     </div>`;
   }
 
-  const evFeed=events.length>0?`<div class="card mb3"><div class="slabel">Events — ${esc(slot.clientName)} (${events.length})</div><div class="scroll">${[...events].reverse().map(ev=>{
-    const evBadgeClass=ev.type==='frequency'?'freq':ev.type==='duration'?'dur':ev.type==='intensity'?'int':'lat';
-    const evBadgeLabel=ev.type==='frequency'?'FREQ':ev.type==='duration'?'DUR':ev.type==='intensity'?'INT':'LAT';
-    const hitCountStr=(ev.type==='duration'&&ev.hitCount&&ev.hitCount>0)?' · '+ev.hitCount+' hit'+(ev.hitCount===1?'':'s'):'';
-    return `<div class="ev-row"><span class="ev-badge b-${evBadgeClass}">${evBadgeLabel}</span><div style="flex:1"><div style="font-size:.84rem;font-weight:700">${ev.behaviorIcon||''} ${esc(ev.behaviorLabel)}</div><div class="muted">${fmtTime(ev.timestamp)}${ev.type==='duration'?' · '+fmt(ev.durationMs):''}${hitCountStr}${ev.type==='intensity'?' · '+INT_LABELS[ev.intensity]:''}${ev.type==='latency'?' · '+fmt(ev.latencyMs):''}${ev.antecedent?' · A: '+esc(ev.antecedent):''}${ev.consequence?' · C: '+esc(ev.consequence):''}${ev.note?'<br><span style="color:var(--text2)">📝 '+esc(ev.note)+'</span>':''}</div></div></div>`;
-  }).join('')}</div></div>`:'';
+  const evFeed=events.length>0?`<div class="card mb3"><div class="slabel">Events — ${esc(slot.clientName)} (${events.length})</div><div class="scroll">${[...events].reverse().map(ev=>`<div class="ev-row"><span class="ev-badge b-${ev.type==='frequency'?'freq':ev.type==='duration'?'dur':ev.type==='intensity'?'int':'lat'}">${ev.type==='frequency'?'FREQ':ev.type==='duration'?'DUR':ev.type==='intensity'?'INT':'LAT'}</span><div style="flex:1"><div style="font-size:.84rem;font-weight:700">${ev.behaviorIcon} ${esc(ev.behaviorLabel)}</div><div class="muted">${fmtTime(ev.timestamp)}${ev.type==='duration'?' · '+fmt(ev.durationMs):''}${ev.type==='intensity'?' · '+INT_LABELS[ev.intensity]:''}${ev.type==='latency'?' · '+fmt(ev.latencyMs):''}${ev.antecedent?' · A: '+esc(ev.antecedent):''}${ev.consequence?' · C: '+esc(ev.consequence):''}${ev.note?'<br><span style="color:var(--text2)">📝 '+esc(ev.note)+'</span>':''}</div></div></div>`).join('')}</div></div>`:'';
 
   return`<div class="sub-view">${tabBar}
   <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px">
@@ -2689,13 +2475,11 @@ function buildSummary(){
   const events=sess.events||[];
   const byB={};
   events.forEach(ev=>{
-    if(!byB[ev.behaviorLabel])byB[ev.behaviorLabel]={label:ev.behaviorLabel,icon:ev.behaviorIcon||'',freq:0,durs:[],ints:[],lats:[],hits:0,abcs:[]};
+    if(!byB[ev.behaviorLabel])byB[ev.behaviorLabel]={label:ev.behaviorLabel,icon:ev.behaviorIcon,freq:0,durs:[],ints:[],lats:[],abcs:[]};
     if(ev.type==='frequency')byB[ev.behaviorLabel].freq++;
     if(ev.type==='duration')byB[ev.behaviorLabel].durs.push(ev.durationMs);
     if(ev.type==='intensity')byB[ev.behaviorLabel].ints.push(ev.intensity);
     if(ev.type==='latency')byB[ev.behaviorLabel].lats.push(ev.latencyMs);
-    // Duration+Frequency hits — accumulate alongside duration entries.
-    if(ev.hitCount&&ev.hitCount>0)byB[ev.behaviorLabel].hits+=ev.hitCount;
     if(ev.antecedent||ev.consequence||ev.note)byB[ev.behaviorLabel].abcs.push({t:ev.timestamp,a:ev.antecedent,c:ev.consequence,n:ev.note});
   });
   const bList=Object.values(byB);
@@ -2714,7 +2498,7 @@ function buildSummary(){
         const total=b.freq+b.durs.length+b.ints.length+b.lats.length;
         const alreadyHas=cg.some(g=>g.behaviorLabel===b.label);
         return`<div class="row between" style="padding:8px 0;border-bottom:1px solid #e9d5ff">
-          <div class="row gap2"><span style="font-size:1.1rem">${b.icon||''}</span>
+          <div class="row gap2"><span style="font-size:1.1rem">${b.icon}</span>
             <div><div style="font-weight:700;font-size:.88rem">${esc(b.label)}</div>
             <div class="muted">${total} event${total!==1?'s':''} this session</div></div>
           </div>
@@ -2741,58 +2525,27 @@ function buildSummary(){
   }
 
   const chart=bList.length>0?buildBarChart(bList.map(b=>({label:b.label,val:b.freq+b.durs.length+b.ints.length+b.lats.length})),'Events'):'';
-  const mechBadge=sess.sessType==='initial'?`<span class="tag" style="background:var(--purple-soft);color:var(--purple);margin-left:9px">🔍 Initial Assessment</span>`
+  const typeBadge=sess.sessType==='initial'?`<span class="tag" style="background:var(--purple-soft);color:var(--purple);margin-left:9px">🔍 Initial Assessment</span>`
     :sess.sessType==='tracking'?`<span class="tag" style="background:var(--accent-soft);color:var(--accent);margin-left:9px">🎯 Goal-Specific</span>`
     :sess.sessType==='general'?`<span class="tag" style="background:var(--amber-soft);color:var(--amber);margin-left:9px">📋 General Tracking</span>`
-    :sess.sessType==='interval'?`<span class="tag" style="background:var(--fba-soft);color:var(--fba-green);margin-left:9px">⏲️ Interval Recording</span>`
     :sess.sessType==='fba'?`<span class="tag" style="background:var(--fba-soft);color:var(--fba-green);margin-left:9px;font-weight:800">🧠 Behaviorist Observation</span>`
     :sess.sessType==='manual'?`<span class="tag" style="background:var(--orange-soft);color:var(--orange);margin-left:9px">📝 Manual Entry</span>`:'';
-  // FBA-context sub-badge for sessions that count toward the build-out but
-  // aren't legacy 'fba' type.
-  const fbaSubBadge=(sess.fbaContext && sess.sessType!=='fba')
-    ? `<span class="tag" style="background:var(--fba-soft);color:var(--fba-green);margin-left:6px;font-weight:800">🧠 FBA</span>`
-    : '';
-  const typeBadge=mechBadge+fbaSubBadge;
 
-  // Behaviorist metadata card — shown for any session that counts toward the
-  // FBA build-out: legacy Behaviorist Observation sessions (sessType==='fba')
-  // OR sessions started from the FBA sub-type picker (fbaContext:true).
-  // Setting Events, Hypothesis Notes, and Behaviorist Name are all editable
-  // post-hoc on the summary screen, so behaviorists who recorded via Interval
-  // or Manual Entry can still capture those FBA-specific fields after the fact.
-  const isFbaContextSess=isFbaForBuildOut(sess);
-  const setEventsList=Array.isArray(sess.settingEvents)?sess.settingEvents:[];
-  // Standard setting event categories — match what the legacy FBA recording UI offers.
-  const SETTING_EVENT_OPTS=['Sleep deprivation','Hunger','Illness','Medication change','Family stressor','Schedule change','Sensory overload','Recent transition'];
-  const fbaMetaCard=isFbaContextSess?`<div class="card mb3" style="background:var(--fba-soft);border:1.5px solid var(--fba-mid);padding:13px 15px">
-    <div class="slabel" style="color:var(--fba-dark);margin-bottom:10px">🧠 Behaviorist Notes</div>
-    <div style="margin-bottom:10px">
-      <div style="font-size:.7rem;font-weight:700;color:var(--fba-dark);text-transform:uppercase;letter-spacing:1px;margin-bottom:4px">Behaviorist Name</div>
-      <input class="input" placeholder="Behaviorist name…" value="${esc(sess.behavioristName||'')}" oninput="updateSessFbaField('${sess.id}','behavioristName',this.value)" style="font-size:.84rem;border-color:var(--fba-mid);background:#fff"/>
-    </div>
-    <div style="margin-bottom:10px">
-      <div style="font-size:.7rem;font-weight:700;color:var(--fba-dark);text-transform:uppercase;letter-spacing:1px;margin-bottom:6px">Setting Events Present</div>
-      <div style="display:flex;flex-wrap:wrap;gap:5px;margin-bottom:6px">
-        ${SETTING_EVENT_OPTS.map(opt=>{
-          const on=setEventsList.includes(opt);
-          return`<div onclick="toggleSessSettingEvent('${sess.id}','${opt.replace(/'/g,"\\'")}')" style="padding:5px 10px;border-radius:16px;border:1.5px solid ${on?'var(--fba-green)':'var(--border)'};background:${on?'var(--fba-green)':'#fff'};color:${on?'#fff':'var(--muted)'};cursor:pointer;font-size:.7rem;font-weight:700;transition:all .12s">${on?'✓ ':''}${esc(opt)}</div>`;
-        }).join('')}
-      </div>
-      <input class="input" placeholder="Other setting event notes…" value="${esc(sess.settingEventsNote||'')}" oninput="updateSessFbaField('${sess.id}','settingEventsNote',this.value)" style="font-size:.78rem;border-color:var(--fba-mid);background:#fff"/>
-    </div>
-    <div style="margin-bottom:6px">
-      <div style="font-size:.7rem;font-weight:700;color:var(--fba-dark);text-transform:uppercase;letter-spacing:1px;margin-bottom:4px">Hypothesis Notes</div>
-      <textarea class="input" placeholder="Document emerging behavioral function hypotheses, patterns observed, ecological variables…" oninput="updateSessFbaField('${sess.id}','fbaHypothesis',this.value)" style="min-height:70px;border-color:var(--fba-mid);background:#fff;font-size:.82rem">${esc(sess.fbaHypothesis||'')}</textarea>
-    </div>
-    <div style="margin-top:8px;font-size:.7rem;color:var(--fba-green);font-style:italic;border-top:1px solid var(--fba-mid);padding-top:8px">This session counts toward the FBA build-out for ${esc(sess.clientName||'this student')}. Supplemental reports from other session types are reference data only.</div>
+  // behaviorist session metadata card (shown in summary when it's an behaviorist session)
+  const fbaMetaCard=isFbaSess?`<div class="card mb3" style="background:var(--fba-soft);border:1.5px solid var(--fba-mid);padding:13px 15px">
+    <div class="slabel" style="color:var(--fba-dark);margin-bottom:10px">🧠 Behaviorist Session Data</div>
+    ${sess.behavioristName?`<div style="margin-bottom:8px;font-size:.82rem"><strong>Behaviorist:</strong> ${esc(sess.behavioristName)}</div>`:''}
+    ${sess.settingEvents&&sess.settingEvents.length?`<div style="margin-bottom:8px"><div style="font-size:.73rem;font-weight:700;color:var(--fba-dark);margin-bottom:4px">Setting Events Present:</div><div style="display:flex;flex-wrap:wrap;gap:5px">${sess.settingEvents.map(s=>`<span style="padding:3px 9px;border-radius:16px;background:var(--fba-green);color:#fff;font-size:.7rem;font-weight:700">${s}</span>`).join('')}</div></div>`:''}
+    ${sess.settingEventsNote?`<div style="margin-bottom:8px;font-size:.78rem;color:var(--text2)"><strong>Setting notes:</strong> ${esc(sess.settingEventsNote)}</div>`:''}
+    ${sess.fbaHypothesis?`<div style="margin-bottom:6px"><div style="font-size:.73rem;font-weight:700;color:var(--fba-dark);margin-bottom:4px">Behaviorist Hypothesis Notes:</div><div style="font-size:.78rem;color:var(--text2);background:rgba(255,255,255,.6);border-radius:8px;padding:8px 10px;border-left:3px solid var(--fba-green)">${esc(sess.fbaHypothesis)}</div></div>`:''}
+    <div style="margin-top:8px;font-size:.7rem;color:var(--fba-green);font-style:italic;border-top:1px solid var(--fba-mid);padding-top:8px">Supplemental reports from other session types are reference data only. FBA conclusions are those of the behaviorist.</div>
   </div>`:'';
 
   const bCards=bList.map(b=>`<div class="card mb2">
-    <h3>${b.icon?b.icon+' ':''}${esc(b.label)}</h3>
+    <h3>${b.icon} ${esc(b.label)}</h3>
     <div class="row gap2 mt2 wrap">
       ${b.freq>0?`<span class="tag" style="background:var(--sky-soft);color:var(--sky)">Frequency: ${b.freq}</span>`:''}
       ${b.durs.length>0?`<span class="tag" style="background:var(--green-soft);color:var(--green)">Avg Duration: ${fmt(b.durs.reduce((a,v)=>a+v,0)/b.durs.length)}</span>`:''}
-      ${b.hits>0?`<span class="tag" style="background:#fee2e2;color:#991b1b">Total Hits: ${b.hits}</span>`:''}
       ${b.ints.length>0?`<span class="tag" style="background:var(--yellow-soft);color:#92400e">Avg Intensity: ${(b.ints.reduce((a,v)=>a+v,0)/b.ints.length).toFixed(1)}/4</span>`:''}
       ${b.lats.length>0?`<span class="tag" style="background:var(--purple-soft);color:var(--purple)">Avg Latency: ${fmt(b.lats.reduce((a,v)=>a+v,0)/b.lats.length)}</span>`:''}
     </div>
@@ -2853,20 +2606,10 @@ function buildHistory(){
   const rows=cs.length===0
     ?`<div class="empty"><div class="empty-icon">📋</div><p>No sessions recorded yet.</p></div>`
     :cs.map(s=>{
-      // Mechanic badge — what kind of session this was.
-      const mechBadge=s.sessType==='initial'?`<span class="tag" style="background:var(--purple-soft);color:var(--purple);font-size:.65rem">🔍</span>`
+      const typeBadge=s.sessType==='initial'?`<span class="tag" style="background:var(--purple-soft);color:var(--purple);font-size:.65rem">🔍</span>`
         :s.sessType==='tracking'?`<span class="tag" style="background:var(--accent-soft);color:var(--accent);font-size:.65rem">🎯</span>`
         :s.sessType==='general'?`<span class="tag" style="background:var(--amber-soft);color:var(--amber);font-size:.65rem">📋</span>`
-        :s.sessType==='interval'?`<span class="tag" style="background:var(--fba-soft);color:var(--fba-green);font-size:.65rem">⏲️</span>`
-        :s.sessType==='manual'?`<span class="tag" style="background:var(--orange-soft);color:var(--orange);font-size:.65rem">📝</span>`
         :s.sessType==='fba'?`<span class="tag" style="background:var(--fba-soft);color:var(--fba-green);font-size:.65rem;font-weight:800">🧠</span>`:'';
-      // FBA-context sub-badge — appears alongside the mechanic badge for any
-      // session that counts toward the FBA build-out (excluding legacy 'fba'
-      // type, which already has the 🧠 badge above).
-      const fbaSubBadge=(s.fbaContext && s.sessType!=='fba')
-        ? `<span class="tag" style="background:var(--fba-soft);color:var(--fba-green);font-size:.62rem;font-weight:800">🧠 FBA</span>`
-        : '';
-      const typeBadge=mechBadge+fbaSubBadge;
       return`<div class="chip mb2" onclick="goSummary('${s.id}')">
         <div class="row gap2"><div>
           <div class="row gap2"><span style="font-weight:700">${fmtDate(s.startedAt)} · ${fmtTime(s.startedAt)}</span>${typeBadge}</div>
@@ -2890,7 +2633,7 @@ function buildGoals(){
     <div class="grid2 mt2">
       <div><div class="muted mb1">Behavior</div>
         <select class="input" id="goal-beh"><option value="">Select…</option>
-          ${allBehs().map(b=>`<option value="${esc(b.label)}">${b.icon?b.icon+' ':''}${esc(b.label)}</option>`).join('')}
+          ${allBehs().map(b=>`<option value="${esc(b.label)}">${b.icon} ${esc(b.label)}</option>`).join('')}
         </select></div>
       <div><div class="muted mb1">Max occurrences per session</div>
         <input class="input" type="number" min="0" id="goal-target" placeholder="e.g. 3"/></div>
@@ -2962,7 +2705,7 @@ function buildReports(){
   const initSess=filtered.filter(s=>s.sessType==='initial').length;
   const genSess=filtered.filter(s=>s.sessType==='general').length;
   const trackSess=filtered.filter(s=>s.sessType==='tracking').length;
-  const fbaSess=filtered.filter(isFbaForBuildOut).length;
+  const fbaSess=filtered.filter(s=>s.sessType==='fba').length;
 
   return`<div class="row between mb3"><div class="slabel" style="margin:0;align-self:center">Session Report</div><button class="btn btn-orange btn-sm" onclick="doExportPDF()">⬇ PDF</button></div>
   <div class="card mb3">
@@ -3057,7 +2800,7 @@ function buildMultiSummary(){
             <div class="row gap2 mt1">
               <span class="muted" style="font-size:.78rem">${events.length} event${events.length!==1?'s':''}</span>
               <span class="muted" style="font-size:.78rem">${fmt(sess.endedAt-sess.startedAt)}</span>
-              <span class="tag" style="font-size:.65rem;background:${sess.sessType==='tracking'?'var(--accent-soft)':sess.sessType==='general'?'var(--amber-soft)':sess.sessType==='fba'?'var(--fba-soft)':sess.sessType==='interval'?'var(--fba-soft)':sess.sessType==='manual'?'var(--orange-soft)':'var(--purple-soft)'};color:${sess.sessType==='tracking'?'var(--accent)':sess.sessType==='general'?'var(--amber)':sess.sessType==='fba'?'var(--fba-green)':sess.sessType==='interval'?'var(--fba-green)':sess.sessType==='manual'?'var(--orange)':'var(--purple)'};${sess.sessType==='fba'?'font-weight:800':''}">${sess.sessType==='tracking'?'🎯 Goal-Specific':sess.sessType==='general'?'📋 General':sess.sessType==='fba'?'🧠 Behaviorist':sess.sessType==='interval'?'⏲️ Interval':sess.sessType==='manual'?'📝 Manual Entry':'🔍 Initial'}</span>${sess.fbaContext&&sess.sessType!=='fba'?'<span class="tag" style="margin-left:4px;font-size:.62rem;background:var(--fba-soft);color:var(--fba-green);font-weight:800">🧠 FBA</span>':''}
+              <span class="tag" style="font-size:.65rem;background:${sess.sessType==='tracking'?'var(--accent-soft)':sess.sessType==='general'?'var(--amber-soft)':sess.sessType==='fba'?'var(--fba-soft)':sess.sessType==='manual'?'var(--orange-soft)':'var(--purple-soft)'};color:${sess.sessType==='tracking'?'var(--accent)':sess.sessType==='general'?'var(--amber)':sess.sessType==='fba'?'var(--fba-green)':sess.sessType==='manual'?'var(--orange)':'var(--purple)'};${sess.sessType==='fba'?'font-weight:800':''}">${sess.sessType==='tracking'?'🎯 Goal-Specific':sess.sessType==='general'?'📋 General':sess.sessType==='fba'?'🧠 Behaviorist':sess.sessType==='manual'?'📝 Manual Entry':'🔍 Initial'}</span>
             </div>
           </div>
         </div>
@@ -3071,7 +2814,7 @@ function buildMultiSummary(){
           const avgDur=b.durs.length?b.durs.reduce((a,v)=>a+v,0)/b.durs.length:0;
           const avgInt=b.ints.length?b.ints.reduce((a,v)=>a+v,0)/b.ints.length:0;
           return`<div style="display:flex;align-items:center;gap:10px;padding:8px 10px;background:var(--surface2);border-radius:10px">
-            <span style="font-size:1.2rem">${b.icon||''}</span>
+            <span style="font-size:1.2rem">${b.icon}</span>
             <div style="flex:1">
               <div style="font-weight:700;font-size:.85rem">${esc(b.label)}</div>
               <div class="muted" style="font-size:.72rem">${b.count} event${b.count!==1?'s':''}${avgDur>0?' · avg '+fmt(avgDur):''}${avgInt>0?' · avg intensity '+avgInt.toFixed(1):''}</div>
@@ -3355,10 +3098,9 @@ function buildFBA(){
     <div style="font-size:.78rem;color:var(--muted);margin-top:2px">behaviorist sessions and analysis are managed by the behavior specialist. You can view this data but cannot create behaviorist sessions or generate reports.</div></div>
   </div>`:'';
   const allSessions=S.sessions.filter(s=>s.clientId===c.id);
-  // Only sessions tagged as FBA build-out (legacy sessType==='fba' OR
-  // fbaContext:true from the FBA sub-type picker) count toward FBA progress.
-  const sessions=allSessions.filter(isFbaForBuildOut);
-  const suppSessions=allSessions.filter(s=>!isFbaForBuildOut(s));
+  // Only FBA-type sessions count toward FBA progress criteria
+  const sessions=allSessions.filter(s=>s.sessType==='fba');
+  const suppSessions=allSessions.filter(s=>s.sessType!=='fba');
   const allEv=sessions.flatMap(s=>s.events||[]);
   const suppEv=suppSessions.flatMap(s=>s.events||[]);
   const goals=clientGoals(c.id);
@@ -3842,12 +3584,36 @@ function clearTemplate(kind){
 }
 
 // ── AI DOCUMENT GENERATION ─────────────────────────────────────────────────
+// Privacy notes (per Sure Step compliance defaults):
+//  • Student names are pseudonymized to "FirstName LastInitial." before being
+//    sent to the Anthropic API. The behaviorist can find-and-replace the
+//    pseudonym in the final document if their district format requires the
+//    full name. See pseudonymizeName() below.
+//  • Two-call pattern: Call 1 sends a TRIMMED context (counts & structure only,
+//    no antecedent/consequence narrative text) to ask Claude what clarifying
+//    questions to put to the behaviorist. Call 2 sends the FULL context + the
+//    behaviorist's answers to generate the draft. Trimming Call 1 reduces
+//    transmission of narrative fields that sometimes contain incidentally-
+//    captured PII (teacher names, peer names, family context).
+//  • Q&A answers are kept in memory only (S._modal) — not persisted to
+//    localStorage or Supabase — and are discarded when the modal closes.
+
+function pseudonymizeName(fullName){
+  if(!fullName) return 'Student';
+  const parts = String(fullName).trim().split(/\s+/);
+  if(parts.length===1) return parts[0];
+  const first = parts[0];
+  const lastInitial = parts[parts.length-1].charAt(0).toUpperCase();
+  return first+' '+lastInitial+'.';
+}
+
+// Entry point — kicks off the two-step generation flow (questions → draft)
 function generateFbaDoc(docType, clientId){
   const client = S.clients.find(c=>c.id===clientId);
   if(!client){ alert('Student not found.'); return; }
 
-  const fbaSessions = S.sessions.filter(s=>s.clientId===clientId && isFbaForBuildOut(s));
-  const suppSessions = S.sessions.filter(s=>s.clientId===clientId && !isFbaForBuildOut(s));
+  const fbaSessions = S.sessions.filter(s=>s.clientId===clientId && s.sessType==='fba');
+  const suppSessions = S.sessions.filter(s=>s.clientId===clientId && s.sessType!=='fba');
   const allEv = fbaSessions.flatMap(s=>s.events||[]);
   const goals = (S.goals||[]).filter(g=>g.clientId===clientId);
 
@@ -3856,7 +3622,7 @@ function generateFbaDoc(docType, clientId){
     return;
   }
 
-  // Build behavior summary
+  // ── Build behavior aggregates (used by both trimmed and full contexts) ──
   const byB = {};
   allEv.forEach(ev=>{
     if(!byB[ev.behaviorLabel]) byB[ev.behaviorLabel]={label:ev.behaviorLabel,icon:ev.behaviorIcon||'',freq:0,durs:[],ints:[],ants:[],cons:[]};
@@ -3866,6 +3632,43 @@ function generateFbaDoc(docType, clientId){
     if(ev.antecedent&&ev.antecedent.trim()) byB[ev.behaviorLabel].ants.push(ev.antecedent);
     if(ev.consequence&&ev.consequence.trim()) byB[ev.behaviorLabel].cons.push(ev.consequence);
   });
+
+  const settingEventsCount = fbaSessions.filter(s=>s.settingEvents&&s.settingEvents.length).length;
+  const hypothesisCount = fbaSessions.filter(s=>s.fbaHypothesis&&s.fbaHypothesis.trim()).length;
+  const locations = [...new Set(fbaSessions.map(s=>s.location||'').filter(Boolean))];
+  const behaviorists = [...new Set(fbaSessions.map(s=>s.behavioristName||'').filter(Boolean))];
+
+  const pseudoName = pseudonymizeName(client.name);
+
+  // ── TRIMMED context (Call 1 — for question generation) ──────────────────
+  // Counts, structure, and what data IS / ISN'T available. No narrative text.
+  const behSkeleton = Object.values(byB).map(b=>{
+    const avgDur = b.durs.length ? Math.round(b.durs.reduce((a,v)=>a+v,0)/b.durs.length/1000) : null;
+    const avgInt = b.ints.length ? (b.ints.reduce((a,v)=>a+v,0)/b.ints.length).toFixed(1) : null;
+    const bits = [`${b.label}: ${b.freq} incidents`];
+    if(avgDur) bits.push(`avg duration ${avgDur}s`);
+    if(avgInt) bits.push(`avg intensity ${avgInt}/4`);
+    bits.push(`${b.ants.length} antecedents recorded`);
+    bits.push(`${b.cons.length} consequences recorded`);
+    return '- '+bits.join(', ');
+  }).join('\n');
+
+  const trimmedContext = `STUDENT: ${pseudoName}
+FBA SESSIONS COMPLETED: ${fbaSessions.length}
+SUPPLEMENTAL SESSIONS: ${suppSessions.length}
+SETTINGS OBSERVED: ${locations.join(', ')||'not specified'}
+DATE RANGE: ${fbaSessions.length?new Date(fbaSessions[0].startedAt).toLocaleDateString()+' – '+new Date(fbaSessions[fbaSessions.length-1].startedAt).toLocaleDateString():''}
+TOTAL EVENTS LOGGED: ${allEv.length}
+
+BEHAVIORS OBSERVED (counts only):
+${behSkeleton||'No events recorded'}
+
+DATA AVAILABILITY:
+- Setting events documented: ${settingEventsCount>0?'yes ('+settingEventsCount+' sessions)':'no'}
+- Behaviorist hypothesis notes: ${hypothesisCount>0?'yes ('+hypothesisCount+' sessions)':'no'}
+- Existing IEP goals on file: ${goals.length}`;
+
+  // ── FULL context (Call 2 — for the actual draft) ────────────────────────
   const behSummary = Object.values(byB).map(b=>{
     const avgDur = b.durs.length ? Math.round(b.durs.reduce((a,v)=>a+v,0)/b.durs.length/1000) : null;
     const avgInt = b.ints.length ? (b.ints.reduce((a,v)=>a+v,0)/b.ints.length).toFixed(1) : null;
@@ -3887,10 +3690,7 @@ function generateFbaDoc(docType, clientId){
     .map(s=>`[${new Date(s.startedAt).toLocaleDateString()} - ${s.behavioristName||'Behaviorist'}]: ${s.fbaHypothesis}`)
     .join('\n');
 
-  const locations = [...new Set(fbaSessions.map(s=>s.location||'').filter(Boolean))];
-  const behaviorists = [...new Set(fbaSessions.map(s=>s.behavioristName||'').filter(Boolean))];
-
-  const dataContext = `STUDENT: ${client.name}
+  const fullContext = `STUDENT: ${pseudoName}
 FBA SESSIONS: ${fbaSessions.length} (plus ${suppSessions.length} supplemental sessions)
 SETTINGS OBSERVED: ${locations.join(', ')||'not specified'}
 BEHAVIORIST(S): ${behaviorists.join(', ')||'not specified'}
@@ -3908,6 +3708,79 @@ ${hypotheses||'None recorded'}
 
 SUPPLEMENTAL DATA: ${suppSessions.length} additional sessions from other observation types available as reference.`;
 
+  const docLabels = {bip:'BIP Draft', goals:'Behavior Goals', summary:'FBA Summary'};
+  const docNames  = {bip:'Behavior Intervention Plan', goals:'Behavior Goals', summary:'FBA Summary'};
+
+  // Stash everything we'll need for Call 2 in the modal state — kept in memory,
+  // never persisted, discarded on modal close.
+  S._aiCtx = {
+    docType, clientId, pseudoName, realName:client.name,
+    fullContext, docLabels, docNames
+  };
+
+  // Step 1: ask Claude to produce 3–5 clarifying questions as JSON
+  const questionsPrompt = `You are an expert school behaviorist helping prepare a ${docNames[docType]} for a special education student. Before writing the document, identify 3 to 5 SHORT, SPECIFIC clarifying questions you would need the behaviorist to answer to produce a complete, defensible draft.
+
+Focus on information that is MISSING from the data summary below and that the data alone cannot supply — for example: student grade level, prior interventions attempted, replacement skills the student has demonstrated, crisis/safety history, family or medical context relevant to the behavior, current classroom supports, or any specifics required by your district's standard ${docNames[docType]} format.
+
+Do NOT ask questions that the data already answers. Do NOT ask more than 5 questions. Each question should be one sentence, plain language, answerable in 1–2 sentences by the behaviorist.
+
+Respond with ONLY a JSON array of question strings — no preamble, no markdown, no code fences. Example format:
+["What grade level is the student in?", "Has a previous BIP been implemented for this student?"]
+
+DATA SUMMARY:
+${trimmedContext}`;
+
+  // Show generating modal (Step 1)
+  S._modal = {type:'fbaGenerating', docType, clientId, label:docLabels[docType], stage:'questions'};
+  rerender();
+
+  callClaudeApi(questionsPrompt, 800)
+    .then(text=>{
+      // Parse JSON array of questions out of the response
+      let questions = [];
+      try{
+        const cleaned = text.replace(/^```json\s*/i,'').replace(/^```\s*/,'').replace(/\s*```\s*$/,'').trim();
+        // Find the first [ ... ] in the response
+        const match = cleaned.match(/\[[\s\S]*\]/);
+        if(match){
+          questions = JSON.parse(match[0]);
+        }
+      } catch(e){
+        console.warn('Question parse failed, skipping clarification step:', e.message);
+      }
+      questions = (questions||[]).filter(q=>typeof q==='string'&&q.trim()).slice(0,5);
+
+      if(questions.length===0){
+        // Couldn't parse — skip Q&A and go straight to draft
+        runFbaDraftGeneration([]);
+        return;
+      }
+
+      // Show clarifying-questions modal
+      S._modal = {
+        type:'fbaQuestions',
+        docType, clientId,
+        label:docLabels[docType],
+        questions,
+        answers:questions.map(()=>'')
+      };
+      rerender();
+    })
+    .catch(err=>{
+      // Couldn't get questions — fall back to direct draft so user isn't blocked
+      console.warn('Clarifying questions step failed, falling back to direct draft:', err);
+      runFbaDraftGeneration([]);
+    });
+}
+
+// Step 2: produce the actual draft, optionally incorporating Q&A answers
+function runFbaDraftGeneration(qaPairs){
+  const ctx = S._aiCtx;
+  if(!ctx){ alert('Generation state lost. Please try again.'); return; }
+
+  const {docType, clientId, fullContext, docLabels, docNames} = ctx;
+
   const templateContext = docType==='bip' && S._bipTemplate && !S._bipTemplate.startsWith('[Binary')
     ? '\n\nDISTRICT BIP TEMPLATE STRUCTURE TO FOLLOW:\n'+S._bipTemplate.slice(0,2000)
     : docType==='goals' && S._goalTemplate && !S._goalTemplate.startsWith('[Binary')
@@ -3918,64 +3791,126 @@ SUPPLEMENTAL DATA: ${suppSessions.length} additional sessions from other observa
     : docType==='goals' && S._goalTemplateName ? ' Follow the format of the uploaded template: '+S._goalTemplateName+'.'
     : '';
 
+  // Compose the behaviorist's answers (if any) into the prompt context
+  const answeredQa = (qaPairs||[]).filter(p=>p.answer&&p.answer.trim());
+  const qaContext = answeredQa.length
+    ? '\n\nBEHAVIORIST CLARIFICATIONS (use these as authoritative inputs):\n'+
+      answeredQa.map(p=>`Q: ${p.question}\nA: ${p.answer.trim()}`).join('\n\n')
+    : '';
+
   const prompts = {
     bip: `You are an expert school behaviorist writing a Behavior Intervention Plan (BIP) for a special education student. Use the Behaviorist observation data below to write a complete, professional BIP draft.${templateNameHint}
 
 Include: (1) Student background and behavior description, (2) Identified behavioral function(s) based on ABC data, (3) Antecedent-based strategies (prevention), (4) Teaching replacement behaviors, (5) Consequence strategies, (6) Crisis response protocol if warranted, (7) Progress monitoring plan.
 
-Write in professional IEP language. Be specific and evidence-based. Use the actual data provided.${templateContext}
+Write in professional IEP language. Be specific and evidence-based. Use the actual data provided. If the behaviorist's clarifications provide information not in the data, incorporate it. If something is still unknown after the clarifications, write "[BEHAVIORIST TO COMPLETE]" rather than inventing detail.${templateContext}
 
 FBA DATA:
-${dataContext}`,
+${fullContext}${qaContext}`,
 
     goals: `You are a special education specialist writing measurable behavior goals for an IEP based on completed FBA data. Use the observation data below to write 2-4 specific, measurable, attainable, relevant, time-bound (SMART) behavior goals.${templateNameHint}
 
 For each goal include: (1) Baseline from FBA data, (2) Annual goal statement with measurable criteria, (3) Short-term objectives (2-3 per goal), (4) Measurement method, (5) Evaluation schedule.
 
-Write in standard IEP goal language. Base all baselines on the actual session data.${templateContext}
+Write in standard IEP goal language. Base all baselines on the actual session data. If the behaviorist's clarifications provide information not in the data, incorporate it. If something is still unknown after the clarifications, write "[BEHAVIORIST TO COMPLETE]" rather than inventing detail.${templateContext}
 
 FBA DATA:
-${dataContext}`,
+${fullContext}${qaContext}`,
 
     summary: `You are a school behaviorist writing a professional FBA Summary narrative. Use the observation data below to write a clear, defensible FBA summary suitable for an IEP team.
 
 Include: (1) Reason for referral and assessment overview, (2) Assessment methods used, (3) Behavioral descriptions and patterns, (4) Antecedent and consequence analysis, (5) Hypothesized behavioral function(s) with rationale, (6) Summary and recommendations.
 
-Write in clear professional language accessible to parents and educators alike.
+Write in clear professional language accessible to parents and educators alike. If the behaviorist's clarifications provide information not in the data, incorporate it. If something is still unknown after the clarifications, write "[BEHAVIORIST TO COMPLETE]" rather than inventing detail.
 
 FBA DATA:
-${dataContext}`
+${fullContext}${qaContext}`
   };
 
-  const docLabels = {bip:'BIP Draft', goals:'Behavior Goals', summary:'FBA Summary'};
-
-  // Show a generating modal
-  S._modal = {type:'fbaGenerating', docType, clientId, label:docLabels[docType]};
+  S._modal = {type:'fbaGenerating', docType, clientId, label:docLabels[docType], stage:'draft'};
   rerender();
 
-  fetch('/api/claude', {
+  callClaudeApi(prompts[docType], 2000)
+    .then(text=>{
+      // Discard the in-memory generation context now that we have the draft
+      const finalText = text || '';
+      S._aiCtx = null;
+      S._modal = {type:'fbaDocResult', docType, clientId, label:docLabels[docType], content:finalText};
+      rerender();
+    })
+    .catch(err=>{
+      S._modal = {
+        type:'fbaDocError',
+        docType, clientId,
+        label:docLabels[docType],
+        message:err.message||'Unknown error',
+        canRetry:true,
+        qaPairs:qaPairs||[]
+      };
+      rerender();
+    });
+}
+
+// ── Shared Anthropic proxy caller — returns text content or throws ─────────
+function callClaudeApi(promptText, maxTokens){
+  return fetch('/api/claude', {
     method:'POST',
     headers:{'Content-Type':'application/json'},
     body:JSON.stringify({
       model:'claude-sonnet-4-20250514',
-      max_tokens:2000,
-      messages:[{role:'user',content:prompts[docType]}]
+      max_tokens:maxTokens||2000,
+      messages:[{role:'user',content:promptText}]
     })
   })
-  .then(r=>r.json())
-  .then(data=>{
-    if(data.error){
-      S._modal={type:'fbaDocResult', docType, clientId, label:docLabels[docType], content:'Error: '+data.error.message+'. Check your API key in Settings.'};
-    } else {
-      const text = (data.content||[]).map(b=>b.text||'').join('');
-      S._modal={type:'fbaDocResult', docType, clientId, label:docLabels[docType], content:text};
-    }
-    rerender();
+  .then(r=>{
+    // r.json() can throw on empty/malformed bodies (proxy timeouts, 502, etc).
+    // Catch that explicitly so the user sees an accurate error rather than a
+    // generic "unexpected token" parse error.
+    return r.json().catch(()=>{
+      throw new Error('Server returned an unreadable response (HTTP '+r.status+'). The request may have timed out or the proxy may be offline.');
+    });
   })
-  .catch(err=>{
-    S._modal={type:'fbaDocResult', docType, clientId, label:docLabels[docType], content:'Network error: '+err.message};
-    rerender();
+  .then(data=>{
+    if(data && data.error){
+      // Anthropic structured error — surface code + message accurately.
+      // Common codes:
+      //   • invalid_request_error — bad payload (we should fix client-side)
+      //   • authentication_error  — proxy missing/wrong ANTHROPIC_API_KEY env var
+      //   • rate_limit_error      — slow down
+      //   • overloaded_error      — API congestion, retry
+      //   • api_error             — Anthropic side, retry
+      const type = data.error.type || 'error';
+      const msg  = data.error.message || 'Unknown error from AI service';
+      throw new Error('['+type+'] '+msg);
+    }
+    if(!data || !data.content){
+      throw new Error('AI service returned no content. Try again — if this keeps happening, the request may be too large.');
+    }
+    const text = (data.content||[]).map(b=>b.text||'').join('');
+    if(!text.trim()){
+      throw new Error('AI service returned an empty response. Try again.');
+    }
+    return text;
   });
+}
+
+// Called from the clarifying-questions modal when behaviorist clicks Generate
+function submitFbaQuestions(){
+  const m = S._modal;
+  if(!m || m.type!=='fbaQuestions') return;
+  // Read latest values from the textareas (state may not be synced if user types fast)
+  const updated = m.questions.map((q,i)=>{
+    const el = document.getElementById('fba-q-'+i);
+    return {question:q, answer:el?el.value:''};
+  });
+  runFbaDraftGeneration(updated);
+}
+
+// Called from the error modal's Retry button
+function retryFbaDraft(){
+  const m = S._modal;
+  if(!m || m.type!=='fbaDocError') return;
+  runFbaDraftGeneration(m.qaPairs||[]);
 }
 
 // ── PDF Export ─────────────────────────────────────────────────────────────
@@ -4196,11 +4131,6 @@ function bulkDeleteStudents(){
 
 // ── Manual Data Entry ──────────────────────────────────────────────────────
 function openManualEntry(cid){
-  // Manual Entry counts as an observation session — same hard block applies.
-  if(!studentHasBehaviors(cid)){
-    alert('This student has no behaviors configured.\n\nOpen the student\'s settings (gear icon) and add at least one behavior — either import from the starter list or create a custom one — before entering manual data.');
-    return;
-  }
   S._modal={type:'manualEntry',cid,entries:{},date:'',time:'09:00',location:'',length:'',notes:''};
   rerender();
 }
@@ -4267,17 +4197,11 @@ function saveManualEntry(cid){
     sessType:'manual',
     plannedMins:length,
     location,
-    manual:true,
-    // FBA context — when this manual entry was started from the FBA sub-type
-    // picker, mark it so the FBA aggregator includes it.
-    fbaContext: !!m.fbaContext,
-    behavioristName: m.behavioristName||''
+    manual:true
   };
 
   S.sessions.push(sess);
   persist();
-  // Clear the FBA gate now that the session has been saved.
-  S._fbaGate=null;
   S._modal=null;
   rerender();
   alert('Manual entry saved — '+events.length+' event'+(events.length!==1?'s':'')+' recorded for '+date);
@@ -4300,7 +4224,7 @@ function doAddClient(){
 }
 
 // Behavior modal
-function openAddBeh(){S._modal={type:'addBeh',beh:{label:'',icon:'',definition:''},_newMeasure:'duration',_newDefinition:''};rerender();}
+function openAddBeh(){S._modal={type:'addBeh',beh:{label:'',icon:'📌'}};rerender();}
 
 // ── CSV Upload ─────────────────────────────────────────────────────────────
 function handleCSVUpload(input){
@@ -4403,67 +4327,45 @@ function linkBehaviorist(clientId){
   persist();rerender();
 }
 function openEditBeh(bid,isPreset){
-  // PRESETS is now empty — the previous "preset" path was for hardcoded
-  // defaults. All behaviors now live in S.customs. The isPreset param is
-  // ignored but kept in the signature for any legacy callers.
-  const b=S.customs.find(b=>b.id===bid);
+  const b=isPreset?PRESETS.find(b=>b.id===bid):S.customs.find(b=>b.id===bid);
   if(!b)return;
-  S._modal={type:'editBeh',beh:{...b},preset:false};rerender();
+  S._modal={type:'editBeh',beh:{...b},preset:isPreset};rerender();
 }
 function closeModal(){S._modal=null;rerender();}
 function overlayClose(e){if(e.target===e.currentTarget)closeModal();}
 function pickIcon(ic){
   if(!S._modal||!S._modal.beh)return;
-  // ic may be empty string — that's the explicit "No icon" choice.
-  S._modal.beh.icon=ic||'';
+  S._modal.beh.icon=ic;
+  // update UI without full rerender
   document.querySelectorAll('.icon-opt').forEach(el=>el.classList.remove('selected'));
-  const targetId=ic?('iopt-'+encodeURIComponent(ic)):'iopt-none';
-  const target=document.getElementById(targetId);
+  const target=document.getElementById('iopt-'+encodeURIComponent(ic));
   if(target)target.classList.add('selected');
 }
 function saveBehModal(){
   if(!S._modal)return;
-  const label=(document.getElementById('m-beh-label')?.value||'').trim();
-  if(!label){alert('Please enter a behavior name.');return;}
-  // Icon optional — empty string is allowed (button shows label only).
-  const icon=S._modal.beh.icon||'';
+  const label=document.getElementById('m-beh-label').value.trim();
+  if(!label)return;
+  const icon=S._modal.beh.icon||'📌';
   const newMeasure=S._modal._newMeasure||'duration';
-  // Operational definition: only behaviorists/admins can write/change it.
-  const defEl=document.getElementById('m-beh-definition');
-  const definitionFromForm=defEl?defEl.value.trim():null;
-
   if(S._modal.type==='addBeh'){
     const newId=uid();
-    const definition=(canEditDefinition()&&definitionFromForm!==null)?definitionFromForm:'';
-    S.customs.push({id:newId,label,icon,custom:true,definition});
+    S.customs.push({id:newId,label,icon,custom:true});
     S._measureTypes[newId]=newMeasure;
-  } else if(S._modal.type==='editBeh'){
-    S.customs=S.customs.map(b=>{
-      if(b.id!==S._modal.beh.id) return b;
-      const next={...b,label,icon};
-      if(canEditDefinition()&&definitionFromForm!==null) next.definition=definitionFromForm;
-      return next;
-    });
+  } else if(S._modal.type==='editBeh'&&!S._modal.preset){
+    S.customs=S.customs.map(b=>b.id===S._modal.beh.id?{...b,label,icon}:b);
+  } else if(S._modal.type==='editBeh'&&S._modal.preset){
+    // For presets, measurement type is saved via setBehMeasure inline
   }
   persist();S._modal=null;rerender();
 }
 function deleteBehModal(){
-  if(!S._modal)return;
-  const bid=S._modal.beh.id;
-  if(S._modal.beh.builtin) return; // built-ins cannot be deleted
-  if(!confirm('Delete this behavior from your library? It will also be removed from any students who reference it.')) return;
-  S.customs=S.customs.filter(b=>b.id!==bid);
-  // Cascade: remove from any student's selected behaviors.
-  S.clients=S.clients.map(c=>({...c,behaviors:(c.behaviors||[]).filter(id=>id!==bid)}));
+  if(!S._modal||S._modal.preset)return;
+  S.customs=S.customs.filter(b=>b.id!==S._modal.beh.id);
   persist();S._modal=null;rerender();
 }
 
 // Session type
-// Session type
-// selectedBehs starts empty and gets populated when the user picks a session
-// type (see selectSessType). Initial Assessment defaults to the student's
-// configured behaviors; Interval pre-selects On Task.
-function openSessType(cid){S._modal={type:'sessType',cid,sel:null,plannedMins:null,location:'',locationOther:'',selectedBehs:[],quickBehName:''};rerender();}
+function openSessType(cid){S._modal={type:'sessType',cid,sel:null,plannedMins:null,location:'',locationOther:'',selectedBehs:[...PRESETS.map(b=>b.id)],quickBehName:''};rerender();}
 function updateSessLocation(val){
   if(!S._modal)return;
   S._modal.location=val;
@@ -4488,62 +4390,14 @@ function confirmFbaAffirm(){
   if(!chkEl||!chkEl.checked){alert('Please check the affirmation box to proceed.');return;}
   S._fbaGate.behavioristName=nameEl.value.trim();
   S._fbaGate.affirmed=true;
-  // After affirmation, route to the new FBA sub-type picker. The behaviorist
-  // chooses HOW to record (Interval / General / Manual). Whichever they pick,
-  // the resulting session is tagged with fbaContext:true so it counts toward
-  // the BIP/FBA build-out.
-  S._modal={type:'fbaSubtype'};
+  // Restore the session setup modal with FBA pre-selected
+  const g=S._fbaGate;
+  S._modal={type:g.prevType||'sessType', cid:g.prevCid, clientIds:g.prevClientIds, sel:'fba', behavioristName:g.behavioristName, plannedMins:null, location:'', locationOther:''};
   rerender();
+  const btn=document.getElementById('start-sess-btn');
+  if(btn)btn.disabled=false;
 }
 function cancelFbaAffirm(){
-  const g=S._fbaGate||{};
-  S._modal={type:g.prevType||'sessType', cid:g.prevCid, clientIds:g.prevClientIds, sel:null, plannedMins:null, location:'', locationOther:''};
-  S._fbaGate=null;
-  rerender();
-}
-// User picked an FBA sub-type (interval/general/manual). Re-enter the regular
-// session setup flow as that mechanic, but stash fbaContext so confirmStartSession
-// (and the manual entry handler) tag the resulting session correctly.
-function pickFbaSubtype(t){
-  if(!S._fbaGate||!S._fbaGate.affirmed){
-    // Should not happen — affirmation is required to reach this picker.
-    alert('Please complete the behaviorist affirmation first.');
-    return;
-  }
-  const g=S._fbaGate;
-  // Manual Entry: open the manual entry modal with fbaContext on it.
-  if(t==='manual'){
-    if(!studentHasBehaviors(g.prevCid)){
-      alert('This student has no behaviors configured.\n\nOpen the student\'s settings (gear icon) and add at least one behavior before entering manual data.');
-      return;
-    }
-    S._modal={
-      type:'manualEntry',
-      cid:g.prevCid,
-      entries:{},date:'',time:'09:00',location:'',length:'',notes:'',
-      fbaContext:true,
-      behavioristName:g.behavioristName||''
-    };
-    rerender();
-    return;
-  }
-  // Interval or General: re-enter the regular session-setup modal with the
-  // chosen mechanic pre-selected and fbaContext flagged.
-  S._modal={
-    type:g.prevType||'sessType',
-    cid:g.prevCid,
-    clientIds:g.prevClientIds,
-    sel:t,
-    behavioristName:g.behavioristName||'',
-    fbaContext:true,
-    plannedMins:null,location:'',locationOther:'',
-    selectedBehs: t==='interval' ? ['__ontask__'] : []
-  };
-  rerender();
-}
-function cancelFbaSubtype(){
-  // Return to the original session-type picker, FBA still selected so the
-  // user can re-affirm or pick something else.
   const g=S._fbaGate||{};
   S._modal={type:g.prevType||'sessType', cid:g.prevCid, clientIds:g.prevClientIds, sel:null, plannedMins:null, location:'', locationOther:''};
   S._fbaGate=null;
@@ -4573,17 +4427,8 @@ function selectSessType(t){
     return;
   }
   S._modal.sel=t;
-  // Reset behavior selection per session type.
-  // For Initial Assessment: pre-fill with the student's current behavior list
-  // (or empty if none — empty triggers the hard block at confirmStartSession).
-  if(t==='initial'){
-    const cid=S._modal.cid;
-    const c=cid?(S.clients||[]).find(x=>x.id===cid):null;
-    S._modal.selectedBehs=(c&&Array.isArray(c.behaviors))?[...c.behaviors]:[];
-  }
-  // Interval recording: pre-select On Task (always available built-in).
-  // Observer can expand to additional library behaviors.
-  if(t==='interval') S._modal.selectedBehs=['__ontask__'];
+  // Reset behavior selection for initial — default to all presets
+  if(t==='initial') S._modal.selectedBehs=[...PRESETS.map(b=>b.id)];
   rerender();
 }
 
@@ -4595,30 +4440,15 @@ function toggleSessBeh(bid){
   rerender();
 }
 
+
 function liveAddBeh(){
   const inp=document.getElementById('live-add-beh');
   const label=(inp?.value||'').trim();
   if(!label) return;
-  // Mid-session add — icon optional, definition blank.
-  const newBeh={id:uid(),label,icon:'',custom:true,definition:''};
+  const newBeh={id:uid(),label,icon:'📌',custom:true};
   S.customs.push(newBeh);
-  if(!S._measureTypes) S._measureTypes={};
-  S._measureTypes[newBeh.id]='duration';
-  if(Array.isArray(S._initialBehs)) S._initialBehs.push(newBeh.id);
-  if(S.activeSess){
-    S.activeSess.selectedBehs=(S.activeSess.selectedBehs||[]).concat(newBeh.id);
-    // For non-initial session types the grid is built from clientBehs(cid).
-    // Add to the active student's selection so the new button appears immediately.
-    const cid=S.activeSess.clientId;
-    if(cid){
-      S.clients=S.clients.map(c=>{
-        if(c.id!==cid) return c;
-        const behs=Array.isArray(c.behaviors)?[...c.behaviors]:[];
-        if(!behs.includes(newBeh.id)) behs.push(newBeh.id);
-        return{...c,behaviors:behs};
-      });
-    }
-  }
+  S._initialBehs.push(newBeh.id);
+  if(S.activeSess) S.activeSess.selectedBehs=(S.activeSess.selectedBehs||[]).concat(newBeh.id);
   persist();rerender();
 }
 
@@ -4626,11 +4456,9 @@ function quickAddSessBeh(){
   const inp=document.getElementById('sess-quick-beh');
   const label=(inp?.value||'').trim();
   if(!label) return;
-  // Icon optional, definition blank — only behaviorists fill in definitions.
-  const newBeh={id:uid(),label,icon:'',custom:true,definition:''};
+  // Create new custom behavior
+  const newBeh={id:uid(),label,icon:'📌',custom:true};
   S.customs.push(newBeh);
-  if(!S._measureTypes) S._measureTypes={};
-  S._measureTypes[newBeh.id]='duration';
   if(!S._modal.selectedBehs) S._modal.selectedBehs=[];
   S._modal.selectedBehs.push(newBeh.id);
   persist();
@@ -4861,11 +4689,7 @@ function startIntervalSession(opts){
     pausedAt:null,
     pausedAccumMs:0,
     location:opts.location||'',
-    completed:false,
-    // FBA context carries through so the saved session records on completion
-    // get tagged correctly and the FBA aggregator picks them up.
-    fbaContext:!!opts.fbaContext,
-    behavioristName:opts.behavioristName||''
+    completed:false
   };
   S.view='interval';
   rerender();
@@ -4972,9 +4796,7 @@ function intervalLiveAddBeh(){
   const inp=document.getElementById('iv-live-add-input');
   const label=(inp?.value||'').trim();
   if(!label) return;
-  // Icon optional, definition blank — only behaviorists fill in definitions
-  // later via Settings → Behavior Library.
-  const newBeh={id:uid(),label,icon:'',custom:true,definition:''};
+  const newBeh={id:uid(),label,icon:'📌',custom:true};
   S.customs.push(newBeh);
   sess.behaviorIds.push(newBeh.id);
   // Back-fill all existing intervals with false for this new behavior
@@ -5032,12 +4854,12 @@ function completeIntervalSession(){
     sess.intervals.forEach(iv=>{
       sess.behaviorIds.forEach(bid=>{
         if(iv.scores[cid] && iv.scores[cid][bid]){
-          const beh=allBehsForContext(true).find(b=>b.id===bid);
+          const beh=allBehs().find(b=>b.id===bid);
           events.push({
             id:uid(),type:'interval',
             behaviorId:bid,
             behaviorLabel:beh?beh.label:'Unknown',
-            behaviorIcon:beh?(beh.icon||''):'',
+            behaviorIcon:beh?beh.icon:'📌',
             timestamp:iv.startMs,
             intervalNum:iv.n,
             intervalMethod:sess.method,
@@ -5064,11 +4886,7 @@ function completeIntervalSession(){
       location:sess.location,
       selectedBehs:sess.behaviorIds.slice(),
       // Per-behavior interval percentages (scored / total)
-      intervalSummary: summary[cid] || {},
-      // FBA context — when this interval session was started from the FBA
-      // sub-type picker, carry the flag so the FBA aggregator includes it.
-      fbaContext: !!sess.fbaContext,
-      behavioristName: sess.behavioristName||''
+      intervalSummary: summary[cid] || {}
     });
   });
   persist();
@@ -5142,13 +4960,11 @@ function buildIntervalRecord(){
     if(!sess.behaviorIds.length){
       return '<div class="beh-empty"><div class="beh-empty-icon">📋</div><div class="beh-empty-label">No behaviors selected</div><div class="beh-empty-hint">Go back to setup and choose behaviors to score.</div></div>';
     }
-    // Use allBehsForContext(true) so the built-in 'On Task' behavior resolves
-    // even though it's not stored in S.customs.
-    const intPool=allBehsForContext(true);
     return sess.behaviorIds.map(bid=>{
-      const beh=intPool.find(b=>b.id===bid);
+      const beh=allBehs().find(b=>b.id===bid);
       if(!beh) return '';
       const scored=cur && cur.scores[cid] && cur.scores[cid][bid];
+      // Use .beh-btn CSS class so aspect-ratio, density token, and grid math all apply
       return `<div onclick="intervalScore('${cid}','${bid}')"
         class="beh-btn${scored?' beh-scored':''}"
         style="
@@ -5156,7 +4972,7 @@ function buildIntervalRecord(){
           border-color:${scored?'var(--fba-green)':'var(--border)'};
           background:${scored?'var(--fba-mid)':'var(--surface)'};
           box-shadow:${scored?'0 0 0 3px rgba(6,122,95,.15)':'none'}">
-        ${beh.icon?`<div class="beh-icon">${beh.icon}</div>`:''}
+        <div class="beh-icon">${beh.icon}</div>
         <div class="beh-label" style="color:${scored?'var(--fba-dark)':'var(--text2)'}">${esc(beh.label)}</div>
         ${scored?'<div style="font-size:.58rem;color:var(--fba-green);font-weight:800;margin-top:1px;letter-spacing:.3px">✓ SCORED</div>':''}
       </div>`;
@@ -5286,13 +5102,12 @@ function buildIntervalSummary(){
 
   let perStudent=sess.clientIds.map(cid=>{
     const rows=sess.behaviorIds.map(bid=>{
-      const beh=allBehsForContext(true).find(b=>b.id===bid);
+      const beh=allBehs().find(b=>b.id===bid);
       const s=summary[cid][bid]||{scored:0,total:0,pct:0};
       const p=peerSum?peerSum[bid]||{scored:0,total:0,pct:0}:null;
       const diffColor=p?(s.pct>p.pct?'#067a5f':s.pct<p.pct?'#c0392b':'var(--text)'):'var(--fba-dark)';
-      const behLabelCell=beh?((beh.icon?beh.icon+' ':'')+esc(beh.label)):'Unknown';
       return `<tr>
-        <td style="padding:7px 10px;border-bottom:1px solid var(--border);font-weight:700;font-size:.82rem">${behLabelCell}</td>
+        <td style="padding:7px 10px;border-bottom:1px solid var(--border);font-weight:700;font-size:.82rem">${beh?beh.icon+' '+esc(beh.label):'Unknown'}</td>
         <td style="padding:7px 10px;border-bottom:1px solid var(--border);text-align:center;font-family:'Courier New',monospace;font-size:.82rem">${s.scored}/${s.total}</td>
         <td style="padding:7px 10px;border-bottom:1px solid var(--border);text-align:right;font-weight:800;font-size:.85rem;color:${diffColor}">${s.pct}%${p!==null?` <span style="font-size:.7rem;font-weight:500;color:var(--muted)">vs ${p.pct}%</span>`:''}</td>
       </tr>`;
@@ -5321,11 +5136,10 @@ function buildIntervalSummary(){
         <th style="text-align:right;padding:6px 10px;font-size:.7rem;color:var(--muted);font-weight:700;letter-spacing:1px;text-transform:uppercase">% Occurrence</th>
       </tr></thead>
       <tbody>${sess.behaviorIds.map(bid=>{
-        const beh=allBehsForContext(true).find(b=>b.id===bid);
+        const beh=allBehs().find(b=>b.id===bid);
         const p=peerSum[bid]||{scored:0,total:0,pct:0};
-        const behLabelCell=beh?((beh.icon?beh.icon+' ':'')+esc(beh.label)):'Unknown';
         return `<tr>
-          <td style="padding:7px 10px;border-bottom:1px solid var(--border);font-weight:700;font-size:.82rem">${behLabelCell}</td>
+          <td style="padding:7px 10px;border-bottom:1px solid var(--border);font-weight:700;font-size:.82rem">${beh?beh.icon+' '+esc(beh.label):'Unknown'}</td>
           <td style="padding:7px 10px;border-bottom:1px solid var(--border);text-align:center;font-family:'Courier New',monospace;font-size:.82rem">${p.scored}/${p.total}</td>
           <td style="padding:7px 10px;border-bottom:1px solid var(--border);text-align:right;font-weight:800;font-size:.85rem;color:var(--muted)">${p.pct}%</td>
         </tr>`;
@@ -5357,25 +5171,6 @@ function confirmStartSession(){
   const cid=S._modal.cid;
   const type=S._modal.sel;
 
-  // ── Hard block: student must have behaviors configured ─────────────────
-  // Per product direction, observations cannot begin until the student has
-  // at least one behavior in their profile. Interval recording is exempt
-  // because On Task is always available as a built-in option.
-  if(type!=='interval' && !studentHasBehaviors(cid)){
-    alert('This student has no behaviors configured.\n\nOpen the student\'s settings (gear icon) and add at least one behavior — either import from the starter list or create a custom one — before starting an observation.');
-    return;
-  }
-  // For interval recording, also require *some* behavior selection (On Task
-  // counts). The selector pre-fills On Task by default; if the user manually
-  // unchecks everything, block the start with a clear message.
-  if(type==='interval'){
-    const sel=S._modal.selectedBehs||[];
-    if(sel.length===0){
-      alert('Please select at least one behavior to score during interval recording.\n\nOn Task is always available, or you can configure additional behaviors in the student\'s settings first.');
-      return;
-    }
-  }
-
   // ── INTERVAL RECORDING branch (single-student) ────────────────────────
   if(type==='interval'){
     const m=S._modal;
@@ -5394,15 +5189,9 @@ function confirmStartSession(){
       location,
       groupLayout:null,
       hasPeer:!!m.hasPeer,
-      peerLabel:m.peerLabel||'Peer',
-      // FBA tagging — when the behaviorist routed here via the FBA sub-type
-      // picker, mark this session so the FBA aggregator picks it up.
-      fbaContext:!!m.fbaContext,
-      behavioristName:m.behavioristName||(S._fbaGate&&S._fbaGate.behavioristName)||''
+      peerLabel:m.peerLabel||'Peer'
     };
     S._modal=null;
-    // Clear the FBA gate — its data is now embedded on the session record.
-    S._fbaGate=null;
     S.selClient=S.clients.find(c=>c.id===cid);
     startIntervalSession(opts);
     return;
@@ -5417,20 +5206,11 @@ function confirmStartSession(){
   const location=locRaw==='Other'?(locOther?locOther.value.trim()||'Other':'Other'):locRaw;
   const selectedBehs=S._modal.selectedBehs||[];
   const behavioristName=S._modal.behavioristName||S._fbaGate?.behavioristName||'';
-  const fbaContext=!!S._modal.fbaContext;
   const startedAt=Date.now();
   S._initialBehs=type==='initial'?selectedBehs:[];
   S._modal=null;
-  // Clear the FBA gate — its data is now embedded on the activeSess record.
-  S._fbaGate=null;
   S.selClient=S.clients.find(c=>c.id===cid);
-  S.activeSess={
-    id:uid(),clientId:cid,clientName:S.selClient.name,
-    startedAt,endedAt:null,events:[],note:'',
-    sessType:type,                // recording mechanic ('initial'|'general'|'tracking'|'fba')
-    fbaContext,                   // true when started from the FBA sub-type picker
-    plannedMins,location,behavioristName,selectedBehs
-  };
+  S.activeSess={id:uid(),clientId:cid,clientName:S.selClient.name,startedAt,endedAt:null,events:[],note:'',sessType:type,plannedMins,location,behavioristName,selectedBehs};
   S.sessType=type;
   S.sessNote='';S.activeBeh=null;S.measureMode=null;S.abcA='';S.abcC='';
   S.incidents={};S.intensityPrompts=[];S.durRunning=false;S.durElapsed=0;
@@ -5495,7 +5275,7 @@ function startIncident(bid){
   if(S.measureMode==='FREQ'){
     S.activeSess.events.push({
       id:uid(),type:'frequency',
-      behaviorId:b.id,behaviorLabel:b.label,behaviorIcon:b.icon||'',
+      behaviorId:b.id,behaviorLabel:b.label,behaviorIcon:b.icon,
       timestamp:Date.now(),antecedent:S.abcA,consequence:''
     });
     S.abcA='';
@@ -5503,15 +5283,13 @@ function startIncident(bid){
     return;
   }
 
-  const measure=getBehMeasure(bid); // 'frequency' | 'duration' | 'intensity' | 'durfreq'
-  // 'latency' is no longer a valid measure type — getBehMeasure() coerces any
-  // legacy 'latency' values to 'duration' for backward compatibility.
+  const measure=getBehMeasure(bid);
 
   // ── FREQUENCY: instant log, no timer ──
   if(measure==='frequency'){
     S.activeSess.events.push({
       id:uid(),type:'frequency',
-      behaviorId:b.id,behaviorLabel:b.label,behaviorIcon:b.icon||'',
+      behaviorId:b.id,behaviorLabel:b.label,behaviorIcon:b.icon,
       timestamp:Date.now(),antecedent:S.abcA,consequence:''
     });
     S.abcA='';
@@ -5519,35 +5297,43 @@ function startIncident(bid){
     return;
   }
 
-  // ── DURATION, INTENSITY, or DURFREQ: tap-to-start / tap-to-end ──
+  // ── LATENCY: tap start, tap end = log latency time ──
+  if(measure==='latency'){
+    if(S.incidents[bid]){
+      const inc=S.incidents[bid];
+      const latMs=Date.now()-inc.startMs;
+      delete S.incidents[bid];
+      S.activeSess.events.push({
+        id:uid(),type:'latency',
+        behaviorId:inc.behId,behaviorLabel:inc.behLabel,behaviorIcon:inc.behIcon,
+        timestamp:Date.now(),latencyMs:latMs,
+        antecedent:inc.abcA,note:inc.note||'',consequence:''
+      });
+      rerender();
+      return;
+    }
+    S.incidents[bid]={behId:bid,behLabel:b.label,behIcon:b.icon,startMs:Date.now(),elapsed:0,abcA:S.abcA,note:'',measure};
+    S.activeBeh=b;
+    S.abcA='';
+    tick();rerender();
+    return;
+  }
+
+  // ── DURATION or INTENSITY: tap-to-start / tap-to-end ──
   if(S.incidents[bid]){
     // Already active — END this behavior
-    if(measure==='duration' || measure==='durfreq'){
+    if(measure==='duration'){
       _endIncidentDurationOnly(bid);
     } else {
       _endIncidentById(bid); // intensity — shows rating prompt
     }
     return;
   }
-  // START new incident — durfreq starts with hitCount:0; observer increments via +1 button
-  S.incidents[bid]={
-    behId:bid,behLabel:b.label,behIcon:b.icon||'',
-    startMs:Date.now(),elapsed:0,abcA:S.abcA,note:'',measure,
-    hitCount:0
-  };
+  // START new incident
+  S.incidents[bid]={behId:bid,behLabel:b.label,behIcon:b.icon,startMs:Date.now(),elapsed:0,abcA:S.abcA,note:'',measure};
   S.activeBeh=b;
   S.abcA='';
   tick();
-  rerender();
-}
-
-// Increment the per-occurrence hit counter on an active duration+frequency
-// incident. Use case: head-hits during a self-injury episode — observer wants
-// both the total duration AND the count of discrete hits inside it.
-function incrementIncidentHit(bid){
-  const inc=S.incidents[bid];
-  if(!inc) return;
-  inc.hitCount=(inc.hitCount||0)+1;
   rerender();
 }
 
@@ -5556,19 +5342,12 @@ function _endIncidentDurationOnly(bid){
   if(!inc) return;
   const durMs=Date.now()-inc.startMs;
   delete S.incidents[bid];
-  // Build event record. Duration+Frequency incidents carry hitCount so analytics
-  // and CSV export can surface both values.
-  const ev={
+  S.activeSess.events.push({
     id:uid(),type:'duration',
-    behaviorId:inc.behId,behaviorLabel:inc.behLabel,behaviorIcon:inc.behIcon||'',
+    behaviorId:inc.behId,behaviorLabel:inc.behLabel,behaviorIcon:inc.behIcon,
     timestamp:Date.now(),durationMs:durMs,
     antecedent:inc.abcA,note:inc.note||'',consequence:''
-  };
-  if(inc.measure==='durfreq'){
-    ev.hitCount=inc.hitCount||0;
-    ev.measureMode='durfreq';
-  }
-  S.activeSess.events.push(ev);
+  });
   rerender();
 }
 
@@ -5577,14 +5356,15 @@ function _endIncidentById(bid){
   if(!inc) return;
   const durMs=Date.now()-inc.startMs;
   delete S.incidents[bid];
-  // Intensity-mode incident — log a duration event then queue the rating prompt.
+  // log duration event — consequence will be captured in intensity prompt
   S.activeSess.events.push({
     id:uid(),type:'duration',
-    behaviorId:inc.behId,behaviorLabel:inc.behLabel,behaviorIcon:inc.behIcon||'',
+    behaviorId:inc.behId,behaviorLabel:inc.behLabel,behaviorIcon:inc.behIcon,
     timestamp:Date.now(),durationMs:durMs,
     antecedent:inc.abcA,note:inc.note||''
   });
-  S.intensityPrompts.push({durMs,behId:inc.behId,behLabel:inc.behLabel,behIcon:inc.behIcon||'',abcA:inc.abcA,note:inc.note||'',consequence:''});
+  // Queue intensity prompt — includes consequence field
+  S.intensityPrompts.push({durMs,behId:inc.behId,behLabel:inc.behLabel,behIcon:inc.behIcon,abcA:inc.abcA,note:inc.note||'',consequence:''});
   rerender();
 }
 
@@ -5638,37 +5418,6 @@ function deleteEvent(evIdx){
   rerender();
 }
 
-// Update an FBA-related field on a saved session record. Used by the
-// editable Behaviorist Notes panel on the session summary screen — lets
-// behaviorists capture setting events / hypothesis notes after the fact
-// for sessions recorded via Interval or Manual Entry mechanics.
-function updateSessFbaField(sessId,field,val){
-  if(!Array.isArray(S.sessions)) return;
-  const idx=S.sessions.findIndex(s=>s.id===sessId);
-  if(idx<0) return;
-  S.sessions[idx]={...S.sessions[idx],[field]:val};
-  // If this is the currently-selected session, sync that ref too.
-  if(S.selSess&&S.selSess.id===sessId) S.selSess={...S.selSess,[field]:val};
-  persist();
-  // Don't rerender — typing in a textarea/input shouldn't blow away focus.
-}
-
-// Toggle a setting-event tag on a saved session record (post-hoc edit on
-// the summary screen for FBA-tagged sessions).
-function toggleSessSettingEvent(sessId,opt){
-  if(!Array.isArray(S.sessions)) return;
-  const idx=S.sessions.findIndex(s=>s.id===sessId);
-  if(idx<0) return;
-  const cur=Array.isArray(S.sessions[idx].settingEvents)?[...S.sessions[idx].settingEvents]:[];
-  const at=cur.indexOf(opt);
-  if(at>=0) cur.splice(at,1);
-  else cur.push(opt);
-  S.sessions[idx]={...S.sessions[idx],settingEvents:cur};
-  if(S.selSess&&S.selSess.id===sessId) S.selSess={...S.selSess,settingEvents:cur};
-  persist();
-  rerender(); // toggles need rerender to flip the chip styling
-}
-
 function updateIntConsequence(val){
   if(S.intensityPrompts.length)S.intensityPrompts[0].consequence=val;
 }
@@ -5687,24 +5436,6 @@ function confirmStartMultiSession(){
   const cids=S._modal.clientIds||[];
   const type=S._modal.sel;
   if(cids.length<2||!type)return;
-
-  // ── Hard block: every student in the group must have behaviors ─────────
-  // Same rule as single-student sessions. Interval is exempt because On Task
-  // is always available.
-  if(type!=='interval'){
-    const missing=cids.filter(cid=>!studentHasBehaviors(cid))
-      .map(cid=>(S.clients.find(x=>x.id===cid)||{}).name||'Unknown');
-    if(missing.length){
-      alert('The following student(s) have no behaviors configured:\n\n• '+missing.join('\n• ')+'\n\nOpen each student\'s settings (gear icon) and add behaviors before starting a group observation.');
-      return;
-    }
-  } else {
-    const sel=S._modal.selectedBehs||[];
-    if(sel.length===0){
-      alert('Please select at least one behavior to score during interval recording.\n\nOn Task is always available.');
-      return;
-    }
-  }
 
   // ── INTERVAL RECORDING branch (group) ────────────────────────────────
   if(type==='interval'){
@@ -5843,43 +5574,43 @@ function mStartIncident(bid){
 
   // FREQ tool override
   if(slot.measureMode==='FREQ'){
-    slot.events.push({id:uid(),type:'frequency',behaviorId:b.id,behaviorLabel:b.label,behaviorIcon:b.icon||'',timestamp:Date.now(),antecedent:cs().abcA||'',consequence:''});
+    slot.events.push({id:uid(),type:'frequency',behaviorId:b.id,behaviorLabel:b.label,behaviorIcon:b.icon,timestamp:Date.now(),antecedent:cs().abcA||'',consequence:''});
     setCs({abcA:''});
     rerender();return;
   }
 
-  const measure=getBehMeasure(bid); // latency coerced to duration by getBehMeasure
+  const measure=getBehMeasure(bid);
 
   // FREQUENCY: instant log
   if(measure==='frequency'){
-    slot.events.push({id:uid(),type:'frequency',behaviorId:b.id,behaviorLabel:b.label,behaviorIcon:b.icon||'',timestamp:Date.now(),antecedent:cs().abcA||'',consequence:''});
+    slot.events.push({id:uid(),type:'frequency',behaviorId:b.id,behaviorLabel:b.label,behaviorIcon:b.icon,timestamp:Date.now(),antecedent:cs().abcA||'',consequence:''});
     setCs({abcA:''});
+    rerender();return;
+  }
+
+  // LATENCY: tap start/stop = log latency
+  if(measure==='latency'){
+    if(incs[bid]){
+      const inc=incs[bid];
+      const latMs=Date.now()-inc.startMs;
+      delete incs[bid];
+      slot.events.push({id:uid(),type:'latency',behaviorId:inc.behId,behaviorLabel:inc.behLabel,behaviorIcon:inc.behIcon,timestamp:Date.now(),latencyMs:latMs,antecedent:inc.abcA,note:inc.note||'',consequence:''});
+      setCs({incidents:incs});
+      rerender();return;
+    }
+    incs[bid]={behId:bid,behLabel:b.label,behIcon:b.icon,startMs:Date.now(),elapsed:0,abcA:cs().abcA||'',note:'',measure};
+    setCs({incidents:incs,activeBeh:b,abcA:''});
     rerender();return;
   }
 
   if(incs[bid]){
     // already active — tap again to end
-    if(measure==='duration' || measure==='durfreq') mEndIncidentDurationOnly(bid);
+    if(measure==='duration') mEndIncidentDurationOnly(bid);
     else mEndIncident(bid);
     return;
   }
-  // START — durfreq starts with hitCount:0; observer increments via +1 button
-  incs[bid]={
-    behId:bid,behLabel:b.label,behIcon:b.icon||'',
-    startMs:Date.now(),elapsed:0,abcA:cs().abcA||"",note:"",measure,
-    hitCount:0
-  };
+  incs[bid]={behId:bid,behLabel:b.label,behIcon:b.icon,startMs:Date.now(),elapsed:0,abcA:cs().abcA||"",note:"",measure};
   setCs({incidents:incs,activeBeh:b,abcA:""});
-  rerender();
-}
-
-// Increment hit counter on an active multi-session durfreq incident.
-function mIncrementIncidentHit(bid){
-  const slot=cs(); if(!slot) return;
-  const incs=slot.incidents||{};
-  const inc=incs[bid]; if(!inc) return;
-  inc.hitCount=(inc.hitCount||0)+1;
-  setCs({incidents:incs});
   rerender();
 }
 
@@ -5889,13 +5620,7 @@ function mEndIncidentDurationOnly(bid){
   const inc=incs[bid]; if(!inc) return;
   const durMs=Date.now()-inc.startMs;
   delete incs[bid];
-  // Build event — attach hitCount when this was a durfreq incident.
-  const ev={id:uid(),type:"duration",behaviorId:inc.behId,behaviorLabel:inc.behLabel,behaviorIcon:inc.behIcon||'',timestamp:Date.now(),durationMs:durMs,antecedent:inc.abcA,note:inc.note||"",consequence:""};
-  if(inc.measure==='durfreq'){
-    ev.hitCount=inc.hitCount||0;
-    ev.measureMode='durfreq';
-  }
-  slot.events.push(ev);
+  slot.events.push({id:uid(),type:"duration",behaviorId:inc.behId,behaviorLabel:inc.behLabel,behaviorIcon:inc.behIcon,timestamp:Date.now(),durationMs:durMs,antecedent:inc.abcA,note:inc.note||"",consequence:""});
   setCs({incidents:incs});
   rerender();
 }
@@ -5906,9 +5631,9 @@ function mEndIncident(bid){
   const inc=incs[bid]; if(!inc) return;
   const durMs=Date.now()-inc.startMs;
   delete incs[bid];
-  slot.events.push({id:uid(),type:"duration",behaviorId:inc.behId,behaviorLabel:inc.behLabel,behaviorIcon:inc.behIcon||'',timestamp:Date.now(),durationMs:durMs,antecedent:inc.abcA,note:inc.note||""});
+  slot.events.push({id:uid(),type:"duration",behaviorId:inc.behId,behaviorLabel:inc.behLabel,behaviorIcon:inc.behIcon,timestamp:Date.now(),durationMs:durMs,antecedent:inc.abcA,note:inc.note||""});
   const prompts=(slot.intensityPrompts||[]);
-  prompts.push({durMs,behId:inc.behId,behLabel:inc.behLabel,behIcon:inc.behIcon||'',abcA:inc.abcA,note:inc.note||"",consequence:""});
+  prompts.push({durMs,behId:inc.behId,behLabel:inc.behLabel,behIcon:inc.behIcon,abcA:inc.abcA,note:inc.note||"",consequence:""});
   setCs({incidents:incs,intensityPrompts:prompts});
   rerender();
 }
@@ -5975,8 +5700,7 @@ function startAddClientBeh(){
   if(!S._modal) return;
   S._modal.addingBeh=true;
   S._modal.editingBehId=null;
-  S._modal.newBehIcon=''; // blank by default — emoji is optional
-  S._modal._newMeasure='duration';
+  S._modal.newBehIcon='📌';
   rerender();
 }
 
@@ -5986,7 +5710,7 @@ function startEditClientBeh(bid){
   if(!b) return;
   S._modal.editingBehId=bid;
   S._modal.addingBeh=false;
-  S._modal.newBehIcon=b.icon||'';
+  S._modal.newBehIcon=b.icon;
   rerender();
 }
 
@@ -6000,35 +5724,32 @@ function cancelClientBehEdit(){
 
 function pickClientBehIcon(ic){
   if(!S._modal) return;
-  // ic may be empty string — that's the "No icon" choice.
-  S._modal.newBehIcon=ic||'';
-  // Update icon picker highlight without full rerender.
-  document.querySelectorAll('[id^="csiopt-"]').forEach(el=>el.style.borderColor='var(--border)');
-  document.querySelectorAll('[id^="csiopt-"]').forEach(el=>el.style.background='#fff');
-  const targetId=ic?('csiopt-'+encodeURIComponent(ic)):'csiopt-none';
-  const target=document.getElementById(targetId);
-  if(target){target.style.borderColor='var(--accent)';target.style.background=ic?'var(--accent-soft)':'#fff';}
+  S._modal.newBehIcon=ic;
+  // Update icon picker highlight without full rerender
+  document.querySelectorAll('[id^="csiopt-"]').forEach(el=>{
+    const isSelected=el.id===('csiopt-'+encodeURIComponent(ic));
+    el.style.borderColor=isSelected?'var(--accent)':'var(--border)';
+    el.style.background=isSelected?'var(--accent-soft)':'#fff';
+  });
 }
 
 function saveClientCustomBeh(cid){
   if(!S._modal) return;
   const label=(document.getElementById('cs-beh-label')?.value||'').trim();
   if(!label){alert('Please enter a behavior name.');return;}
-  const icon=S._modal.newBehIcon||''; // emoji optional
+  const icon=S._modal.newBehIcon||'📌';
   const editingId=S._modal.editingBehId;
 
   if(editingId){
-    // Update existing custom behavior — preserve definition (only behaviorist
-    // can edit definitions, and they do so via the library editor, not here).
+    // Update existing custom behavior
     S.customs=S.customs.map(b=>b.id===editingId?{...b,label,icon}:b);
   } else {
-    // Create new custom behavior and auto-attach to this student.
-    // Operational definition is blank — only behaviorists/admins fill it in
-    // later via Settings → Behavior Library.
-    const newBeh={id:uid(),label,icon,custom:true,definition:''};
+    // Create new custom behavior and auto-add to this client's selection
+    const newBeh={id:uid(),label,icon,custom:true};
     const newMeasure=S._modal._newMeasure||'duration';
     S._measureTypes[newBeh.id]=newMeasure;
     S.customs.push(newBeh);
+    // Auto-select for this client
     S.clients=S.clients.map(c=>{
       if(c.id!==cid) return c;
       const behs=[...(c.behaviors||[]),newBeh.id];
@@ -6040,14 +5761,6 @@ function saveClientCustomBeh(cid){
   S._modal.editingBehId=null;
   S._modal.newBehIcon=null;
   persist();
-  rerender();
-}
-
-// Imports a starter behavior into the user's library AND attaches it to the
-// given student. If the same starter (by seedId or label) is already in the
-// library, just attach it to the student instead of duplicating.
-function importStarterBehavior(seedId,clientId){
-  addStarterBehaviorToStudent(seedId,clientId);
   rerender();
 }
 
@@ -6172,16 +5885,13 @@ function saveStrength(sessId,val){
 function exportSessionCSV(sessId){
   const sess=S.sessions.find(s=>s.id===sessId);
   if(!sess)return;
-  // Hits column added for Duration+Frequency events. Latency column retained
-  // so historical sessions still export cleanly.
-  const rows=[['Time','Type','Behavior','Duration(ms)','Hits','Intensity','Latency(ms)','Antecedent','Consequence','Note']];
+  const rows=[['Time','Type','Behavior','Duration(ms)','Intensity','Latency(ms)','Antecedent','Consequence','Note']];
   (sess.events||[]).forEach(ev=>{
     rows.push([
       new Date(ev.timestamp).toLocaleString(),
       ev.type||'',
       ev.behaviorLabel||'',
       ev.durationMs||'',
-      ev.hitCount||'',
       ev.intensity||'',
       ev.latencyMs||'',
       ev.antecedent||'',
@@ -6190,7 +5900,7 @@ function exportSessionCSV(sessId){
     ]);
   });
   // add strength row if exists
-  if(sess.strength){rows.push(['','','','','','','','','','']);rows.push(['STRENGTHS NOTE','','','','','','','','',sess.strength]);}
+  if(sess.strength){rows.push(['','','','','','','','','']);rows.push(['STRENGTHS NOTE','','','','','','','',sess.strength]);}
   const csv=rows.map(r=>r.map(v=>'"'+String(v).replace(/"/g,'""')+'"').join(',')).join('\n');
   const blob=new Blob([csv],{type:'text/csv'});
   const a=document.createElement('a');
@@ -6882,23 +6592,6 @@ async function boot(){
   S._assScored= stored._assScored||[];
   S._measureTypes= stored._measureTypes||{};
   // _role is NOT loaded from stored data — Supabase user_roles table is the source of truth
-
-  // ── Behavior library housekeeping ──────────────────────────────────────
-  // Older versions of the app auto-seeded the 9 starter behaviors into
-  // S.customs on first load. Per product direction, the library should now
-  // start truly empty — starter behaviors are an opt-in per-student import.
-  // This call removes any seeded entries that aren't in active use; anything
-  // referenced by a student or session is preserved.
-  let _purged=0;
-  try{ _purged=purgeUnusedSeededBehaviors(); }catch(e){ console.warn('library purge failed',e); }
-
-  // Coerce any legacy 'latency' measure types to 'duration'. Latency is no
-  // longer offered as a measurement type; historical events still display.
-  let _coerced=0;
-  Object.keys(S._measureTypes||{}).forEach(k=>{
-    if(S._measureTypes[k]==='latency'){ S._measureTypes[k]='duration'; _coerced++; }
-  });
-  if(_purged||_coerced){ persist(); }
 
   // Show user info in header
   renderUserBadge();
