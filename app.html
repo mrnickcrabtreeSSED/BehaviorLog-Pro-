@@ -1159,9 +1159,6 @@ function buildModal(){
       {id:'manual', icon:'📝', label:'Manual Entry',
        desc:'Enter observation data from a paper tracking sheet — date, time, location, and behavior counts.',
        color:'var(--orange)', soft:'var(--orange-soft)', always:true, isManual:true},
-      {id:'fba', icon:'🧠', label:'Behaviorist Observation',
-       desc:isBehaviorist()?'Structured behavioral observation with setting events, antecedent categories, and hypothesis tools. Requires licensed behaviorist affirmation.':'Behaviorist observations can only be started by a licensed behaviorist. Contact your behavior support specialist.',
-       color:'var(--fba-green)', soft:'var(--fba-soft)', always:true, blocked:!isBehaviorist()},
     ];
     inner=`<h2 style="margin-bottom:4px">Start Session</h2>
       <p class="muted mb4" style="font-size:.8rem">Choose the observation type for this session.</p>
@@ -1177,14 +1174,6 @@ function buildModal(){
             ${m.sel===tp.id?'<div style="width:20px;height:20px;border-radius:50%;background:'+tp.color+';display:flex;align-items:center;justify-content:center;flex-shrink:0"><span style="color:#fff;font-size:.75rem;font-weight:900">✓</span></div>':'<div style="width:20px;height:20px;border-radius:50%;border:2px solid var(--border);flex-shrink:0"></div>'}
           </div>`).join('')}
       </div>
-      <!-- FBA selected notice -->
-      ${m.sel==='fba'?`<div style="background:var(--fba-soft);border:1.5px solid var(--fba-mid);border-radius:10px;padding:12px 14px;margin-bottom:14px;display:flex;gap:10px;align-items:flex-start">
-        <span style="font-size:1.3rem;flex-shrink:0">🧠</span>
-        <div>
-          <div style="font-weight:800;font-size:.82rem;color:var(--fba-dark);margin-bottom:4px">This session will be uniquely built to meet the specific needs of this client.</div>
-          <div style="font-size:.75rem;color:var(--fba-green);line-height:1.5">Behaviorist Observation data is used exclusively to inform the BIP, behavior goals, and FBA summary generated for this student. All documents are tailored to the patterns, functions, and context collected across their sessions.</div>
-        </div>
-      </div>`:''}
       <!-- Time of day + date display -->
       <div style="background:var(--surface2);border:1px solid var(--border);border-radius:10px;padding:10px 14px;margin-bottom:14px;display:flex;align-items:center;justify-content:space-between">
         <div>
@@ -1394,34 +1383,6 @@ function buildModal(){
       <button class="btn btn-ghost btn-sm" onclick="closeModal()">Done</button>
     </div>`;
     showClose=false;
-  }
-
-  if(m.type==='fbaAffirm'){
-    inner=`<div style="text-align:center;margin-bottom:10px">
-        <div style="font-size:2.4rem;margin-bottom:6px">🧠</div>
-        <h2 style="margin-bottom:4px;color:var(--fba-dark)">Behaviorist Observation Session</h2>
-        <p style="font-size:.78rem;color:var(--muted);line-height:1.5;max-width:320px;margin:0 auto">Functional Behavior Assessment sessions are intended for use by licensed behaviorists only.</p>
-      </div>
-      <div style="background:var(--fba-soft);border:1.5px solid var(--fba-mid);border-radius:12px;padding:14px 16px;margin-bottom:18px;text-align:left">
-        <div style="font-weight:800;font-size:.82rem;color:var(--fba-dark);margin-bottom:8px">📋 By proceeding, you affirm that:</div>
-        <ul style="font-size:.78rem;color:var(--text2);line-height:1.9;padding-left:18px">
-          <li>You are a licensed/credentialed behaviorist (BCBA, LEA Behaviorist, or equivalent)</li>
-          <li>This tracking will serve as primary Behaviorist observational data</li>
-          <li>Supplemental data from other session types are supporting resources only</li>
-          <li>Final FBA conclusions are your professional judgment as the behaviorist</li>
-        </ul>
-        <div style="margin-top:10px;font-size:.73rem;color:var(--fba-green);font-style:italic;line-height:1.4">This tool provides data collection support. It does not replace clinical judgment, direct interviews, or comprehensive assessment.</div>
-      </div>
-      <div class="slabel" style="margin-bottom:6px">Behaviorist Name <span style="color:var(--red)">*</span></div>
-      <input class="input" id="fba-beh-name" placeholder="Enter your full name…" style="margin-bottom:16px" oninput="S._fbaGate.behavioristName=this.value"/>
-      <label style="display:flex;align-items:flex-start;gap:10px;cursor:pointer;padding:12px 14px;background:var(--surface2);border:2px solid var(--border);border-radius:10px;margin-bottom:20px;transition:border-color .15s" onclick="this.style.borderColor=document.getElementById('fba-affirm-check').checked?'var(--fba-green)':'var(--border)'">
-        <input type="checkbox" id="fba-affirm-check" style="margin-top:2px;accent-color:var(--fba-green);width:16px;height:16px;flex-shrink:0"/>
-        <span style="font-size:.78rem;color:var(--text2);line-height:1.5">I affirm the above statements and confirm I am authorized to conduct this Behaviorist observation. I understand that only <strong>Behaviorist Observation sessions</strong> will count toward FBA progress metrics, and that any supplemental session data is for reference only.</span>
-      </label>
-      <div class="row gap2">
-        <button class="btn btn-primary" style="flex:1;background:var(--fba-green);border-color:var(--fba-green)" onclick="confirmFbaAffirm()">🧠 Begin Session</button>
-        <button class="btn btn-ghost" onclick="cancelFbaAffirm()">Cancel</button>
-      </div>`;
   }
 
   if(m.type==='multiSess'){
@@ -1739,6 +1700,26 @@ function buildModal(){
       <button class="btn btn-primary" style="flex:1" onclick="saveEndNotes()">💾 Save with Notes</button>
       <button class="btn btn-ghost" onclick="skipEndNotes()">Skip</button>
     </div>`;
+  }
+
+  // Post-session prompt shown to behaviorists only — asks whether to save this
+  // observation to the Behaviorist Log for FBA/BIP documentation.
+  if(m.type==='behLogPrompt'){
+    const evCount=S.activeSess?S.activeSess.events.length:0;
+    const elapsed=S.activeSess?(S.activeSess.endedAt-S.activeSess.startedAt):0;
+    inner=`<div style="text-align:center;margin-bottom:14px">
+      <div style="font-size:2rem;margin-bottom:6px">🧠</div>
+      <h2 style="margin:0;font-size:1.1rem;color:var(--fba-dark)">Save to Behaviorist Log?</h2>
+      <p class="muted" style="margin-top:6px;font-size:.78rem;line-height:1.5">${evCount} event${evCount!==1?'s':''} · ${fmt(elapsed)}<br>Saving this observation to your Behaviorist Log makes it count toward FBA readiness and feeds future BIP/FBA generation.</p>
+    </div>
+    <div style="background:var(--fba-soft);border:1.5px solid var(--fba-mid);border-radius:10px;padding:12px 14px;margin-bottom:16px;font-size:.74rem;color:var(--fba-dark);line-height:1.5">
+      <strong>Behaviorist Log entries</strong> are reserved for observations you intend to use as FBA documentation. Routine data collection sessions can be skipped.
+    </div>
+    <div style="display:flex;gap:8px">
+      <button class="btn btn-primary" style="flex:1;background:var(--fba-green);border-color:var(--fba-green)" onclick="saveToBehLog()">🧠 Save to Behaviorist Log</button>
+      <button class="btn btn-ghost" onclick="skipBehLog()">Skip — Regular Session</button>
+    </div>`;
+    showClose=false;
   }
 
   if(m.type==='manualEntry'){
@@ -2188,7 +2169,9 @@ function buildRecord(){
   const isGoalSpec=sessType==='tracking';
   const isInitial=sessType==='initial';
   const isGeneral=sessType==='general';
-  const isFba=sessType==='fba';
+  // 'fba' is no longer a session type. Defensive: if an active session was started on a previous
+  // build with sessType='fba', treat it as general tracking.
+  const isFba=false;
   const cg=clientGoals(sess.clientId);
   const events=sess.events||[];
   const activeIncs=Object.values(S.incidents); // concurrent incidents
@@ -2200,8 +2183,6 @@ function buildRecord(){
   } else if(isInitial){
     const selIds=S._initialBehs||sess.selectedBehs||[];
     behs=selIds.length?allBehs().filter(b=>selIds.includes(b.id)):allBehs();
-  } else if(isFba){
-    behs=allBehs();
   } else {
     behs=clientBehs(sess.clientId);
   }
@@ -2209,8 +2190,6 @@ function buildRecord(){
     ?`<span class="tag" style="background:var(--accent-soft);color:var(--accent);border:1px solid #a3ccdf">🎯 Goal-Specific</span>`
     :isGeneral
     ?`<span class="tag" style="background:var(--amber-soft);color:var(--amber);border:1px solid #e8c97a">📋 General Tracking</span>`
-    :isFba
-    ?`<span class="tag" style="background:var(--fba-soft);color:var(--fba-green);border:1px solid var(--fba-mid);font-weight:800">🧠 Behaviorist Observation</span>`
     :`<span class="tag" style="background:var(--purple-soft);color:var(--purple);border:1px solid #c8b8f0">🔍 Initial Assessment</span>`;
   let liveGoals='';
   if(isGoalSpec&&cg.length>0){
@@ -2280,9 +2259,9 @@ function buildRecord(){
     let ctrl='';
     if(S.measureMode==='FREQ')ctrl=`<div class="muted mt2" style="text-align:center;font-size:.78rem;padding:8px;background:var(--surface2);border-radius:8px">🔢 <strong>Frequency mode active</strong> — tap any behavior button to log +1 count</div>`;
     if(S.measureMode==='LAT')ctrl=`<div style="text-align:center;margin-top:10px"><p class="muted mb2" style="font-size:.8rem">Latency timer</p><div class="timer" id="lat-timer">${fmt(S.latElapsed)}</div><button class="btn mt2" style="width:100%;justify-content:center;font-size:.92rem;padding:12px;${S.latRunning?'background:#fee2e2;color:var(--red);border:1.5px solid #fca5a5':'background:var(--purple-soft);color:var(--purple);border:1.5px solid #ddd6fe'}" onclick="toggleLat()">${S.latRunning?'⏹ Stop & Log':'▶ Start Latency'}</button></div>`;
-    abcPanel=`<div class="card mb3" style="padding:14px 16px${isFba?';background:var(--fba-soft);border-color:var(--fba-mid)':''}">
-      <div class="slabel" style="margin-bottom:6px${isFba?';color:var(--fba-dark)':''}">Antecedent <span class="muted" style="font-weight:400;text-transform:none;letter-spacing:0;font-size:.75rem;margin-left:6px">What’s happening before — captured when you tap a behavior</span></div>
-      <input class="input mb3" id="abc-a" placeholder="Describe what happened before the behavior…" value="${esc(S.abcA)}" oninput="S.abcA=this.value" style="${isFba?'border-color:var(--fba-mid)':''}"/>
+    abcPanel=`<div class="card mb3" style="padding:14px 16px">
+      <div class="slabel" style="margin-bottom:6px">Antecedent <span class="muted" style="font-weight:400;text-transform:none;letter-spacing:0;font-size:.75rem;margin-left:6px">What's happening before — captured when you tap a behavior</span></div>
+      <input class="input mb3" id="abc-a" placeholder="Describe what happened before the behavior…" value="${esc(S.abcA)}" oninput="S.abcA=this.value"/>
       <div class="row between"><span class="slabel" style="margin:0">Additional Tools</span><div class="row gap1">${mBtns}</div></div>${ctrl}
     </div>`;
   } else {
@@ -2310,19 +2289,21 @@ function buildRecord(){
   const elapsedNow=Date.now()-sess.startedAt;
   const remainMs=plannedMs?Math.max(0,plannedMs-elapsedNow):null;
   const overTime=plannedMs&&elapsedNow>plannedMs;
-  const fbaBannerStyle=isFba?'background:linear-gradient(135deg,var(--fba-soft),#d0f0e4);border-color:var(--fba-mid)':'';
-  const fbaHypField=isFba?`<div class="card mb3" style="background:var(--fba-soft);border:1.5px solid var(--fba-mid);padding:13px 15px">
+  // Hypothesis notepad: always available for behaviorists. They can jot working hypotheses
+  // regardless of session type; if they later save the session to the Behaviorist Log, these
+  // notes are preserved with the session record.
+  const fbaHypField=isBehaviorist()?`<div class="card mb3" style="background:var(--fba-soft);border:1.5px solid var(--fba-mid);padding:13px 15px">
     <div class="row between mb2">
-      <div class="slabel" style="margin:0;color:var(--fba-dark)">🔬 Developing Hypothesis</div>
-      <span style="font-size:.7rem;color:var(--fba-green);font-style:italic">Behaviorist notes — not included in parent reports</span>
+      <div class="slabel" style="margin:0;color:var(--fba-dark)">🔬 Behaviorist Hypothesis Notes <span style="font-weight:400;text-transform:none;letter-spacing:0;font-size:.7rem;color:var(--muted);margin-left:6px">optional</span></div>
+      <span style="font-size:.7rem;color:var(--fba-green);font-style:italic">Saved if you log this to the Behaviorist Log</span>
     </div>
-    <textarea class="input" placeholder="Document emerging behavioral function hypotheses, patterns observed, ecological variables…" oninput="S.fbaHypothesis=this.value" style="min-height:70px;border-color:var(--fba-mid)">${esc(S.fbaHypothesis||'')}</textarea>
+    <textarea class="input" placeholder="Working hypotheses, function patterns, ecological variables observed…" oninput="S.fbaHypothesis=this.value;if(S.activeSess) S.activeSess.fbaHypothesis=this.value" style="min-height:70px;border-color:var(--fba-mid)">${esc(S.fbaHypothesis||'')}</textarea>
   </div>`:'';
 
   const addBehOnFly=isInitial?'<div style="display:flex;gap:6px;margin-bottom:12px;align-items:center"><input class="input" id="live-add-beh" placeholder="Add new behavior on the fly…" style="flex:1;font-size:.82rem;padding:8px 10px" onkeydown="if(event.key===\'Enter\')liveAddBeh()"/><button class="btn btn-primary btn-xs" onclick="liveAddBeh()" style="white-space:nowrap">+ Add</button></div>':'';
 
-  return `<div class="sub-view"><div class="live-banner" style="${isFba?fbaBannerStyle:overTime?'background:linear-gradient(135deg,#fde4e6,#ffe4e6);border-color:#fca5a5':''}"><div class="row gap2"><span class="live-dot" style="${overTime?'background:var(--red)':isFba?'background:var(--fba-green)':''}"></span><div><div style="font-weight:800;color:${isFba?'var(--fba-dark)':overTime?'var(--red)':'var(--green)'}">Live${isFba?' FBA':''} Session — ${esc(S.selClient.name)}${isFba&&sess.behavioristName?' <span style="font-size:.72rem;font-weight:600;color:var(--fba-green)">· '+esc(sess.behavioristName)+'</span>':''}</div>
-          ${sess.location?`<div style="font-size:.74rem;color:var(--muted);margin-top:1px">📍 ${esc(sess.location)} · ${new Date(sess.startedAt).toLocaleTimeString('en-US',{hour:'numeric',minute:'2-digit',hour12:true})}</div>`:`<div style="font-size:.74rem;color:var(--muted);margin-top:1px">${new Date(sess.startedAt).toLocaleTimeString('en-US',{hour:'numeric',minute:'2-digit',hour12:true})}</div>`}<div class="row gap2 mt1" style="flex-wrap:wrap"><span class="muted mono" id="sess-elapsed" style="font-size:.8rem">${fmt(elapsedNow)} elapsed</span>${plannedMs?`<span id="sess-remain" class="mono" style="font-size:.8rem;font-weight:700;color:${overTime?'var(--red)':'var(--muted)'}">${overTime?'⚠ +'+fmt(elapsedNow-plannedMs)+' over':'⏱ '+fmt(remainMs)+' left'}</span>`:''}</div></div></div><div class="row gap2">${sessionTypeBadge}<button class="btn btn-danger btn-sm" onclick="endSession()">⏹ End</button></div></div>${liveGoals}<div class="slabel" style="margin-bottom:10px">${isGoalSpec?'IEP Goal Behaviors':isGeneral?'Configured Behaviors':isFba?'All Behaviors — Behaviorist Observation':isInitial?'Assessment Behaviors':'All Behaviors'}</div>${abcPanel}${behs.length===0?`<div style="background:var(--surface2);border:1.5px dashed var(--border);border-radius:12px;padding:24px;text-align:center;margin-bottom:16px"><div style="font-size:2rem;margin-bottom:8px">📋</div><div style="font-weight:700;color:var(--muted);font-size:.88rem">No behaviors selected yet</div><div style="font-size:.74rem;color:var(--muted);margin-top:4px">Tap the settings icon to choose behaviors to track for this student.</div></div>`:`<div class="beh-grid-wrap mb3"><div class="beh-grid-standalone">${behGrid}</div></div>`}${addBehOnFly}${activeCards}${evFeed}${fbaHypField||''}</div>`;
+  return `<div class="sub-view"><div class="live-banner" style="${overTime?'background:linear-gradient(135deg,#fde4e6,#ffe4e6);border-color:#fca5a5':''}"><div class="row gap2"><span class="live-dot" style="${overTime?'background:var(--red)':''}"></span><div><div style="font-weight:800;color:${overTime?'var(--red)':'var(--green)'}">Live Session — ${esc(S.selClient.name)}</div>
+          ${sess.location?`<div style="font-size:.74rem;color:var(--muted);margin-top:1px">📍 ${esc(sess.location)} · ${new Date(sess.startedAt).toLocaleTimeString('en-US',{hour:'numeric',minute:'2-digit',hour12:true})}</div>`:`<div style="font-size:.74rem;color:var(--muted);margin-top:1px">${new Date(sess.startedAt).toLocaleTimeString('en-US',{hour:'numeric',minute:'2-digit',hour12:true})}</div>`}<div class="row gap2 mt1" style="flex-wrap:wrap"><span class="muted mono" id="sess-elapsed" style="font-size:.8rem">${fmt(elapsedNow)} elapsed</span>${plannedMs?`<span id="sess-remain" class="mono" style="font-size:.8rem;font-weight:700;color:${overTime?'var(--red)':'var(--muted)'}">${overTime?'⚠ +'+fmt(elapsedNow-plannedMs)+' over':'⏱ '+fmt(remainMs)+' left'}</span>`:''}</div></div></div><div class="row gap2">${sessionTypeBadge}<button class="btn btn-danger btn-sm" onclick="endSession()">⏹ End</button></div></div>${liveGoals}<div class="slabel" style="margin-bottom:10px">${isGoalSpec?'IEP Goal Behaviors':isGeneral?'Configured Behaviors':isInitial?'Assessment Behaviors':'All Behaviors'}</div>${abcPanel}${behs.length===0?`<div style="background:var(--surface2);border:1.5px dashed var(--border);border-radius:12px;padding:24px;text-align:center;margin-bottom:16px"><div style="font-size:2rem;margin-bottom:8px">📋</div><div style="font-weight:700;color:var(--muted);font-size:.88rem">No behaviors selected yet</div><div style="font-size:.74rem;color:var(--muted);margin-top:4px">Tap the settings icon to choose behaviors to track for this student.</div></div>`:`<div class="beh-grid-wrap mb3"><div class="beh-grid-standalone">${behGrid}</div></div>`}${addBehOnFly}${activeCards}${evFeed}${fbaHypField||''}</div>`;
 }
 
 // ── MULTI-CLIENT RECORD ────────────────────────────────────────────────────
@@ -2490,7 +2471,8 @@ function buildSummary(){
   const isInitial=sess.sessType==='initial';
   const isGeneral=sess.sessType==='general';
   const isGoalSpec=sess.sessType==='tracking';
-  const isFbaSess=sess.sessType==='fba';
+  // Behaviorist Log card shows when this session was flagged for FBA documentation
+  const isFbaSess=sess.isFbaObservation===true;
 
   let recPanel='';
   if((isInitial||isGeneral)&&bList.length>0){
@@ -2531,17 +2513,19 @@ function buildSummary(){
   const typeBadge=sess.sessType==='initial'?`<span class="tag" style="background:var(--purple-soft);color:var(--purple);margin-left:9px">🔍 Initial Assessment</span>`
     :sess.sessType==='tracking'?`<span class="tag" style="background:var(--accent-soft);color:var(--accent);margin-left:9px">🎯 Goal-Specific</span>`
     :sess.sessType==='general'?`<span class="tag" style="background:var(--amber-soft);color:var(--amber);margin-left:9px">📋 General Tracking</span>`
-    :sess.sessType==='fba'?`<span class="tag" style="background:var(--fba-soft);color:var(--fba-green);margin-left:9px;font-weight:800">🧠 Behaviorist Observation</span>`
     :sess.sessType==='manual'?`<span class="tag" style="background:var(--orange-soft);color:var(--orange);margin-left:9px">📝 Manual Entry</span>`:'';
+  // Additional badge for sessions flagged to the Behaviorist Log
+  const logBadge=isFbaSess?`<span class="tag" style="background:var(--fba-soft);color:var(--fba-green);margin-left:6px;font-weight:800;border:1px solid var(--fba-mid)">🧠 Behaviorist Log</span>`:'';
 
-  // behaviorist session metadata card (shown in summary when it's an behaviorist session)
+  // Behaviorist Log metadata card — shown when this session is flagged for FBA documentation
   const fbaMetaCard=isFbaSess?`<div class="card mb3" style="background:var(--fba-soft);border:1.5px solid var(--fba-mid);padding:13px 15px">
-    <div class="slabel" style="color:var(--fba-dark);margin-bottom:10px">🧠 Behaviorist Session Data</div>
-    ${sess.behavioristName?`<div style="margin-bottom:8px;font-size:.82rem"><strong>Behaviorist:</strong> ${esc(sess.behavioristName)}</div>`:''}
+    <div class="slabel" style="color:var(--fba-dark);margin-bottom:10px">🧠 Behaviorist Log Entry</div>
+    ${sess.fbaFlaggedBy?`<div style="margin-bottom:8px;font-size:.82rem"><strong>Flagged by:</strong> ${esc(sess.fbaFlaggedBy)}${sess.fbaFlaggedAt?` <span class="muted" style="font-size:.74rem">· ${fmtDate(sess.fbaFlaggedAt)}</span>`:''}</div>`:(sess.behavioristName?`<div style="margin-bottom:8px;font-size:.82rem"><strong>Behaviorist:</strong> ${esc(sess.behavioristName)}</div>`:'')}
     ${sess.settingEvents&&sess.settingEvents.length?`<div style="margin-bottom:8px"><div style="font-size:.73rem;font-weight:700;color:var(--fba-dark);margin-bottom:4px">Setting Events Present:</div><div style="display:flex;flex-wrap:wrap;gap:5px">${sess.settingEvents.map(s=>`<span style="padding:3px 9px;border-radius:16px;background:var(--fba-green);color:#fff;font-size:.7rem;font-weight:700">${s}</span>`).join('')}</div></div>`:''}
     ${sess.settingEventsNote?`<div style="margin-bottom:8px;font-size:.78rem;color:var(--text2)"><strong>Setting notes:</strong> ${esc(sess.settingEventsNote)}</div>`:''}
     ${sess.fbaHypothesis?`<div style="margin-bottom:6px"><div style="font-size:.73rem;font-weight:700;color:var(--fba-dark);margin-bottom:4px">Behaviorist Hypothesis Notes:</div><div style="font-size:.78rem;color:var(--text2);background:rgba(255,255,255,.6);border-radius:8px;padding:8px 10px;border-left:3px solid var(--fba-green)">${esc(sess.fbaHypothesis)}</div></div>`:''}
-    <div style="margin-top:8px;font-size:.7rem;color:var(--fba-green);font-style:italic;border-top:1px solid var(--fba-mid);padding-top:8px">Supplemental reports from other session types are reference data only. FBA conclusions are those of the behaviorist.</div>
+    ${sess._legacyFbaSession?'<div style="margin-top:6px;font-size:.7rem;color:var(--muted);font-style:italic">Migrated from a legacy FBA session.</div>':''}
+    <div style="margin-top:8px;font-size:.7rem;color:var(--fba-green);font-style:italic;border-top:1px solid var(--fba-mid);padding-top:8px">This entry counts toward FBA readiness. Other sessions are reference data only.</div>
   </div>`:'';
 
   const bCards=bList.map(b=>`<div class="card mb2">
@@ -2561,7 +2545,7 @@ function buildSummary(){
   const savedStrength=S._strengths&&S._strengths[sess.id]?S._strengths[sess.id]:'';
 
   return `<div class="sub-view"><button class="back-btn" onclick="S.selClient=S.clients.find(c=>c.id===S.selSess.clientId)||S.selClient;S.view='analytics';S._anaTab='history';rerender()">← History</button>
-  <div class="row" style="margin-bottom:5px"><h2>Session Summary</h2>${typeBadge}</div>
+  <div class="row" style="margin-bottom:5px"><h2>Session Summary</h2>${typeBadge}${logBadge}</div>
   <p class="muted">${esc(sess.clientName)} · ${fmtDate(sess.startedAt)} · ${fmtTime(sess.startedAt)}</p>
   <hr class="divider"/>
   ${fbaMetaCard}
@@ -2612,10 +2596,12 @@ function buildHistory(){
       const typeBadge=s.sessType==='initial'?`<span class="tag" style="background:var(--purple-soft);color:var(--purple);font-size:.65rem">🔍</span>`
         :s.sessType==='tracking'?`<span class="tag" style="background:var(--accent-soft);color:var(--accent);font-size:.65rem">🎯</span>`
         :s.sessType==='general'?`<span class="tag" style="background:var(--amber-soft);color:var(--amber);font-size:.65rem">📋</span>`
-        :s.sessType==='fba'?`<span class="tag" style="background:var(--fba-soft);color:var(--fba-green);font-size:.65rem;font-weight:800">🧠</span>`:'';
+        :s.sessType==='manual'?`<span class="tag" style="background:var(--orange-soft);color:var(--orange);font-size:.65rem">📝</span>`:'';
+      // Add a Behaviorist Log indicator next to the session-type badge when flagged
+      const logBadge=s.isFbaObservation===true?`<span class="tag" style="background:var(--fba-soft);color:var(--fba-green);font-size:.65rem;font-weight:800" title="Behaviorist Log entry">🧠</span>`:'';
       return`<div class="chip mb2" onclick="goSummary('${s.id}')">
         <div class="row gap2"><div>
-          <div class="row gap2"><span style="font-weight:700">${fmtDate(s.startedAt)} · ${fmtTime(s.startedAt)}</span>${typeBadge}</div>
+          <div class="row gap2"><span style="font-weight:700">${fmtDate(s.startedAt)} · ${fmtTime(s.startedAt)}</span>${typeBadge}${logBadge}</div>
           <div class="muted mt1">${s.events.length} events · ${fmt(s.endedAt-s.startedAt)}${s.plannedMins?' · planned '+s.plannedMins+'m':''}${s.location?' · 📍'+s.location:''}</div>
         </div></div>
         <span style="color:var(--accent);font-weight:700">→</span></div>`;
@@ -2708,7 +2694,8 @@ function buildReports(){
   const initSess=filtered.filter(s=>s.sessType==='initial').length;
   const genSess=filtered.filter(s=>s.sessType==='general').length;
   const trackSess=filtered.filter(s=>s.sessType==='tracking').length;
-  const fbaSess=filtered.filter(s=>s.sessType==='fba').length;
+  // Behaviorist Log entries — sessions flagged for FBA documentation, any underlying type
+  const fbaSess=filtered.filter(s=>s.isFbaObservation===true).length;
 
   return`<div class="row between mb3"><div class="slabel" style="margin:0;align-self:center">Session Report</div><button class="btn btn-orange btn-sm" onclick="doExportPDF()">⬇ PDF</button></div>
   <div class="card mb3">
@@ -2721,7 +2708,7 @@ function buildReports(){
       ${initSess>0?`<span class="tag" style="background:var(--purple-soft);color:var(--purple)">🔍 ${initSess} Initial</span>`:''}
       ${genSess>0?`<span class="tag" style="background:var(--amber-soft);color:var(--amber)">📋 ${genSess} General</span>`:''}
       ${trackSess>0?`<span class="tag" style="background:var(--accent-soft);color:var(--accent)">🎯 ${trackSess} Goal-Specific</span>`:''}
-      ${fbaSess>0?`<span class="tag" style="background:var(--fba-soft);color:var(--fba-green);font-weight:800">🧠 ${fbaSess} FBA</span>`:''}
+      ${fbaSess>0&&isBehaviorist()?`<span class="tag" style="background:var(--fba-soft);color:var(--fba-green);font-weight:800">🧠 ${fbaSess} Behaviorist Log</span>`:''}
     </div>
   </div>
   <div class="grid3 mb3">
@@ -2803,7 +2790,8 @@ function buildMultiSummary(){
             <div class="row gap2 mt1">
               <span class="muted" style="font-size:.78rem">${events.length} event${events.length!==1?'s':''}</span>
               <span class="muted" style="font-size:.78rem">${fmt(sess.endedAt-sess.startedAt)}</span>
-              <span class="tag" style="font-size:.65rem;background:${sess.sessType==='tracking'?'var(--accent-soft)':sess.sessType==='general'?'var(--amber-soft)':sess.sessType==='fba'?'var(--fba-soft)':sess.sessType==='manual'?'var(--orange-soft)':'var(--purple-soft)'};color:${sess.sessType==='tracking'?'var(--accent)':sess.sessType==='general'?'var(--amber)':sess.sessType==='fba'?'var(--fba-green)':sess.sessType==='manual'?'var(--orange)':'var(--purple)'};${sess.sessType==='fba'?'font-weight:800':''}">${sess.sessType==='tracking'?'🎯 Goal-Specific':sess.sessType==='general'?'📋 General':sess.sessType==='fba'?'🧠 Behaviorist':sess.sessType==='manual'?'📝 Manual Entry':'🔍 Initial'}</span>
+              <span class="tag" style="font-size:.65rem;background:${sess.sessType==='tracking'?'var(--accent-soft)':sess.sessType==='general'?'var(--amber-soft)':sess.sessType==='manual'?'var(--orange-soft)':'var(--purple-soft)'};color:${sess.sessType==='tracking'?'var(--accent)':sess.sessType==='general'?'var(--amber)':sess.sessType==='manual'?'var(--orange)':'var(--purple)'}">${sess.sessType==='tracking'?'🎯 Goal-Specific':sess.sessType==='general'?'📋 General':sess.sessType==='manual'?'📝 Manual Entry':'🔍 Initial'}</span>
+              ${sess.isFbaObservation===true?'<span class="tag" style="font-size:.65rem;background:var(--fba-soft);color:var(--fba-green);font-weight:800;border:1px solid var(--fba-mid)">🧠 Log</span>':''}
             </div>
           </div>
         </div>
@@ -3050,14 +3038,17 @@ function buildAnalyticsCharts(){
 // ── ANALYTICS SHELL — tab bar + embedded sub-views ────────────────────────
 function buildAnalytics(){
   const c=S.selClient;
-  const tab=S._anaTab||'charts';
+  let tab=S._anaTab||'charts';
+  // If a teacher previously landed on the Behaviorist Log tab (or had it selected via stored state),
+  // fall back to Charts. The tab is hidden but the saved selection could persist.
+  if(tab==='fba' && !isBehaviorist()) tab='charts';
 
   const TABS=[
     {id:'charts', icon:'📊', label:'Charts'},
     {id:'reports',icon:'📄', label:'Reports'},
     {id:'history',icon:'🕐', label:'History'},
     {id:'goals',  icon:'🎯', label:'Goals'},
-    {id:'fba',    icon:'📋', label:'Behaviorist'},
+    ...(isBehaviorist()?[{id:'fba',    icon:'🧠', label:'Behaviorist Log'}]:[]),
   ];
 
   const tabBar=`<div style="display:flex;gap:3px;background:var(--surface2);border-radius:10px;padding:3px;margin-bottom:20px;border:1px solid var(--border);box-shadow:var(--shadow)">
@@ -3071,7 +3062,7 @@ function buildAnalytics(){
   if(tab==='reports') body=buildReports();
   if(tab==='history') body=buildHistory();
   if(tab==='goals')   body=buildGoals();
-  if(tab==='fba')     body=buildFBA();
+  if(tab==='fba' && isBehaviorist())     body=buildFBA();
 
   return`<div class="sub-view">
     <div class="row between" style="margin-bottom:12px">
@@ -3101,9 +3092,10 @@ function buildFBA(){
     <div style="font-size:.78rem;color:var(--muted);margin-top:2px">behaviorist sessions and analysis are managed by the behavior specialist. You can view this data but cannot create behaviorist sessions or generate reports.</div></div>
   </div>`:'';
   const allSessions=S.sessions.filter(s=>s.clientId===c.id);
-  // Only FBA-type sessions count toward FBA progress criteria
-  const sessions=allSessions.filter(s=>s.sessType==='fba');
-  const suppSessions=allSessions.filter(s=>s.sessType!=='fba');
+  // Behaviorist Log entries (formerly sessType==='fba') drive FBA readiness.
+  // Sessions are tagged via the post-end "Save to Behaviorist Log?" prompt.
+  const sessions=allSessions.filter(s=>s.isFbaObservation===true);
+  const suppSessions=allSessions.filter(s=>s.isFbaObservation!==true);
   const allEv=sessions.flatMap(s=>s.events||[]);
   const suppEv=suppSessions.flatMap(s=>s.events||[]);
   const goals=clientGoals(c.id);
@@ -3224,7 +3216,7 @@ function buildFBA(){
 
   // Criteria rows
   const criteria=[
-    {label:'Behaviorist Observation Sessions',       detail:`${sessCount} behaviorist session${sessCount!==1?'s':''} recorded (${suppSessions.length} supplemental)`, need:'6+ behaviorist sessions for solid data, 3 minimum', score:sessScore,  max:sessMax,  tip:sessCount<3?'Start more Behaviorist Observation sessions. Other session types count as supplemental only.':sessCount<6?`${6-sessCount} more behaviorist session${6-sessCount!==1?'s':''} recommended.`:''},
+    {label:'Behaviorist Log Entries',       detail:`${sessCount} log entr${sessCount!==1?'ies':'y'} (${suppSessions.length} other session${suppSessions.length!==1?'s':''} supplemental)`, need:'6+ Behaviorist Log entries for solid data, 3 minimum', score:sessScore,  max:sessMax,  tip:sessCount<3?'After ending a session, save it to your Behaviorist Log to count toward FBA readiness. Other sessions remain supplemental.':sessCount<6?`${6-sessCount} more Behaviorist Log entr${6-sessCount!==1?'ies':'y'} recommended.`:''},
     {label:'Setting / Location Variety',      detail:`${locations.size>=1?locations.size+' location'+(locations.size!==1?'s':'')+' observed':sessTypes.size+' session type'+(sessTypes.size!==1?'s':'')+' used'}`, need:'3+ distinct settings observed', score:settingScore,max:settingMax,tip:settingVariety<2?'Log sessions in different settings — classroom, lunch, transition, etc.':settingVariety<3?`Observe in ${3-settingVariety} more setting${3-settingVariety!==1?'s':''} to strengthen the FBA.`:''},
     {label:'Behaviors Identified',           detail:`${behLabels.length} behavior${behLabels.length!==1?'s':''} observed`, need:'2+ target behaviors documented', score:behScore,  max:behMax,   tip:behLabels.length===0?'Record sessions and tap behavior buttons to log data.':behLabels.length<2?'Document at least one additional behavior of concern.':''},
     {label:'Antecedent Data (A)',            detail:`${Math.round(abcPct*100)}% of events have antecedents`,        need:'≥50% of events have A context',  score:abcScore,  max:abcMax,   tip:abcScore<2?'Fill in the Antecedent field before tapping behavior buttons.':''},
@@ -3344,15 +3336,16 @@ function buildFBA(){
     <p style="font-size:.72rem;color:var(--muted);margin-top:8px;font-style:italic">Supplemental reports are resources only. Ultimate conclusions rest with the licensed behaviorist.</p>
   </div>`:''}
 
-  <!-- Behaviorist sessions list -->
+  <!-- Behaviorist Log entries list -->
   ${sessions.length>0?`<div class="card mt3" style="background:var(--fba-soft);border:1.5px solid var(--fba-mid);padding:13px 15px">
-    <div class="slabel" style="color:var(--fba-dark);margin-bottom:10px">🧠 Behaviorist Observation Sessions</div>
+    <div class="slabel" style="color:var(--fba-dark);margin-bottom:10px">🧠 Behaviorist Log Entries</div>
     <div style="display:flex;flex-direction:column;gap:6px">
       ${sessions.map(s=>`<div onclick="goSummary('${s.id}')" style="display:flex;align-items:center;gap:10px;padding:8px 12px;background:#fff;border-radius:10px;border:1px solid var(--fba-mid);cursor:pointer">
         <div style="flex:1">
           <div style="font-weight:700;font-size:.82rem;color:var(--fba-dark)">${new Date(s.startedAt).toLocaleDateString('en-US',{weekday:'short',month:'short',day:'numeric'})}</div>
-          ${s.behavioristName?`<div style="font-size:.72rem;color:var(--fba-green)">👤 ${esc(s.behavioristName)}</div>`:''}
+          ${s.fbaFlaggedBy?`<div style="font-size:.72rem;color:var(--fba-green)">👤 ${esc(s.fbaFlaggedBy)}</div>`:(s.behavioristName?`<div style="font-size:.72rem;color:var(--fba-green)">👤 ${esc(s.behavioristName)}</div>`:'')}
           ${s.settingEvents&&s.settingEvents.length?`<div style="font-size:.7rem;color:var(--muted)">Setting events: ${s.settingEvents.length}</div>`:''}
+          ${s._legacyFbaSession?'<div style="font-size:.65rem;color:var(--muted);font-style:italic">migrated from legacy FBA session</div>':''}
         </div>
         <div style="text-align:right;font-size:.75rem">
           <div class="mono" style="font-weight:700;color:var(--fba-dark)">${(s.events||[]).length} events</div>
@@ -3360,7 +3353,7 @@ function buildFBA(){
         </div>
       </div>`).join('')}
     </div>
-  </div>`:'<div class="card mt3" style="background:var(--fba-soft);border:1.5px solid var(--fba-mid);padding:14px 16px;text-align:center"><div style="font-size:1.5rem;margin-bottom:8px">🧠</div><div style="font-weight:700;color:var(--fba-dark);margin-bottom:4px">No Behaviorist Sessions Yet</div><p style="font-size:.78rem;color:var(--text2);line-height:1.5">Start an <strong>FBA Observation</strong> session from the student card. Only behaviorist sessions count toward this readiness score. Other session types are supplemental.</p></div>'}
+  </div>`:'<div class="card mt3" style="background:var(--fba-soft);border:1.5px solid var(--fba-mid);padding:14px 16px;text-align:center"><div style="font-size:1.5rem;margin-bottom:8px">🧠</div><div style="font-weight:700;color:var(--fba-dark);margin-bottom:4px">No Behaviorist Log Entries Yet</div><p style="font-size:.78rem;color:var(--text2);line-height:1.5">End a session and choose <strong>Save to Behaviorist Log</strong> at the prompt. Only Behaviorist Log entries count toward this readiness score; routine sessions remain supplemental.</p></div>'}
 
   <!-- AI Document Generation -->
   <div class="card mt3" style="background:var(--fba-soft);border:1.5px solid var(--fba-mid);padding:16px">
@@ -3602,13 +3595,13 @@ function _generateFbaDoc_internal(docType, clientId){
   const client = S.clients.find(c=>c.id===clientId);
   if(!client){ alert('Student not found.'); return; }
 
-  const fbaSessions = S.sessions.filter(s=>s.clientId===clientId && s.sessType==='fba');
-  const suppSessions = S.sessions.filter(s=>s.clientId===clientId && s.sessType!=='fba');
+  const fbaSessions = S.sessions.filter(s=>s.clientId===clientId && s.isFbaObservation===true);
+  const suppSessions = S.sessions.filter(s=>s.clientId===clientId && s.isFbaObservation!==true);
   const allEv = fbaSessions.flatMap(s=>s.events||[]);
   const goals = (S.goals||[]).filter(g=>g.clientId===clientId);
 
   if(fbaSessions.length===0){
-    alert('No Behaviorist Observation sessions recorded yet. Complete at least one behaviorist session before generating documents.');
+    alert('No Behaviorist Log entries yet. End a session and choose "Save to Behaviorist Log" at the prompt to add an entry before generating documents.');
     return;
   }
 
@@ -4347,26 +4340,6 @@ function setPlannedMins(n){
   rerender();
 }
 function _oldSelectSessType(){} // removed — merged into new selectSessType above
-function confirmFbaAffirm(){
-  const nameEl=document.getElementById('fba-beh-name');
-  const chkEl=document.getElementById('fba-affirm-check');
-  if(!nameEl||!nameEl.value.trim()){alert('Please enter your name as the behaviorist before proceeding.');return;}
-  if(!chkEl||!chkEl.checked){alert('Please check the affirmation box to proceed.');return;}
-  S._fbaGate.behavioristName=nameEl.value.trim();
-  S._fbaGate.affirmed=true;
-  // Restore the session setup modal with FBA pre-selected
-  const g=S._fbaGate;
-  S._modal={type:g.prevType||'sessType', cid:g.prevCid, clientIds:g.prevClientIds, sel:'fba', behavioristName:g.behavioristName, plannedMins:null, location:'', locationOther:''};
-  rerender();
-  const btn=document.getElementById('start-sess-btn');
-  if(btn)btn.disabled=false;
-}
-function cancelFbaAffirm(){
-  const g=S._fbaGate||{};
-  S._modal={type:g.prevType||'sessType', cid:g.prevCid, clientIds:g.prevClientIds, sel:null, plannedMins:null, location:'', locationOther:''};
-  S._fbaGate=null;
-  rerender();
-}
 
 function selectSessType(t){
   if(!S._modal)return;
@@ -4375,19 +4348,6 @@ function selectSessType(t){
     const cid=S._modal.cid;
     S._modal=null;
     openManualEntry(cid);
-    return;
-  }
-  // FBA: gate behind behaviorist affirmation modal
-  if(t==='fba'){
-    S._fbaGate={
-      prevType:S._modal.type,
-      prevCid:S._modal.cid||null,
-      prevClientIds:S._modal.clientIds||[],
-      behavioristName:'',
-      affirmed:false
-    };
-    S._modal={type:'fbaAffirm'};
-    rerender();
     return;
   }
   S._modal.sel=t;
@@ -5169,7 +5129,8 @@ function confirmStartSession(){
   const locOther=document.getElementById('sess-location-other');
   const location=locRaw==='Other'?(locOther?locOther.value.trim()||'Other':'Other'):locRaw;
   const selectedBehs=S._modal.selectedBehs||[];
-  const behavioristName=S._modal.behavioristName||S._fbaGate?.behavioristName||'';
+  // behavioristName field retained on session record for legacy compatibility; new flow uses fbaFlaggedBy
+  const behavioristName=S._modal.behavioristName||'';
   const startedAt=Date.now();
   S._initialBehs=type==='initial'?selectedBehs:[];
   S._modal=null;
@@ -5193,7 +5154,10 @@ function endSession(){
   S.intensityPrompts=[];
   S.durRunning=false;S.durElapsed=0;
   S.activeSess.endedAt=Date.now();
-  if(S.sessType==='fba'){S.activeSess.settingEvents=S.fbaSettingEvents||[];S.activeSess.settingEventsNote=S.fbaSettingEventsNote||'';S.activeSess.fbaHypothesis=S.fbaHypothesis||'';}
+  // Capture any in-session hypothesis notes the behaviorist typed (preserved if they save to Log)
+  if(S.fbaHypothesis && S.fbaHypothesis.trim()){
+    S.activeSess.fbaHypothesis=S.fbaHypothesis;
+  }
   clearInterval(_tick);
   // Show notes prompt
   S._modal={type:'endNotes'};
@@ -5202,13 +5166,51 @@ function endSession(){
 function saveEndNotes(){
   const note=document.getElementById('end-session-notes')?.value||'';
   S.activeSess.note=note;
-  S.sessions.push({...S.activeSess});S.selSess={...S.activeSess};
-  S.activeSess=null;S._modal=null;S.sessNote='';persist();S.view='summary';rerender();
+  _finishEndSession();
 }
 function skipEndNotes(){
   S.activeSess.note='';
-  S.sessions.push({...S.activeSess});S.selSess={...S.activeSess};
-  S.activeSess=null;S._modal=null;S.sessNote='';persist();S.view='summary';rerender();
+  _finishEndSession();
+}
+// After notes are captured, finalize the session. For behaviorists, prompt to save to the
+// Behaviorist Log (FBA documentation). For everyone else, just commit immediately.
+function _finishEndSession(){
+  if(isBehaviorist() && S.activeSess && !S.activeSess._behLogPrompted){
+    S._modal={type:'behLogPrompt'};
+    rerender();
+    return;
+  }
+  _commitActiveSession();
+}
+function saveToBehLog(){
+  if(!S.activeSess)return;
+  S.activeSess.isFbaObservation=true;
+  S.activeSess._behLogPrompted=true;
+  // Stamp who flagged it and when, for audit clarity
+  S.activeSess.fbaFlaggedBy=_currentUser?.user_metadata?.full_name||_currentUser?.email||'Behaviorist';
+  S.activeSess.fbaFlaggedAt=Date.now();
+  _commitActiveSession();
+}
+function skipBehLog(){
+  if(!S.activeSess)return;
+  S.activeSess.isFbaObservation=false;
+  S.activeSess._behLogPrompted=true;
+  _commitActiveSession();
+}
+function _commitActiveSession(){
+  // Strip internal flag before persisting
+  const sessToSave={...S.activeSess};
+  delete sessToSave._behLogPrompted;
+  S.sessions.push(sessToSave);
+  S.selSess={...sessToSave};
+  S.activeSess=null;S._modal=null;S.sessNote='';
+  // Clear in-session hypothesis buffer so next session starts clean
+  S.fbaHypothesis='';
+  S.fbaSettingEvents=[];
+  S.fbaSettingEventsNote='';
+  persist();
+  S.view='summary';
+  rerender();
 }
 function selectBeh(bid){S.activeBeh=allBehs().find(b=>b.id===bid);S.measureMode=null;rerender();}
 function setMeasure(m){S.measureMode=S.measureMode===m?null:m;rerender();}
@@ -6560,6 +6562,24 @@ async function boot(){
   S.sessions  = stored.sessions||[];
   S.goals     = stored.goals||[];
   S._strengths= stored.strengths||{};
+
+  // ── One-time migration: legacy sessType==='fba' sessions become Behaviorist Log entries ──
+  // Previously, "Behaviorist Observation" was its own session type. We now treat all sessions
+  // uniformly and let behaviorists post-hoc flag a session as part of their FBA documentation.
+  // For backward compatibility, any pre-existing fba-type session is auto-flagged so the
+  // FBA Readiness gauge and existing analytics keep working without data loss.
+  let _legacyFbaMigrated=false;
+  S.sessions=S.sessions.map(s=>{
+    if(s.sessType==='fba' && s.isFbaObservation===undefined){
+      _legacyFbaMigrated=true;
+      // Demote sessType to 'general' so it no longer drives any FBA-specific UI paths,
+      // but flag it as a Behaviorist Log entry so it still counts toward FBA readiness.
+      return {...s, sessType:'general', isFbaObservation:true, _legacyFbaSession:true};
+    }
+    return s;
+  });
+  // Persist the migration after the rest of state hydrates (see bottom of function)
+
   S._bipTemplate    = stored._bipTemplate||null;
   S._bipTemplateName= stored._bipTemplateName||null;
   S._goalTemplate   = stored._goalTemplate||null;
@@ -6575,6 +6595,9 @@ async function boot(){
   // Show user info in header
   renderUserBadge();
   storeUserMeta(); // save email/name for admin panel lookup
+
+  // If any legacy FBA sessions were just migrated, save the updated state so future loads are no-op
+  if(_legacyFbaMigrated){ try { persist(); } catch(e){ console.warn('Migration save failed:',e); } }
 
   rerender();
   tick();
