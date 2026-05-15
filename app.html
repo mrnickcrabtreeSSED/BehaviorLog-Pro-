@@ -825,7 +825,9 @@ function getOpposite(label){
   if(OPPOSITES[label]) return OPPOSITES[label];
   return label+' ended ✓';
 }
-// Intensity removed — INT_LABELS/INT_COLORS/INT_TEXT constants deleted (Frequency Incident model only).
+const INT_LABELS=['','Mild','Moderate','Severe','Extreme'];
+const INT_COLORS=['','#86efac','#fcd34d','#fb923c','#f87171'];
+const INT_TEXT=['','#14532d','#78350f','#7c2d12','#7f1d1d'];
 
 // ── State ──────────────────────────────────────────────────────────────────
 // Populated after auth + cloud load in boot()
@@ -846,7 +848,7 @@ let S={
   durRunning:false,durStart:null,durElapsed:0,
   durRunning:false,durStart:null,durElapsed:0,  // legacy latency compat
   incidents:{},        // behId→{behId,behLabel,behIcon,startMs,abcA,note,elapsed}
-  intensityPrompts:[],  // legacy — unused (intensity removed); kept for backward-compat with old persisted sessions
+  intensityPrompts:[],  // [{durMs,behId,behLabel,behIcon,abcA,note}]
   activeBeh:null,measureMode:null,
   activeBeh:null,measureMode:null,
   abcA:'',
@@ -863,7 +865,7 @@ let S={
   _assSent:[],         // sent assessment records
   _assScored:[],       // scored assessment results
   _assGenType:null,    // BIP or FBA
-  _measureTypes:{},    // behId → 'frequency'|'duration'|'latency' (default: duration; all non-latency behaviors record as Frequency Incident with duration + tally)
+  _measureTypes:{},    // behId → 'frequency'|'duration'|'intensity' (default: duration)
   _role:'teacher',     // 'teacher' or 'behaviorist' — gates FBA creation + assessments
   _clientSearch:'',    // student search filter
   _adminTab:'users',   // admin panel tab
@@ -913,10 +915,11 @@ function getBehMeasure(bid){return S._measureTypes[bid]||'duration';}
 function setBehMeasure(bid,mode){S._measureTypes[bid]=mode;persist();rerender();}
 function isBehaviorist(){return S._role==='behaviorist'||S._role==='admin';}
 function isAdmin(){return S._role==='admin';}
-// Returns behaviors for a specific client — their custom selection, or all if none configured
+// Returns behaviors for a specific client — their custom selection only.
+// New students start with zero behaviors; the observer adds them before/during observation.
 function clientBehs(cid){
   const c=S.clients.find(x=>x.id===cid);
-  if(!c||!c.behaviors||!c.behaviors.length) return allBehs();
+  if(!c||!c.behaviors||!c.behaviors.length) return [];
   // Return behaviors in the client's chosen order, filtering out deleted customs
   const pool=allBehs();
   return c.behaviors.map(bid=>pool.find(b=>b.id===bid)).filter(Boolean);
@@ -1061,8 +1064,35 @@ function tick(){
 function buildApp(){
   let modal=S._modal?buildModal():'';
 
-  // Intensity rating removed — no overlay needed.
+  // Intensity rating — top-level overlay so it covers everything
   let intOverlay='';
+  const _pendingIP=S.isMulti?(cs()&&cs().intensityPrompts&&cs().intensityPrompts.length&&cs().intensityPrompts[0]):(S.intensityPrompts&&S.intensityPrompts.length&&S.intensityPrompts[0]);
+  if(_pendingIP&&S.view==='record'){
+    const ip=_pendingIP;
+    const pips=[1,2,3,4].map(l=>'<div onclick="logIntFromPrompt('+l+')" style="flex:1;padding:16px 6px;border-radius:12px;background:'+INT_COLORS[l]+';color:'+INT_TEXT[l]+';text-align:center;cursor:pointer;font-weight:800;font-size:.85rem;transition:transform .12s" onmouseover="this.style.transform=\'scale(1.06)\'" onmouseout="this.style.transform=\'scale(1)\'">'+INT_LABELS[l]+'</div>').join('');
+    const queueNote='<div style="background:var(--accent-soft);border-radius:8px;padding:5px 10px;font-size:.72rem;color:var(--accent);font-weight:600;text-align:center;margin-bottom:10px">'+(_pendingIP!==_pendingIP?'':''+(S.intensityPrompts.length>1?S.intensityPrompts.length-1+' more waiting after this':''))+'</div>';
+    intOverlay='<div style="position:fixed;inset:0;background:rgba(20,20,26,.58);z-index:200;display:flex;align-items:center;justify-content:center;padding:20px;backdrop-filter:blur(3px);animation:fadein .2s ease">'
+      +'<div style="background:#fff;border-radius:22px;padding:28px 26px;max-width:420px;width:100%;box-shadow:0 24px 64px rgba(20,20,26,.16)">'
+        +(S.intensityPrompts.length>1?'<div style="background:var(--accent-soft);border-radius:8px;padding:5px 10px;font-size:.72rem;color:var(--accent);font-weight:600;text-align:center;margin-bottom:12px">'+S.intensityPrompts.length+' behaviors ended — rate each</div>':'')
+        +'<div style="text-align:center;margin-bottom:16px">'
+          +'<div style="font-size:2.4rem;margin-bottom:6px">'+ip.behIcon+'</div>'
+          +'<div style="font-weight:800;font-size:1.05rem;color:var(--text)">'+esc(ip.behLabel)+'</div>'
+          +'<div style="color:var(--green);font-weight:700;font-size:.85rem;margin-top:4px">✓ Ended &nbsp;·&nbsp; '+fmt(ip.durMs)+' duration</div>'
+        +'</div>'
+        +'<div style="margin-bottom:14px">'
+          +'<div style="font-size:.68rem;font-weight:700;letter-spacing:1.5px;text-transform:uppercase;color:var(--muted);margin-bottom:6px">Consequence (C) — what happened after</div>'
+          +'<input id="int-consequence" style="width:100%;padding:9px 12px;border-radius:10px;border:1.5px solid var(--border);font-size:.84rem;font-family:inherit" placeholder="What followed the behavior…" value="'+esc(ip.consequence||'')+'" oninput="updateIntConsequence(this.value)"/>'
+        +'</div>'
+        +'<div style="background:var(--surface2);border-radius:14px;padding:16px;margin-bottom:14px">'
+          +'<div style="font-size:.68rem;font-weight:700;letter-spacing:1.5px;text-transform:uppercase;color:var(--muted);margin-bottom:12px;text-align:center">Rate peak intensity</div>'
+          +'<div style="display:flex;gap:8px">'+pips+'</div>'
+        +'</div>'
+        +'<div style="text-align:center">'
+          +'<button class="btn btn-ghost btn-sm" onclick="skipIntensityPrompt()" style="color:var(--muted)">Skip</button>'
+        +'</div>'
+      +'</div>'
+    +'</div>';
+  }
 
   const modeBar='';
 
@@ -1099,7 +1129,7 @@ function buildModal(){
       </div>
       <div class="slabel">Measurement Type</div>
       <div style="display:flex;gap:6px;margin-bottom:18px">
-        ${[{id:'frequency',icon:'🔢',label:'Frequency Incident',desc:'Timer + tap count'},{id:'duration',icon:'⏱',label:'Duration',desc:'Timer only'}].concat(isBehaviorist()?[{id:'latency',icon:'🔄',label:'Latency',desc:'Time to behavior onset'}]:[]).map(mt=>`<div onclick="${isEdit?"setBehMeasure('"+b.id+"','"+mt.id+"');S._modal.beh._m='"+mt.id+"'":"S._modal._newMeasure='"+mt.id+"'"};rerender()" style="flex:1;padding:10px 8px;border-radius:10px;border:2px solid ${curMeasure===mt.id?'var(--accent)':'var(--border)'};background:${curMeasure===mt.id?'var(--accent-soft)':'var(--surface2)'};text-align:center;cursor:pointer;transition:all .15s">
+        ${[{id:'frequency',icon:'🔢',label:'Frequency',desc:'Tap = +1 count'},{id:'duration',icon:'⏱',label:'Duration',desc:'Tap start/stop timer'},{id:'intensity',icon:'📊',label:'Intensity',desc:'Timer + severity rating'}].concat(isBehaviorist()?[{id:'latency',icon:'🔄',label:'Latency',desc:'Time to behavior onset'}]:[]).map(mt=>`<div onclick="${isEdit?"setBehMeasure('"+b.id+"','"+mt.id+"');S._modal.beh._m='"+mt.id+"'":"S._modal._newMeasure='"+mt.id+"'"};rerender()" style="flex:1;padding:10px 8px;border-radius:10px;border:2px solid ${curMeasure===mt.id?'var(--accent)':'var(--border)'};background:${curMeasure===mt.id?'var(--accent-soft)':'var(--surface2)'};text-align:center;cursor:pointer;transition:all .15s">
           <div style="font-size:1.3rem">${mt.icon}</div>
           <div style="font-size:.75rem;font-weight:700;margin-top:4px;color:${curMeasure===mt.id?'var(--accent)':'var(--text)'}">${mt.label}</div>
           <div style="font-size:.65rem;color:var(--muted);margin-top:2px">${mt.desc}</div>
@@ -1716,7 +1746,7 @@ function buildModal(){
     if(!c){inner='<p>Student not found</p>';}
     else{
       const behs=clientBehs(c.id);
-      const allB=behs.length?behs:allBehs();
+      const allB=behs; // Use only the student's configured behaviors (no fallback to allBehs)
       const entries=m.entries||{};
       const today=new Date().toISOString().slice(0,10);
 
@@ -1745,26 +1775,39 @@ function buildModal(){
 
       <hr class="divider"/>
       <div class="slabel" style="margin-bottom:8px">Behavior Data</div>
-      <p class="muted mb3" style="font-size:.72rem">Enter counts and/or durations for each observed behavior.</p>
+      <p class="muted mb3" style="font-size:.72rem">Enter counts, durations, and/or intensity for each observed behavior.</p>
 
-      <div style="max-height:240px;overflow-y:auto;margin-bottom:12px">
+      ${allB.length===0?`<div style="background:var(--amber-soft);border:1.5px solid var(--amber);border-radius:10px;padding:14px 16px;text-align:center;margin-bottom:12px">
+        <div style="font-size:1.6rem;margin-bottom:6px">📋</div>
+        <div style="font-weight:700;font-size:.86rem;color:var(--amber);margin-bottom:4px">No behaviors configured for ${esc(c.name)}</div>
+        <p class="muted" style="font-size:.74rem;margin-bottom:10px;line-height:1.4">Add behaviors to track for this student, then return to enter data.</p>
+        <button class="btn btn-primary btn-sm" onclick="closeModal();openClientSettings('${c.id}')">⚙️ Configure Behaviors</button>
+      </div>`:`<div style="max-height:240px;overflow-y:auto;margin-bottom:12px">
         ${allB.map(b=>{
           const e=entries[b.id]||{};
-          const hasData=(e.freq||0)>0||(e.durMin||0)>0;
+          const hasData=(e.freq||0)>0||(e.durMin||0)>0||e.intensity;
           return`<div style="padding:10px 12px;border-radius:10px;border:1.5px solid ${hasData?'var(--accent)':'var(--border)'};background:${hasData?'var(--accent-soft)':'var(--surface2)'};margin-bottom:6px;transition:all .15s">
             <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px">
               <span style="font-size:1.1rem">${b.icon}</span>
               <span style="font-weight:700;font-size:.85rem">${esc(b.label)}</span>
             </div>
-            <div style="display:grid;grid-template-columns:1fr 1fr;gap:6px">
+            <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:6px">
               <div><label style="font-size:.62rem;font-weight:700;color:var(--muted);display:block;margin-bottom:1px">Frequency</label>
                 <input class="input" type="number" min="0" placeholder="0" value="${e.freq||''}" oninput="updateManualBeh('${b.id}','freq',this.value)" style="font-size:.82rem;padding:6px 8px"/></div>
               <div><label style="font-size:.62rem;font-weight:700;color:var(--muted);display:block;margin-bottom:1px">Duration (min)</label>
                 <input class="input" type="number" min="0" step="0.5" placeholder="0" value="${e.durMin||''}" oninput="updateManualBeh('${b.id}','durMin',this.value)" style="font-size:.82rem;padding:6px 8px"/></div>
+              <div><label style="font-size:.62rem;font-weight:700;color:var(--muted);display:block;margin-bottom:1px">Intensity</label>
+                <select oninput="updateManualBeh('${b.id}','intensity',this.value)" style="font-size:.78rem;padding:6px 4px;border-radius:7px;border:1.5px solid var(--border);width:100%;font-family:inherit;background:#fff">
+                  <option value="" ${!e.intensity?'selected':''}>—</option>
+                  <option value="1" ${e.intensity==='1'?'selected':''}>Mild</option>
+                  <option value="2" ${e.intensity==='2'?'selected':''}>Moderate</option>
+                  <option value="3" ${e.intensity==='3'?'selected':''}>Severe</option>
+                  <option value="4" ${e.intensity==='4'?'selected':''}>Extreme</option>
+                </select></div>
             </div>
           </div>`;
         }).join('')}
-      </div>
+      </div>`}
 
       <div class="slabel" style="margin-bottom:4px">Notes</div>
       <textarea class="input mb3" id="me-notes" placeholder="Additional observations, context, environmental factors…" style="min-height:60px">${esc(m.notes||'')}</textarea>
@@ -1807,8 +1850,9 @@ function buildModal(){
             </div>
             <div style="display:flex;gap:2px;align-items:center">
               ${on?`<select onchange="setBehMeasure('${b.id}',this.value)" style="font-size:.65rem;padding:3px 4px;border-radius:5px;border:1px solid var(--border);background:#fff;font-weight:700;color:var(--muted);font-family:inherit;cursor:pointer">
-                <option value="frequency" ${getBehMeasure(b.id)==='frequency'?'selected':''}>🔢 Freq Inc</option>
+                <option value="frequency" ${getBehMeasure(b.id)==='frequency'?'selected':''}>🔢 Freq</option>
                 <option value="duration" ${getBehMeasure(b.id)==='duration'?'selected':''}>⏱ Dur</option>
+                <option value="intensity" ${getBehMeasure(b.id)==='intensity'?'selected':''}>📊 Int</option>
                 ${isBehaviorist()?`<option value="latency" ${getBehMeasure(b.id)==='latency'?'selected':''}>🔄 Lat</option>`:''}
               </select>`:''}
               ${b.custom?`<button onclick="startEditClientBeh('${b.id}')" title="Edit" style="width:24px;height:24px;border:1px solid var(--border);border-radius:5px;background:#fff;cursor:pointer;font-size:.7rem;display:flex;align-items:center;justify-content:center">✏️</button>`:''}
@@ -1826,7 +1870,7 @@ function buildModal(){
               <div style="font-size:.65rem;font-weight:700;margin-top:4px;color:var(--text2)">${esc(b.label)}</div>
             </div>`:'';}).join('')}
           </div>
-        </div>`:'<p class="muted mt3" style="font-size:.78rem;text-align:center">No behaviors selected — all behaviors will show</p>';
+        </div>`:'<div style="margin-top:14px;background:var(--amber-soft);border:1.5px solid var(--amber);border-radius:10px;padding:12px 14px;text-align:center"><div style="font-size:1.4rem;margin-bottom:4px">📋</div><div style="font-weight:700;font-size:.82rem;color:var(--amber)">No behaviors selected yet</div><p class="muted" style="font-size:.74rem;margin-top:4px;line-height:1.4">Select behaviors above (or add custom ones) for this student. Sessions will not show any behaviors until at least one is selected.</p></div>';
 
         // ── Inline add/edit form ─────────────────────────────────────────
         const editingId=m.editingBehId||null; // custom behavior being edited
@@ -1845,7 +1889,7 @@ function buildModal(){
             </div>
             <div style="font-size:.72rem;font-weight:700;letter-spacing:1.5px;text-transform:uppercase;color:var(--muted);margin-bottom:6px;margin-top:10px">Measurement Type</div>
             <div style="display:flex;gap:5px;margin-bottom:12px">
-              ${[{id:'frequency',icon:'🔢',label:'Freq Inc'},{id:'duration',icon:'⏱',label:'Duration'}].concat(isBehaviorist()?[{id:'latency',icon:'🔄',label:'Latency'}]:[]).map(mt=>{
+              ${[{id:'frequency',icon:'🔢',label:'Frequency'},{id:'duration',icon:'⏱',label:'Duration'},{id:'intensity',icon:'📊',label:'Intensity'}].concat(isBehaviorist()?[{id:'latency',icon:'🔄',label:'Latency'}]:[]).map(mt=>{
                 const curMt=editingId?getBehMeasure(editingId):(m._newMeasure||'duration');
                 return`<div onclick="${editingId?"setBehMeasure('"+editingId+"','"+mt.id+"')":"S._modal._newMeasure='"+mt.id+"';rerender()"}" style="flex:1;padding:8px 4px;border-radius:8px;border:2px solid ${curMt===mt.id?'var(--accent)':'var(--border)'};background:${curMt===mt.id?'var(--accent-soft)':'#fff'};text-align:center;cursor:pointer;transition:all .12s">
                   <div style="font-size:1rem">${mt.icon}</div>
@@ -1895,6 +1939,94 @@ function buildModal(){
       ${tabBar}
       ${tabContent}`;
     }
+  }
+
+  // ── PDF Export options modal ───────────────────────────────────────────
+  if(m.type==='exportPDF'){
+    const c=S.selClient;
+    const sec=m.sections||{};
+    const chr=m.charts||{};
+    const row=(group,key,label,desc,recommended)=>{
+      const on=(group==='sections'?sec[key]:chr[key]);
+      return `<div onclick="toggleExportOpt('${group}','${key}')" style="display:flex;align-items:flex-start;gap:10px;padding:11px 12px;border-radius:10px;border:1.5px solid ${on?'var(--accent)':'var(--border)'};background:${on?'var(--accent-soft)':'var(--surface2)'};margin-bottom:6px;cursor:pointer;transition:all .15s">
+        <div style="width:22px;height:22px;border-radius:6px;border:2px solid ${on?'var(--accent)':'var(--border2)'};background:${on?'var(--accent)':'#fff'};display:flex;align-items:center;justify-content:center;flex-shrink:0;transition:all .15s">
+          ${on?'<span style="color:#fff;font-size:.78rem;font-weight:900">✓</span>':''}
+        </div>
+        <div style="flex:1;min-width:0">
+          <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap">
+            <span style="font-weight:700;font-size:.86rem;color:${on?'var(--accent)':'var(--text)'}">${esc(label)}</span>
+            ${recommended?'<span style="font-size:.62rem;background:var(--green);color:#fff;padding:1px 6px;border-radius:8px;font-weight:700">RECOMMENDED</span>':''}
+          </div>
+          <div style="font-size:.72rem;color:var(--muted);margin-top:2px;line-height:1.4">${esc(desc)}</div>
+        </div>
+      </div>`;
+    };
+    inner=`<div class="row between mb3">
+        <div>
+          <h2 style="margin:0;font-size:1.1rem">📄 Export PDF Report</h2>
+          <p class="muted" style="font-size:.74rem;margin-top:2px">For <strong>${esc(c?c.name:'')}</strong> · Choose what to include</p>
+        </div>
+        <button class="btn btn-ghost btn-sm" onclick="closeModal()">✕</button>
+      </div>
+      <div style="background:#fff7ed;border:1.5px solid #fed7aa;border-radius:10px;padding:10px 12px;margin-bottom:14px;font-size:.74rem;color:#9a3412;line-height:1.5">
+        🛡️ <strong>Privacy note:</strong> This PDF contains FERPA-protected student data. Only share with authorized IEP team members and store securely. ABC narratives and session notes are unchecked by default — enable only when needed.
+      </div>
+      <div class="slabel" style="margin-bottom:8px">📊 Data Sections</div>
+      ${row('sections','summary','Summary Stats','Session count, total events, behaviors, goals (4 stat boxes)',true)}
+      ${row('sections','goals','Goals & Progress','Each goal listed with target, average, status (On Track / Needs Support)',true)}
+      ${row('sections','sessionTable','Session Data Table','Date/time row per session × first 5 behavior columns. Green/red coding requires Goals.',true)}
+      ${row('sections','notes','Session Notes Column','Adds a Notes column to the session table (truncated to 24 chars).',false)}
+      ${row('sections','abcLog','ABC Log','Full antecedent/consequence narratives per incident (up to 28 entries). Highest sensitivity.',false)}
+
+      <div class="slabel" style="margin-top:14px;margin-bottom:8px">📈 Charts</div>
+      ${row('charts','goalProgress','Goal Progress Bars','Visual progress bar under each goal (only if Goals section is checked).',false)}
+      ${row('charts','frequencyOverTime','Frequency Over Time','Line chart of total events per session, showing trend.',false)}
+      ${row('charts','behaviorBreakdown','Behavior Breakdown','Bar chart of event counts per behavior (top 8).',false)}
+      ${row('charts','abcPattern','ABC Pattern Analysis','Top antecedent and consequence categories with frequency bars.',false)}
+
+      <div class="row gap2" style="margin-top:16px">
+        <button class="btn btn-primary" style="flex:1" onclick="doExportPDFWithOptions()">⬇ Export PDF</button>
+        <button class="btn btn-ghost" onclick="closeModal()">Cancel</button>
+      </div>`;
+  }
+
+  // ── FBA/BIP buildout paywall modal ─────────────────────────────────────
+  if(m.type==='fbaPaywall'){
+    const docLabels={bip:'BIP Draft', goals:'Behavior Goals', summary:'FBA Summary'};
+    const showLearnMore=m.expanded;
+    inner=`<div class="row between mb3">
+        <div>
+          <div style="display:flex;align-items:center;gap:8px">
+            <span style="font-size:1.4rem">🛡️</span>
+            <h2 style="margin:0;font-size:1.1rem;color:var(--fba-dark)">Higher-Tier Feature</h2>
+          </div>
+          <p class="muted" style="font-size:.74rem;margin-top:4px">AI document generation · ${esc(docLabels[m.docType]||'Document')}</p>
+        </div>
+        <button class="btn btn-ghost btn-sm" onclick="closeModal()">✕</button>
+      </div>
+      <div style="background:var(--fba-soft);border:1.5px solid var(--fba-mid);border-radius:12px;padding:14px 16px;margin-bottom:14px">
+        <div style="font-weight:800;font-size:.88rem;color:var(--fba-dark);margin-bottom:8px">This is a paid, higher-tier feature.</div>
+        <p style="font-size:.8rem;line-height:1.55;color:var(--text2);margin:0">
+          AI-assisted BIP, FBA, and goal generation transmits FERPA-protected student data to a third-party AI processor. To enable this feature, your organization must have a signed administrative agreement and Data Protection Addendum (DPA) in place. Please contact your Sure Step representative for more information.
+        </p>
+      </div>
+      ${showLearnMore?`<div style="background:#fff;border:1.5px solid var(--border);border-radius:12px;padding:14px 16px;margin-bottom:14px">
+        <div style="font-weight:800;font-size:.85rem;color:var(--text);margin-bottom:10px">What's required before this feature can be enabled:</div>
+        <ol style="font-size:.78rem;line-height:1.65;color:var(--text2);margin:0;padding-left:22px">
+          <li style="margin-bottom:8px"><strong>Administrative agreement</strong> between your district/agency and Sure Step Education identifying authorized users and acceptable use.</li>
+          <li style="margin-bottom:8px"><strong>Data Protection Addendum (DPA)</strong> covering AB 1584 (CA Ed Code §49073.1) and SOPIPA requirements, including data retention, subprocessor disclosure, and breach notification.</li>
+          <li style="margin-bottom:8px"><strong>Subprocessor terms with Anthropic</strong> appropriate for student education data. Sure Step coordinates this on your behalf.</li>
+          <li style="margin-bottom:8px"><strong>Per-student parental/guardian consent</strong> (where required by your district's policy) before any student's data is included in a generated document.</li>
+          <li style="margin-bottom:8px"><strong>Audit logging</strong> of all AI generation events, with the behaviorist's name, timestamp, and document type retained for the duration of the IEP cycle.</li>
+          <li><strong>Pseudonymization</strong> of student data in API payloads where possible (names replaced with identifiers in the request, restored only in the final document).</li>
+        </ol>
+        <p style="font-size:.74rem;line-height:1.55;color:var(--muted);margin-top:10px;margin-bottom:0;font-style:italic">These safeguards protect students and educators alike. The behaviorist remains the author of record; AI output is a draft only.</p>
+      </div>`:''}
+      <div class="row gap2" style="flex-wrap:wrap">
+        <a href="mailto:nick@surestepeducation.com?subject=BehaviorLog%20Pro%20%E2%80%94%20AI%20Document%20Generation%20Inquiry&body=Hi%20Nick%2C%0A%0AI%27m%20interested%20in%20enabling%20the%20AI-assisted%20BIP%2FFBA%2Fgoal%20generation%20feature%20in%20BehaviorLog%20Pro.%20Please%20send%20me%20information%20about%20the%20administrative%20agreement%20and%20DPA%20requirements.%0A%0AOrganization%3A%20%0ARole%3A%20%0ANumber%20of%20behaviorists%3A%20%0A%0AThanks%21" class="btn btn-primary" style="flex:1;min-width:200px;text-align:center;text-decoration:none">📧 Contact Sure Step</a>
+        ${!showLearnMore?`<button class="btn btn-ghost" onclick="S._modal.expanded=true;rerender()" style="flex:1;min-width:140px">${'ℹ️ Learn More'}</button>`:`<button class="btn btn-ghost" onclick="S._modal.expanded=false;rerender()" style="flex:1;min-width:140px">Show Less</button>`}
+      </div>
+      <p style="font-size:.7rem;color:var(--muted);margin-top:12px;margin-bottom:0;text-align:center;line-height:1.5">Your behaviorist observation data is preserved and remains accessible.<br>This screen does not transmit any student information.</p>`;
   }
 
   return `<div class="modal-overlay" onclick="${showClose?'overlayClose(event)':''}"><div class="modal">${inner}</div></div>`;
@@ -2085,7 +2217,8 @@ function buildRecord(){
     const inc=S.incidents[b.id];
     const oppLabel=getOpposite(b.label);
     const measure=getBehMeasure(b.id);
-    // Latency stays special for behaviorists; everything else is Frequency Incident (duration + count)
+    const mIcon=measure==='frequency'?'🔢':measure==='intensity'?'📊':measure==='latency'?'🔄':'⏱';
+    const freqCount=(S.activeSess.events||[]).filter(e=>e.behaviorId===b.id&&e.type==='frequency').length;
     if(inc){
       return`<div class="beh-btn beh-recording" onclick="startIncident('${b.id}')" style="position:relative">
         <span class="beh-icon" style="font-size:1.6rem">✅</span>
@@ -2093,17 +2226,18 @@ function buildRecord(){
         <span id="inc-timer-${b.id}" style="font-family:'Courier New',monospace;font-size:.7rem;color:var(--red);font-weight:700;margin-top:2px">${fmt(inc.elapsed||0)}</span>
         <span style="position:absolute;top:4px;left:4px;width:7px;height:7px;border-radius:50%;background:var(--red);animation:pulse 1s infinite"></span>
       </div>`;
-    } else if(measure==='latency'){
+    } else if(measure==='frequency'){
       return`<div class="beh-btn ${activeIncs.length>0?'beh-dimmed':''}" onclick="startIncident('${b.id}')" style="position:relative">
         <span class="beh-icon">${b.icon}</span>
         <span class="beh-label">${esc(b.label)}</span>
-        <span style="font-size:.6rem;color:var(--muted);margin-top:1px">🔄 latency</span>
+        ${freqCount>0?`<span style="position:absolute;top:4px;right:6px;background:var(--accent);color:#fff;font-size:.68rem;font-weight:800;padding:1px 7px;border-radius:10px">${freqCount}</span>`:''}
+        <span style="font-size:.6rem;color:var(--muted);margin-top:1px">${mIcon} tap to count</span>
       </div>`;
     } else {
       return`<div class="beh-btn ${activeIncs.length>0?'beh-dimmed':''}" onclick="startIncident('${b.id}')" style="position:relative">
         <span class="beh-icon">${b.icon}</span>
         <span class="beh-label">${esc(b.label)}</span>
-        <span style="font-size:.62rem;color:var(--accent);font-weight:700;margin-top:2px">🔢 Frequency Incident</span>
+        <span style="font-size:.6rem;color:var(--muted);margin-top:1px">${mIcon} ${measure}</span>
       </div>`;
     }
   }).join('');
@@ -2112,28 +2246,20 @@ function buildRecord(){
   let activeCards='';
   if(activeIncs.length>0){
     activeCards=`<div class="card mb3" style="background:linear-gradient(135deg,#fde4e6,#ffe4e6);border:2px solid #fca5a5;padding:14px 16px">
-      <div class="slabel" style="color:var(--red);margin-bottom:10px">⏱ ${activeIncs.length} Behavior${activeIncs.length>1?'s':''} in Progress — tap behavior button above to end</div>
-      ${activeIncs.map(inc=>`<div style="padding:12px;background:#fff;border-radius:12px;border:1.5px solid #fca5a5;margin-bottom:8px">
-        <div style="display:flex;align-items:center;gap:10px;margin-bottom:10px">
-          <div style="flex:1;min-width:0">
-            <div style="font-weight:800;font-size:.95rem;color:var(--red)">${inc.behIcon} ${esc(inc.behLabel)}</div>
+      <div class="slabel" style="color:var(--red);margin-bottom:10px">⏱ ${activeIncs.length} Behavior${activeIncs.length>1?'s':''} in Progress — tap button to end</div>
+      ${activeIncs.map(inc=>`<div style="display:flex;align-items:center;gap:10px;padding:10px 12px;background:#fff;border-radius:12px;border:1.5px solid #fca5a5;margin-bottom:8px">
+        <div style="flex:1;min-width:0">
+          <div style="font-weight:800;font-size:.88rem;color:var(--red)">${inc.behIcon} ${esc(inc.behLabel)}</div>
+          <div style="margin-top:6px"><div class="slabel" style="font-size:.65rem">Antecedent (A — captured at start)</div>
+            <div style="font-size:.78rem;color:var(--muted);margin-top:1px">${inc.abcA?esc(inc.abcA):'<em>none</em>'}</div>
           </div>
-          <div style="text-align:center;flex-shrink:0">
-            <div id="inc-timer-${inc.behId}" style="font-family:'Courier New',monospace;font-size:1.5rem;font-weight:800;color:var(--red);line-height:1">${fmt(inc.elapsed||0)}</div>
-            <div style="font-size:.6rem;color:var(--muted);margin-top:2px">duration</div>
+          <div style="margin-top:6px"><div class="slabel" style="font-size:.65rem">Notes during behavior</div>
+            <textarea style="width:100%;font-size:.78rem;padding:5px 8px;border-radius:8px;border:1px solid var(--border);resize:none;font-family:inherit;margin-top:2px;height:48px" placeholder="Describe what's happening…" oninput="updateIncNote('${inc.behId}',this.value)">${esc(inc.note||'')}</textarea>
           </div>
         </div>
-        <!-- Big prominent +1 Frequency button with live count -->
-        <button onclick="bumpIncFreq('${inc.behId}')" style="width:100%;padding:18px 12px;border-radius:14px;border:2.5px solid var(--accent);background:linear-gradient(135deg,#fff,var(--accent-soft));color:var(--accent);font-weight:800;font-size:1.05rem;cursor:pointer;display:flex;align-items:center;justify-content:center;gap:14px;margin-bottom:10px;box-shadow:0 2px 8px rgba(0,0,0,.06);transition:transform .08s,box-shadow .12s" onmousedown="this.style.transform='scale(.97)'" onmouseup="this.style.transform='scale(1)'" onmouseout="this.style.transform='scale(1)'">
-          <span style="font-size:1.4rem">🔢</span>
-          <span>+1 Frequency Incident</span>
-          <span style="background:var(--accent);color:#fff;font-size:1.25rem;font-weight:800;padding:4px 16px;border-radius:999px;min-width:48px;text-align:center">${inc.frequencyCount||0}</span>
-        </button>
-        <div style="margin-top:4px"><div class="slabel" style="font-size:.65rem">Antecedent (A — captured at start)</div>
-          <div style="font-size:.78rem;color:var(--muted);margin-top:1px">${inc.abcA?esc(inc.abcA):'<em>none</em>'}</div>
-        </div>
-        <div style="margin-top:8px"><div class="slabel" style="font-size:.65rem">Notes during behavior</div>
-          <textarea style="width:100%;font-size:.78rem;padding:5px 8px;border-radius:8px;border:1px solid var(--border);resize:none;font-family:inherit;margin-top:2px;height:48px" placeholder="Describe what's happening…" oninput="updateIncNote('${inc.behId}',this.value)">${esc(inc.note||'')}</textarea>
+        <div style="text-align:center;flex-shrink:0">
+          <div id="inc-timer-${inc.behId}" style="font-family:'Courier New',monospace;font-size:1.4rem;font-weight:800;color:var(--red);line-height:1">${fmt(inc.elapsed||0)}</div>
+          <div style="font-size:.6rem;color:var(--muted);margin-top:2px">duration</div>
         </div>
       </div>`).join('')}
     </div>`;
@@ -2163,16 +2289,15 @@ function buildRecord(){
   // ── Event feed with notes ─────────────────────────────────────────────────
   const evFeed=events.length>0?`<div class="card mb3"><div class="slabel" onclick="this.nextElementSibling.style.display=this.nextElementSibling.style.display==='none'?'block':'none'" style="cursor:pointer;user-select:none">Session Events (${events.length}) <span style="font-size:.7rem;color:var(--accent)">▼ tap to toggle</span></div><div class="scroll" style="display:none">${[...events].reverse().map((ev,ri)=>{
     const ei=events.length-1-ri;
-    // Badge: legacy intensity events fall back to a generic INT label for display only
-    const badgeClass=ev.type==='frequency'?'freq':ev.type==='duration'?'dur':ev.type==='intensity'?'int':'lat';
-    const badgeText=ev.type==='frequency'?'FREQ':ev.type==='duration'?'INC':ev.type==='intensity'?'INT':'LAT';
-    const freqCountStr=(ev.type==='duration'&&typeof ev.frequencyCount==='number'&&ev.frequencyCount>0)?' · 🔢 '+ev.frequencyCount:'';
+    const intPills=(ev.type==='duration'||ev.type==='intensity'||ev.type==='frequency')?
+      '<div style="display:flex;gap:3px;margin-top:4px">'+[1,2,3,4].map(l=>'<div onclick="setEvIntensity('+ei+','+l+')" style="padding:2px 8px;border-radius:6px;font-size:.65rem;font-weight:700;cursor:pointer;background:'+(ev.intensity===l?INT_COLORS[l]:'var(--surface2)')+';color:'+(ev.intensity===l?INT_TEXT[l]:'var(--muted)')+'">'+INT_LABELS[l]+'</div>').join('')+'</div>':'';
     return `<div class="ev-row" style="position:relative">
-    <span class="ev-badge b-${badgeClass}">${badgeText}</span>
+    <span class="ev-badge b-${ev.type==='frequency'?'freq':ev.type==='duration'?'dur':ev.type==='intensity'?'int':'lat'}">${ev.type==='frequency'?'FREQ':ev.type==='duration'?'DUR':ev.type==='intensity'?'INT':'LAT'}</span>
     <div style="flex:1">
       <div style="font-size:.84rem;font-weight:700">${ev.behaviorIcon||''} ${esc(ev.behaviorLabel||'')}</div>
-      <div class="muted" style="font-size:.74rem">${fmtTime(ev.timestamp)}${ev.type==='duration'?' · '+fmt(ev.durationMs)+freqCountStr:''}${ev.type==='latency'?' · '+fmt(ev.latencyMs):''}${ev.consequence?' · C: '+esc(ev.consequence):''}${ev.note?'<br><span style="color:var(--text2)">📝 '+esc(ev.note)+'</span>':''}</div>
+      <div class="muted" style="font-size:.74rem">${fmtTime(ev.timestamp)}${ev.type==='duration'?' · '+fmt(ev.durationMs):''}${ev.type==='intensity'&&ev.intensity?' · '+INT_LABELS[ev.intensity]:''}${ev.type==='latency'?' · '+fmt(ev.latencyMs):''}${ev.consequence?' · C: '+esc(ev.consequence):''}${ev.note?'<br><span style="color:var(--text2)">📝 '+esc(ev.note)+'</span>':''}</div>
       <input style="width:100%;margin-top:4px;padding:4px 8px;border:1px solid var(--border);border-radius:6px;font-size:.72rem;font-family:inherit;background:var(--surface2)" placeholder="Antecedent — what happened before…" value="${esc(ev.antecedent||'')}" oninput="setEvField(${ei},'antecedent',this.value)"/>
+      ${intPills}
     </div>
     <button onclick="deleteEvent(${ei})" title="Delete event" style="position:absolute;top:4px;right:4px;width:22px;height:22px;border-radius:6px;border:1px solid #fca5a5;background:#fff5f5;cursor:pointer;font-size:.7rem;display:flex;align-items:center;justify-content:center;color:var(--red);opacity:.5;transition:opacity .15s" onmouseover="this.style.opacity=1" onmouseout="this.style.opacity=.5">✕</button>
   </div>`;}).join('')}</div></div>`:'';
@@ -2225,9 +2350,11 @@ function buildMultiRecord(){
       ${S.multiSessions.map((s,i)=>{
         const isActive=i===S.activeClientIdx;
         const hasIncident=s.incidents&&Object.keys(s.incidents).length>0;
+        const hasPending=s.intensityPrompts&&s.intensityPrompts.length>0;
         const evCount=s.events.length;
         return`<div onclick="switchClient(${i})" style="flex:1;min-width:90px;max-width:160px;padding:10px 10px 8px;border-radius:12px;cursor:pointer;border:2px solid ${isActive?'var(--accent)':hasIncident?'var(--red)':'var(--border)'};background:${isActive?'var(--accent-soft)':hasIncident?'#fde4e6':'var(--surface2)'};transition:all .15s;position:relative">
           ${hasIncident?'<span style="position:absolute;top:4px;right:5px;width:8px;height:8px;border-radius:50%;background:var(--red);animation:pulse 1s infinite"></span>':''}
+          ${hasPending?'<span style="position:absolute;top:4px;right:5px;font-size:.65rem">⚡</span>':''}
           <div style="font-weight:800;font-size:.78rem;color:${isActive?'var(--accent)':'var(--text)'};white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${esc(s.clientName)}</div>
           <div id="tab-badge-${i}" style="font-size:.7rem;font-family:'Courier New',monospace;color:${isActive?'var(--accent)':'var(--muted)'};margin-top:2px">${evCount} event${evCount!==1?'s':''}</div>
           ${hasIncident?`<div style="font-size:.62rem;color:var(--red);font-weight:700;margin-top:2px">⏱ active</div>`:''}
@@ -2286,28 +2413,20 @@ function buildMultiRecord(){
   let activeCards='';
   if(activeSlotIncs.length>0){
     activeCards=`<div class="card mb3" style="background:linear-gradient(135deg,#fde4e6,#ffe4e6);border:2px solid #fca5a5;padding:14px 16px">
-      <div class="slabel" style="color:var(--red);margin-bottom:10px">⏱ ${activeSlotIncs.length} Behavior${activeSlotIncs.length>1?'s':''} in Progress — tap behavior button above to end</div>
-      ${activeSlotIncs.map(inc=>`<div style="padding:12px;background:#fff;border-radius:12px;border:1.5px solid #fca5a5;margin-bottom:8px">
-        <div style="display:flex;align-items:center;gap:10px;margin-bottom:10px">
-          <div style="flex:1;min-width:0">
-            <div style="font-weight:800;font-size:.95rem;color:var(--red)">${inc.behIcon} ${esc(inc.behLabel)}</div>
+      <div class="slabel" style="color:var(--red);margin-bottom:10px">⏱ ${activeSlotIncs.length} Behavior${activeSlotIncs.length>1?'s':''} in Progress — tap button to end</div>
+      ${activeSlotIncs.map(inc=>`<div style="display:flex;align-items:center;gap:10px;padding:10px 12px;background:#fff;border-radius:12px;border:1.5px solid #fca5a5;margin-bottom:8px">
+        <div style="flex:1;min-width:0">
+          <div style="font-weight:800;font-size:.88rem;color:var(--red)">${inc.behIcon} ${esc(inc.behLabel)}</div>
+          <div style="margin-top:6px"><div class="slabel" style="font-size:.65rem">Antecedent (captured at start)</div>
+            <div style="font-size:.78rem;color:var(--muted);margin-top:1px">${inc.abcA?esc(inc.abcA):'<em>none</em>'}</div>
           </div>
-          <div style="text-align:center;flex-shrink:0">
-            <div id="inc-timer-m-${inc.behId}" style="font-family:'Courier New',monospace;font-size:1.5rem;font-weight:800;color:var(--red);line-height:1">${fmt(inc.elapsed||0)}</div>
-            <div style="font-size:.6rem;color:var(--muted);margin-top:2px">duration</div>
+          <div style="margin-top:6px"><div class="slabel" style="font-size:.65rem">Notes during behavior</div>
+            <textarea style="width:100%;font-size:.78rem;padding:5px 8px;border-radius:8px;border:1px solid var(--border);resize:none;font-family:inherit;margin-top:2px;height:48px" placeholder="Describe what's happening…" oninput="mUpdateIncNote('${inc.behId}',this.value)">${esc(inc.note||'')}</textarea>
           </div>
         </div>
-        <!-- Big prominent +1 Frequency button with live count -->
-        <button onclick="mBumpIncFreq('${inc.behId}')" style="width:100%;padding:18px 12px;border-radius:14px;border:2.5px solid var(--accent);background:linear-gradient(135deg,#fff,var(--accent-soft));color:var(--accent);font-weight:800;font-size:1.05rem;cursor:pointer;display:flex;align-items:center;justify-content:center;gap:14px;margin-bottom:10px;box-shadow:0 2px 8px rgba(0,0,0,.06);transition:transform .08s,box-shadow .12s" onmousedown="this.style.transform='scale(.97)'" onmouseup="this.style.transform='scale(1)'" onmouseout="this.style.transform='scale(1)'">
-          <span style="font-size:1.4rem">🔢</span>
-          <span>+1 Frequency Incident</span>
-          <span style="background:var(--accent);color:#fff;font-size:1.25rem;font-weight:800;padding:4px 16px;border-radius:999px;min-width:48px;text-align:center">${inc.frequencyCount||0}</span>
-        </button>
-        <div style="margin-top:4px"><div class="slabel" style="font-size:.65rem">Antecedent (captured at start)</div>
-          <div style="font-size:.78rem;color:var(--muted);margin-top:1px">${inc.abcA?esc(inc.abcA):'<em>none</em>'}</div>
-        </div>
-        <div style="margin-top:8px"><div class="slabel" style="font-size:.65rem">Notes during behavior</div>
-          <textarea style="width:100%;font-size:.78rem;padding:5px 8px;border-radius:8px;border:1px solid var(--border);resize:none;font-family:inherit;margin-top:2px;height:48px" placeholder="Describe what's happening…" oninput="mUpdateIncNote('${inc.behId}',this.value)">${esc(inc.note||'')}</textarea>
+        <div style="text-align:center;flex-shrink:0">
+          <div id="inc-timer-m-${inc.behId}" style="font-family:'Courier New',monospace;font-size:1.4rem;font-weight:800;color:var(--red);line-height:1">${fmt(inc.elapsed||0)}</div>
+          <div style="font-size:.6rem;color:var(--muted);margin-top:2px">duration</div>
         </div>
       </div>`).join('')}
     </div>`;
@@ -2334,12 +2453,7 @@ function buildMultiRecord(){
     </div>`;
   }
 
-  const evFeed=events.length>0?`<div class="card mb3"><div class="slabel">Events — ${esc(slot.clientName)} (${events.length})</div><div class="scroll">${[...events].reverse().map(ev=>{
-    const badgeClass=ev.type==='frequency'?'freq':ev.type==='duration'?'dur':ev.type==='intensity'?'int':'lat';
-    const badgeText=ev.type==='frequency'?'FREQ':ev.type==='duration'?'INC':ev.type==='intensity'?'INT':'LAT';
-    const freqCountStr=(ev.type==='duration'&&typeof ev.frequencyCount==='number'&&ev.frequencyCount>0)?' · 🔢 '+ev.frequencyCount:'';
-    return `<div class="ev-row"><span class="ev-badge b-${badgeClass}">${badgeText}</span><div style="flex:1"><div style="font-size:.84rem;font-weight:700">${ev.behaviorIcon} ${esc(ev.behaviorLabel)}</div><div class="muted">${fmtTime(ev.timestamp)}${ev.type==='duration'?' · '+fmt(ev.durationMs)+freqCountStr:''}${ev.type==='latency'?' · '+fmt(ev.latencyMs):''}${ev.antecedent?' · A: '+esc(ev.antecedent):''}${ev.consequence?' · C: '+esc(ev.consequence):''}${ev.note?'<br><span style="color:var(--text2)">📝 '+esc(ev.note)+'</span>':''}</div></div></div>`;
-  }).join('')}</div></div>`:'';
+  const evFeed=events.length>0?`<div class="card mb3"><div class="slabel">Events — ${esc(slot.clientName)} (${events.length})</div><div class="scroll">${[...events].reverse().map(ev=>`<div class="ev-row"><span class="ev-badge b-${ev.type==='frequency'?'freq':ev.type==='duration'?'dur':ev.type==='intensity'?'int':'lat'}">${ev.type==='frequency'?'FREQ':ev.type==='duration'?'DUR':ev.type==='intensity'?'INT':'LAT'}</span><div style="flex:1"><div style="font-size:.84rem;font-weight:700">${ev.behaviorIcon} ${esc(ev.behaviorLabel)}</div><div class="muted">${fmtTime(ev.timestamp)}${ev.type==='duration'?' · '+fmt(ev.durationMs):''}${ev.type==='intensity'?' · '+INT_LABELS[ev.intensity]:''}${ev.type==='latency'?' · '+fmt(ev.latencyMs):''}${ev.antecedent?' · A: '+esc(ev.antecedent):''}${ev.consequence?' · C: '+esc(ev.consequence):''}${ev.note?'<br><span style="color:var(--text2)">📝 '+esc(ev.note)+'</span>':''}</div></div></div>`).join('')}</div></div>`:'';
 
   return`<div class="sub-view">${tabBar}
   <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px">
@@ -2361,7 +2475,8 @@ function buildSummary(){
   events.forEach(ev=>{
     if(!byB[ev.behaviorLabel])byB[ev.behaviorLabel]={label:ev.behaviorLabel,icon:ev.behaviorIcon,freq:0,durs:[],ints:[],lats:[],abcs:[]};
     if(ev.type==='frequency')byB[ev.behaviorLabel].freq++;
-    if(ev.type==='duration'){byB[ev.behaviorLabel].durs.push(ev.durationMs); if(typeof ev.frequencyCount==='number') byB[ev.behaviorLabel].freq+=ev.frequencyCount;}
+    if(ev.type==='duration')byB[ev.behaviorLabel].durs.push(ev.durationMs);
+    if(ev.type==='intensity')byB[ev.behaviorLabel].ints.push(ev.intensity);
     if(ev.type==='latency')byB[ev.behaviorLabel].lats.push(ev.latencyMs);
     if(ev.antecedent||ev.consequence||ev.note)byB[ev.behaviorLabel].abcs.push({t:ev.timestamp,a:ev.antecedent,c:ev.consequence,n:ev.note});
   });
@@ -2666,9 +2781,10 @@ function buildMultiSummary(){
     const events=sess.events||[];
     const byB={};
     events.forEach(ev=>{
-      if(!byB[ev.behaviorLabel])byB[ev.behaviorLabel]={label:ev.behaviorLabel,icon:ev.behaviorIcon,count:0,durs:[],ints:[],freqCounts:0};
+      if(!byB[ev.behaviorLabel])byB[ev.behaviorLabel]={label:ev.behaviorLabel,icon:ev.behaviorIcon,count:0,durs:[],ints:[]};
       byB[ev.behaviorLabel].count++;
-      if(ev.type==='duration'){byB[ev.behaviorLabel].durs.push(ev.durationMs); if(typeof ev.frequencyCount==='number') byB[ev.behaviorLabel].freqCounts+=ev.frequencyCount;}
+      if(ev.type==='duration')byB[ev.behaviorLabel].durs.push(ev.durationMs);
+      if(ev.type==='intensity')byB[ev.behaviorLabel].ints.push(ev.intensity);
     });
     const bList=Object.values(byB).sort((a,b)=>b.count-a.count);
     const c=S.clients.find(x=>x.id===sess.clientId);
@@ -2694,12 +2810,12 @@ function buildMultiSummary(){
       ${bList.length?`<div style="display:flex;flex-direction:column;gap:6px">
         ${bList.map(b=>{
           const avgDur=b.durs.length?b.durs.reduce((a,v)=>a+v,0)/b.durs.length:0;
-          const freqInfo=b.freqCounts>0?' · 🔢 '+b.freqCounts+' tally':'';
+          const avgInt=b.ints.length?b.ints.reduce((a,v)=>a+v,0)/b.ints.length:0;
           return`<div style="display:flex;align-items:center;gap:10px;padding:8px 10px;background:var(--surface2);border-radius:10px">
             <span style="font-size:1.2rem">${b.icon}</span>
             <div style="flex:1">
               <div style="font-weight:700;font-size:.85rem">${esc(b.label)}</div>
-              <div class="muted" style="font-size:.72rem">${b.count} event${b.count!==1?'s':''}${avgDur>0?' · avg '+fmt(avgDur):''}${freqInfo}</div>
+              <div class="muted" style="font-size:.72rem">${b.count} event${b.count!==1?'s':''}${avgDur>0?' · avg '+fmt(avgDur):''}${avgInt>0?' · avg intensity '+avgInt.toFixed(1):''}</div>
             </div>
             <div class="ev-badge b-freq">${b.count}</div>
           </div>`;
@@ -2805,12 +2921,21 @@ function buildAnalyticsCharts(){
   }
 
   // Intensity averages per bucket
-  // Intensity removed — function kept as no-op stub for back-compat.
-  function intensityByBucket(behLabel){return buckets.map(()=>0);}
+  function intensityByBucket(behLabel){
+    const map={};
+    bucketKeys.forEach(k=>{map[k]={sum:0,cnt:0};});
+    allSess.forEach(s=>{
+      s.events.filter(ev=>ev.type==='intensity'&&(behLabel==='all'||ev.behaviorLabel===behLabel)).forEach(ev=>{
+        const k=dateKey(ev.timestamp,range);
+        if(k in map){map[k].sum+=ev.intensity;map[k].cnt++;}
+      });
+    });
+    return buckets.map(b=>map[b.key].cnt?(map[b.key].sum/map[b.key].cnt).toFixed(1):0);
+  }
 
   const freqData=countByBucket(anaBeh);
   const durData=durationByBucket(anaBeh);
-  const intData=intensityByBucket(anaBeh); // legacy — always zeros
+  const intData=intensityByBucket(anaBeh);
   const labels=buckets.map(b=>b.short);
 
   // Total stats for the period
@@ -2874,6 +2999,16 @@ function buildAnalyticsCharts(){
       </div>
     </div>
     ${buildAreaChart(labels,durData,'#06d6a0')}
+  </div>`:''}
+
+  ${intData.some(v=>v>0)?`<div class="card mb3">
+    <div class="row between mb3">
+      <div>
+        <div style="font-weight:700">Average Intensity</div>
+        <div class="muted" style="font-size:.78rem">Scale 1–4 · ${rangeLabels[range]}</div>
+      </div>
+    </div>
+    ${buildAreaChart(labels,intData.map(Number),'#f59e0b',4)}
   </div>`:''}
 
   ${behRows.length>1?`<div class="card mb3">
@@ -3005,9 +3140,10 @@ function buildFBA(){
   const durScore=durEvs.length>=10?2:durEvs.length>=4?1:0;
   const durMax=2;
 
-  // 7. (Intensity criterion removed — behaviors no longer track intensity.)
-  const intScore=0;
-  const intMax=0;
+  // 7. Intensity data — severity ratings
+  const intEvs=allEv.filter(e=>e.type==='intensity');
+  const intScore=intEvs.length>=8?2:intEvs.length>=3?1:0;
+  const intMax=2;
 
   // 8. Goal hypotheses — behavioral function hypotheses require written goals
   const goalScore=goals.length>=2?2:goals.length>=1?1:0;
@@ -3037,7 +3173,7 @@ function buildFBA(){
   const behBreakdown=behLabels.map(bl=>{
     const bevs=allEv.filter(e=>e.behaviorLabel===bl);
     const bDurs=bevs.filter(e=>e.type==='duration');
-    const bInts=[]; // intensity removed
+    const bInts=bevs.filter(e=>e.type==='intensity');
     const bAbc=bevs.filter(e=>e.antecedent&&e.antecedent.trim().length>2);
     const bCons=bevs.filter(e=>e.consequence&&e.consequence.trim().length>2);
     const bNotes=bevs.filter(e=>e.note&&e.note.trim().length>2);
@@ -3087,8 +3223,9 @@ function buildFBA(){
     {label:'Setting / Location Variety',      detail:`${locations.size>=1?locations.size+' location'+(locations.size!==1?'s':'')+' observed':sessTypes.size+' session type'+(sessTypes.size!==1?'s':'')+' used'}`, need:'3+ distinct settings observed', score:settingScore,max:settingMax,tip:settingVariety<2?'Log sessions in different settings — classroom, lunch, transition, etc.':settingVariety<3?`Observe in ${3-settingVariety} more setting${3-settingVariety!==1?'s':''} to strengthen the FBA.`:''},
     {label:'Behaviors Identified',           detail:`${behLabels.length} behavior${behLabels.length!==1?'s':''} observed`, need:'2+ target behaviors documented', score:behScore,  max:behMax,   tip:behLabels.length===0?'Record sessions and tap behavior buttons to log data.':behLabels.length<2?'Document at least one additional behavior of concern.':''},
     {label:'Antecedent Data (A)',            detail:`${Math.round(abcPct*100)}% of events have antecedents`,        need:'≥50% of events have A context',  score:abcScore,  max:abcMax,   tip:abcScore<2?'Fill in the Antecedent field before tapping behavior buttons.':''},
-    {label:'Consequence Data (C)',           detail:`${Math.round(consPct*100)}% of events have consequences`,      need:'≥50% of events have C context',  score:consScore, max:consMax,  tip:consScore<2?'Fill the Consequence field on each event after the behavior ends.':''},
+    {label:'Consequence Data (C)',           detail:`${Math.round(consPct*100)}% of events have consequences`,      need:'≥50% of events have C context',  score:consScore, max:consMax,  tip:consScore<2?'Rate intensity and fill the Consequence field after each behavior ends.':''},
     {label:'Duration Data',                 detail:`${durEvs.length} timed incident${durEvs.length!==1?'s':''} logged`, need:'10+ duration measurements',    score:durScore,  max:durMax,   tip:durScore<2?'Use tap-to-start/stop to time behaviors during sessions.':''},
+    {label:'Intensity Ratings',             detail:`${intEvs.length} rating${intEvs.length!==1?'s':''} recorded`,  need:'8+ intensity ratings',            score:intScore,  max:intMax,   tip:intScore<2?'Rate peak intensity in the prompt that appears after each behavior ends.':''},
     {label:'Behavioral Hypotheses (Goals)', detail:`${goals.length} IEP goal${goals.length!==1?'s':''} written`,   need:'2+ documented target behaviors',  score:goalScore, max:goalMax,  tip:goalScore<2?'Write IEP goals in the Goals tab to formalize your hypotheses.':''},
     {label:'Trend Established',             detail:`${sessWithEvents} sessions with event data`,                    need:'5+ sessions showing pattern',     score:trendScore,max:trendMax, tip:trendScore<2?`${Math.max(0,5-sessWithEvents)} more observation${5-sessWithEvents!==1?'s':''} needed to establish trend.`:''},
     {label:'Observer Notes / Context',      detail:`${notedSess} session${notedSess!==1?'s':''} with notes`,       need:'4+ sessions with written notes',  score:noteScore, max:noteMax,  tip:noteScore<2?'Add session notes (or use dictation) to document environmental context.':''},
@@ -3446,6 +3583,17 @@ function clearTemplate(kind){
 
 // ── AI DOCUMENT GENERATION ─────────────────────────────────────────────────
 function generateFbaDoc(docType, clientId){
+  // GATE: AI document generation is a higher-tier paid feature.
+  // Even for behaviorists, surface the disclaimer + DPA requirements before any
+  // student data could be transmitted to the Anthropic API.
+  S._modal={type:'fbaPaywall', docType, clientId, expanded:false};
+  rerender();
+  return;
+}
+
+// Original generation logic preserved for future activation under a signed DPA.
+// When that path is enabled, route to this function from a tier-checking wrapper.
+function _generateFbaDoc_internal(docType, clientId){
   const client = S.clients.find(c=>c.id===clientId);
   if(!client){ alert('Student not found.'); return; }
 
@@ -3460,28 +3608,22 @@ function generateFbaDoc(docType, clientId){
   }
 
   // Build behavior summary
-  // PRIVACY NOTE: This summary is sent to Anthropic's API (via /api/claude.js)
-  // to generate FBA/BIP documents. The payload contains behavior labels and ABC text
-  // (which may include classroom context) but NO student names, IDs, or school identifiers
-  // are added here — they should be stripped/redacted by the calling document generator
-  // before transmission. Anthropic API is a Subprocessor with appropriate education-use terms.
   const byB = {};
   allEv.forEach(ev=>{
     if(!byB[ev.behaviorLabel]) byB[ev.behaviorLabel]={label:ev.behaviorLabel,icon:ev.behaviorIcon||'',freq:0,durs:[],ints:[],ants:[],cons:[]};
     if(ev.type==='frequency') byB[ev.behaviorLabel].freq++;
-    if(ev.type==='duration'){
-      byB[ev.behaviorLabel].durs.push(ev.durationMs);
-      // Roll embedded incident tally into total frequency
-      if(typeof ev.frequencyCount==='number') byB[ev.behaviorLabel].freq+=ev.frequencyCount;
-    }
+    if(ev.type==='duration') byB[ev.behaviorLabel].durs.push(ev.durationMs);
+    if(ev.type==='intensity') byB[ev.behaviorLabel].ints.push(ev.intensity);
     if(ev.antecedent&&ev.antecedent.trim()) byB[ev.behaviorLabel].ants.push(ev.antecedent);
     if(ev.consequence&&ev.consequence.trim()) byB[ev.behaviorLabel].cons.push(ev.consequence);
   });
   const behSummary = Object.values(byB).map(b=>{
     const avgDur = b.durs.length ? Math.round(b.durs.reduce((a,v)=>a+v,0)/b.durs.length/1000) : null;
+    const avgInt = b.ints.length ? (b.ints.reduce((a,v)=>a+v,0)/b.ints.length).toFixed(1) : null;
     return `Behavior: ${b.label}
   Frequency: ${b.freq} incidents across ${fbaSessions.length} sessions
   ${avgDur?'Avg Duration: '+avgDur+' seconds':''}
+  ${avgInt?'Avg Intensity: '+avgInt+'/4':''}
   Common antecedents: ${[...new Set(b.ants)].slice(0,5).join('; ')||'none recorded'}
   Common consequences: ${[...new Set(b.cons)].slice(0,5).join('; ')||'none recorded'}`;
   }).join('\n\n');
@@ -3588,7 +3730,36 @@ ${dataContext}`
 }
 
 // ── PDF Export ─────────────────────────────────────────────────────────────
+// Entry point — opens a popup so the user chooses what data and charts to include.
+// (Privacy: by default, ABC narratives and session notes are NOT checked.)
 function doExportPDF(){
+  if(!S.selClient){return;}
+  S._modal={type:'exportPDF',
+    sections:{summary:true, goals:true, sessionTable:true, abcLog:false, notes:false},
+    charts:{goalProgress:true, frequencyOverTime:false, behaviorBreakdown:false, abcPattern:false}
+  };
+  rerender();
+}
+
+// Toggle a section/chart in the export modal
+function toggleExportOpt(group,key){
+  if(!S._modal||S._modal.type!=='exportPDF')return;
+  S._modal[group][key]=!S._modal[group][key];
+  rerender();
+}
+
+// Run the actual export with the chosen options
+function doExportPDFWithOptions(){
+  const m=S._modal;
+  if(!m||m.type!=='exportPDF')return;
+  const opts={sections:{...m.sections},charts:{...m.charts}};
+  S._modal=null;
+  rerender();
+  // Defer so the modal close paints before the (potentially slow) PDF build
+  setTimeout(()=>runPDFExport(opts),50);
+}
+
+function runPDFExport(opts){
   const c=S.selClient;
   const range=S._reportRange||'all';
   let start=null;const end=new Date();
@@ -3617,20 +3788,26 @@ function doExportPDF(){
   doc.text('Generated: '+fmtDate(Date.now()),W-M,58,{align:'right'});
   if(clientSessions.length>0)doc.text(fmtDate(clientSessions[0].startedAt)+' – '+fmtDate(clientSessions[clientSessions.length-1].startedAt),W-M,72,{align:'right'});
   y=106;
-  // Stats
+
+  // Pre-compute commonly needed values
   const totalEv=clientSessions.flatMap(s=>s.events).length;
   const uniqB=[...new Set(clientSessions.flatMap(s=>s.events.map(e=>e.behaviorLabel)))];
-  [{l:'Sessions',v:clientSessions.length},{l:'Total Events',v:totalEv},{l:'Behaviors',v:uniqB.length},{l:'Goals',v:cGoals.length}].forEach((st,i)=>{
-    const bx=M+i*(COL/4+2);
-    doc.setFillColor(238,241,253);doc.setDrawColor(220,225,245);doc.roundedRect(bx,y,COL/4-2,46,5,5,'FD');
-    doc.setFont('helvetica','bold');doc.setFontSize(18);doc.setTextColor(67,97,238);
-    doc.text(String(st.v),bx+(COL/4-2)/2,y+21,{align:'center'});
-    doc.setFont('helvetica','normal');doc.setFontSize(8);doc.setTextColor(120,128,164);
-    doc.text(st.l,bx+(COL/4-2)/2,y+35,{align:'center'});
-  });
-  y+=60;
-  // Goals
-  if(cGoals.length>0){
+
+  // ── Stats (Summary) ────────────────────────────────────────────────────
+  if(opts.sections.summary){
+    [{l:'Sessions',v:clientSessions.length},{l:'Total Events',v:totalEv},{l:'Behaviors',v:uniqB.length},{l:'Goals',v:cGoals.length}].forEach((st,i)=>{
+      const bx=M+i*(COL/4+2);
+      doc.setFillColor(238,241,253);doc.setDrawColor(220,225,245);doc.roundedRect(bx,y,COL/4-2,46,5,5,'FD');
+      doc.setFont('helvetica','bold');doc.setFontSize(18);doc.setTextColor(67,97,238);
+      doc.text(String(st.v),bx+(COL/4-2)/2,y+21,{align:'center'});
+      doc.setFont('helvetica','normal');doc.setFontSize(8);doc.setTextColor(120,128,164);
+      doc.text(st.l,bx+(COL/4-2)/2,y+35,{align:'center'});
+    });
+    y+=60;
+  }
+
+  // ── Goals & Progress (with progress bars) ──────────────────────────────
+  if(opts.sections.goals && cGoals.length>0){
     chk(55);
     doc.setFont('helvetica','bold');doc.setFontSize(12);doc.setTextColor(26,31,58);
     doc.text('Behavior Goals & Progress',M,y);y+=5;
@@ -3644,30 +3821,58 @@ function doExportPDF(){
       doc.text(g.behaviorLabel,M,y);
       doc.setFont('helvetica','normal');doc.setFontSize(9);doc.setTextColor(120,128,164);
       doc.text('Target: ≤'+g.target+'/session  |  Avg: '+avg.toFixed(1)+'  |  '+(met?'ON TRACK ✓':'NEEDS SUPPORT'),M,y+12);
-      const bX=M,bY=y+19,bW2=COL*.65,bH=7;
-      doc.setFillColor(220,224,245);doc.roundedRect(bX,bY,bW2,bH,3,3,'F');
-      doc.setFillColor(...(met?[16,185,129]:[239,68,68]));
-      doc.roundedRect(bX,bY,Math.max(3,bW2*Math.min(1,avg/Math.max(g.target*1.5,1))),bH,3,3,'F');
-      const tX=bX+bW2*(g.target/Math.max(g.target*1.5,1));
-      doc.setDrawColor(67,97,238);doc.setLineWidth(1.5);doc.line(tX,bY-2,tX,bY+bH+2);
-      y+=g.notes?44:36;
+      // Progress bar only drawn if goalProgress chart option is on
+      if(opts.charts.goalProgress){
+        const bX=M,bY=y+19,bW2=COL*.65,bH=7;
+        doc.setFillColor(220,224,245);doc.roundedRect(bX,bY,bW2,bH,3,3,'F');
+        doc.setFillColor(...(met?[16,185,129]:[239,68,68]));
+        doc.roundedRect(bX,bY,Math.max(3,bW2*Math.min(1,avg/Math.max(g.target*1.5,1))),bH,3,3,'F');
+        const tX=bX+bW2*(g.target/Math.max(g.target*1.5,1));
+        doc.setDrawColor(67,97,238);doc.setLineWidth(1.5);doc.line(tX,bY-2,tX,bY+bH+2);
+        y+=g.notes?44:36;
+      } else {
+        y+=g.notes?28:20;
+      }
       if(g.notes){doc.setFont('helvetica','italic');doc.setFontSize(8);doc.setTextColor(120,128,164);doc.text('Notes: '+g.notes,M,y-6);}
       doc.setFillColor(220,225,245);doc.rect(M,y,COL,.5,'F');y+=7;
     });y+=7;
   }
-  // Session table
-  if(clientSessions.length>0&&uniqB.length>0){
+
+  // ── Frequency Over Time chart ──────────────────────────────────────────
+  if(opts.charts.frequencyOverTime && clientSessions.length>0){
+    chk(130);
+    doc.setFont('helvetica','bold');doc.setFontSize(11);doc.setTextColor(26,31,58);
+    doc.text('Frequency Over Time',M,y);y+=10;
+    drawLineChart(doc, M, y, COL, 110, clientSessions, uniqB);
+    y+=120;
+  }
+
+  // ── Behavior Breakdown bar chart ───────────────────────────────────────
+  if(opts.charts.behaviorBreakdown && uniqB.length>0){
+    chk(150);
+    doc.setFont('helvetica','bold');doc.setFontSize(11);doc.setTextColor(26,31,58);
+    doc.text('Behavior Breakdown',M,y);y+=10;
+    const evByB={};
+    uniqB.forEach(bl=>{evByB[bl]=clientSessions.flatMap(s=>s.events).filter(e=>e.behaviorLabel===bl).length;});
+    drawBarChart(doc, M, y, COL, 110, evByB);
+    y+=120;
+  }
+
+  // ── Session Data Table ─────────────────────────────────────────────────
+  if(opts.sections.sessionTable && clientSessions.length>0&&uniqB.length>0){
     chk(55);
     doc.setFont('helvetica','bold');doc.setFontSize(12);doc.setTextColor(26,31,58);
     doc.text('Session Data',M,y);y+=5;
     doc.setFillColor(200,210,240);doc.rect(M,y,COL,1,'F');y+=9;
     const dispB=uniqB.slice(0,5);
-    const dCW=88,nCW=100,bCW=(COL-dCW-nCW)/dispB.length;
+    const showNotesCol=opts.sections.notes;
+    const dCW=88,nCW=showNotesCol?100:0,bCW=(COL-dCW-nCW)/dispB.length;
     doc.setFillColor(238,241,253);doc.rect(M,y,COL,17,'F');
     doc.setFont('helvetica','bold');doc.setFontSize(8);doc.setTextColor(26,31,58);
     doc.text('Date / Time',M+3,y+11);
     dispB.forEach((bl,i)=>doc.text((bl||'').slice(0,12),M+dCW+i*bCW+bCW/2,y+11,{align:'center'}));
-    doc.text('Notes',M+dCW+dispB.length*bCW+3,y+11);y+=17;
+    if(showNotesCol) doc.text('Notes',M+dCW+dispB.length*bCW+3,y+11);
+    y+=17;
     clientSessions.forEach((sess,si)=>{
       chk(20);
       doc.setFillColor(...(si%2===0?[248,249,255]:[255,255,255]));doc.rect(M,y,COL,17,'F');
@@ -3675,36 +3880,170 @@ function doExportPDF(){
       doc.text(fmtDateS(sess.startedAt)+' '+fmtTime(sess.startedAt),M+3,y+11);
       dispB.forEach((bl,i)=>{
         const cnt=behFreq(sess,bl);
-        const goal=cGoals.find(g=>g.behaviorLabel===bl);
+        // If goals section omitted, drop the goal-based color coding (would be misleading)
+        const goal=opts.sections.goals?cGoals.find(g=>g.behaviorLabel===bl):null;
         doc.setFont('helvetica',cnt>0?'bold':'normal');
         doc.setTextColor(...(cnt>0&&goal&&cnt>goal.target?[239,68,68]:cnt>0?[16,185,129]:[120,128,164]));
         doc.text(cnt>0?String(cnt):'—',M+dCW+i*bCW+bCW/2,y+11,{align:'center'});
       });
-      doc.setFont('helvetica','normal');doc.setTextColor(120,128,164);
-      doc.text((sess.note||'').slice(0,24),M+dCW+dispB.length*bCW+3,y+11);
+      if(showNotesCol){
+        doc.setFont('helvetica','normal');doc.setTextColor(120,128,164);
+        doc.text((sess.note||'').slice(0,24),M+dCW+dispB.length*bCW+3,y+11);
+      }
       doc.setDrawColor(220,225,245);doc.setLineWidth(.5);doc.line(M,y+17,M+COL,y+17);y+=17;
     });y+=10;
   }
-  // ABC
-  const abcEv=clientSessions.flatMap(s=>s.events.filter(e=>e.antecedent||e.consequence).map(e=>({...e,sDate:s.startedAt})));
-  if(abcEv.length>0){
-    chk(45);
-    doc.setFont('helvetica','bold');doc.setFontSize(12);doc.setTextColor(26,31,58);
-    doc.text('ABC Log',M,y);y+=5;
-    doc.setFillColor(200,210,240);doc.rect(M,y,COL,1,'F');y+=9;
-    abcEv.slice(0,28).forEach(ev=>{
-      chk(30);
-      doc.setFont('helvetica','bold');doc.setFontSize(8.5);doc.setTextColor(26,31,58);
-      doc.text((ev.behaviorLabel||'')+'  ·  '+fmtDateS(ev.sDate)+' '+fmtTime(ev.timestamp),M,y);y+=10;
-      if(ev.antecedent){doc.setFont('helvetica','bold');doc.setFontSize(8);doc.setTextColor(67,97,238);doc.text('A:',M+3,y);doc.setFont('helvetica','normal');doc.setTextColor(26,31,58);doc.text((ev.antecedent||'').slice(0,90),M+14,y);y+=10;}
-      if(ev.consequence){doc.setFont('helvetica','bold');doc.setFontSize(8);doc.setTextColor(194,65,12);doc.text('C:',M+3,y);doc.setFont('helvetica','normal');doc.setTextColor(26,31,58);doc.text((ev.consequence||'').slice(0,90),M+14,y);y+=10;}
-      doc.setFillColor(220,225,245);doc.rect(M,y,COL,.5,'F');y+=6;
-    });
+
+  // ── ABC Pattern chart ──────────────────────────────────────────────────
+  if(opts.charts.abcPattern){
+    const abcEvAll=clientSessions.flatMap(s=>s.events.filter(e=>e.antecedent||e.consequence));
+    if(abcEvAll.length>0){
+      chk(150);
+      doc.setFont('helvetica','bold');doc.setFontSize(11);doc.setTextColor(26,31,58);
+      doc.text('ABC Pattern Analysis',M,y);y+=10;
+      drawABCPattern(doc, M, y, COL, 110, abcEvAll);
+      y+=120;
+    }
   }
+
+  // ── ABC Log ────────────────────────────────────────────────────────────
+  if(opts.sections.abcLog){
+    const abcEv=clientSessions.flatMap(s=>s.events.filter(e=>e.antecedent||e.consequence).map(e=>({...e,sDate:s.startedAt})));
+    if(abcEv.length>0){
+      chk(45);
+      doc.setFont('helvetica','bold');doc.setFontSize(12);doc.setTextColor(26,31,58);
+      doc.text('ABC Log',M,y);y+=5;
+      doc.setFillColor(200,210,240);doc.rect(M,y,COL,1,'F');y+=9;
+      abcEv.slice(0,28).forEach(ev=>{
+        chk(30);
+        doc.setFont('helvetica','bold');doc.setFontSize(8.5);doc.setTextColor(26,31,58);
+        doc.text((ev.behaviorLabel||'')+'  ·  '+fmtDateS(ev.sDate)+' '+fmtTime(ev.timestamp),M,y);y+=10;
+        if(ev.antecedent){doc.setFont('helvetica','bold');doc.setFontSize(8);doc.setTextColor(67,97,238);doc.text('A:',M+3,y);doc.setFont('helvetica','normal');doc.setTextColor(26,31,58);doc.text((ev.antecedent||'').slice(0,90),M+14,y);y+=10;}
+        if(ev.consequence){doc.setFont('helvetica','bold');doc.setFontSize(8);doc.setTextColor(194,65,12);doc.text('C:',M+3,y);doc.setFont('helvetica','normal');doc.setTextColor(26,31,58);doc.text((ev.consequence||'').slice(0,90),M+14,y);y+=10;}
+        doc.setFillColor(220,225,245);doc.rect(M,y,COL,.5,'F');y+=6;
+      });
+    }
+  }
+
   // Footers
   const pc=doc.getNumberOfPages();
   for(let i=1;i<=pc;i++){doc.setPage(i);doc.setFillColor(240,243,255);doc.rect(0,H-28,W,28,'F');doc.setFont('helvetica','normal');doc.setFontSize(8);doc.setTextColor(120,128,164);doc.text('BehaviorLog  ·  '+c.name+'  ·  Confidential',M,H-10);doc.text('Page '+i+' of '+pc,W-M,H-10,{align:'right'});}
   doc.save('BehaviorLog_'+c.name.replace(/\s+/g,'_')+'_'+new Date().toISOString().slice(0,10)+'.pdf');
+}
+
+// ── Chart helpers for PDF (jsPDF native shapes) ─────────────────────────────
+
+// Line chart: total events per session, drawn with top behavior overlays
+function drawLineChart(doc, x, y, w, h, sessions, behaviors){
+  const P={t:8,r:8,b:24,l:30};
+  const cW=w-P.l-P.r, cH=h-P.t-P.b;
+  // Per-session totals
+  const totals=sessions.map(s=>(s.events||[]).length);
+  const max=Math.max(...totals,1);
+  const n=totals.length;
+  // Background + grid
+  doc.setFillColor(248,249,255);doc.rect(x,y,w,h,'F');
+  doc.setDrawColor(220,225,245);doc.setLineWidth(.5);
+  [0,0.5,1].forEach(f=>{
+    const yL=y+P.t+cH*(1-f);
+    doc.line(x+P.l,yL,x+w-P.r,yL);
+    doc.setFont('helvetica','normal');doc.setFontSize(7);doc.setTextColor(140,148,180);
+    doc.text(String(Math.round(max*f)),x+P.l-3,yL+2,{align:'right'});
+  });
+  // Line
+  if(n>=2){
+    doc.setDrawColor(67,97,238);doc.setLineWidth(1.5);
+    for(let i=0;i<n-1;i++){
+      const x1=x+P.l+i*(cW/(n-1)), y1=y+P.t+cH-(totals[i]/max)*cH;
+      const x2=x+P.l+(i+1)*(cW/(n-1)), y2=y+P.t+cH-(totals[i+1]/max)*cH;
+      doc.line(x1,y1,x2,y2);
+    }
+    // Dots
+    doc.setFillColor(67,97,238);
+    totals.forEach((v,i)=>{
+      const cx=x+P.l+i*(cW/(n-1)), cy=y+P.t+cH-(v/max)*cH;
+      doc.circle(cx,cy,2,'F');
+    });
+  } else if(n===1){
+    doc.setFillColor(67,97,238);
+    doc.circle(x+P.l+cW/2, y+P.t+cH-(totals[0]/max)*cH, 3, 'F');
+  }
+  // X labels (first / mid / last)
+  doc.setFont('helvetica','normal');doc.setFontSize(7);doc.setTextColor(140,148,180);
+  if(n>=1){
+    doc.text(fmtDateS(sessions[0].startedAt), x+P.l, y+h-6);
+    if(n>=3) doc.text(fmtDateS(sessions[Math.floor(n/2)].startedAt), x+P.l+cW/2, y+h-6, {align:'center'});
+    if(n>=2) doc.text(fmtDateS(sessions[n-1].startedAt), x+w-P.r, y+h-6, {align:'right'});
+  }
+  doc.setFont('helvetica','italic');doc.setFontSize(7);doc.setTextColor(120,128,164);
+  doc.text('Total events per session', x+P.l, y+P.t-2);
+}
+
+// Bar chart: events per behavior
+function drawBarChart(doc, x, y, w, h, evByB){
+  const entries=Object.entries(evByB).sort((a,b)=>b[1]-a[1]).slice(0,8);
+  const P={t:8,r:8,b:32,l:30};
+  const cW=w-P.l-P.r, cH=h-P.t-P.b;
+  const max=Math.max(...entries.map(e=>e[1]),1);
+  doc.setFillColor(248,249,255);doc.rect(x,y,w,h,'F');
+  // Y grid
+  doc.setDrawColor(220,225,245);doc.setLineWidth(.5);
+  [0,0.5,1].forEach(f=>{
+    const yL=y+P.t+cH*(1-f);
+    doc.line(x+P.l,yL,x+w-P.r,yL);
+    doc.setFont('helvetica','normal');doc.setFontSize(7);doc.setTextColor(140,148,180);
+    doc.text(String(Math.round(max*f)),x+P.l-3,yL+2,{align:'right'});
+  });
+  // Bars
+  const bw=cW/entries.length*0.7, gap=cW/entries.length*0.3;
+  entries.forEach((e,i)=>{
+    const bx=x+P.l+i*(cW/entries.length)+gap/2;
+    const bh=(e[1]/max)*cH;
+    const by=y+P.t+cH-bh;
+    doc.setFillColor(67,97,238);
+    doc.rect(bx,by,bw,bh,'F');
+    // Label
+    doc.setFont('helvetica','normal');doc.setFontSize(7);doc.setTextColor(80,88,120);
+    doc.text((e[0]||'').slice(0,10), bx+bw/2, y+h-18, {align:'center',angle:0});
+    doc.setFont('helvetica','bold');doc.setFontSize(7);doc.setTextColor(67,97,238);
+    doc.text(String(e[1]), bx+bw/2, by-2, {align:'center'});
+  });
+}
+
+// ABC Pattern: top antecedent and consequence categories
+function drawABCPattern(doc, x, y, w, h, abcEv){
+  doc.setFillColor(248,249,255);doc.rect(x,y,w,h,'F');
+  // Tally word-frequency on antecedents and consequences
+  const tally=arr=>{const t={};arr.forEach(e=>{(e||'').toLowerCase().split(/[\s,;.]+/).filter(w=>w.length>3).forEach(w=>{t[w]=(t[w]||0)+1;});});return Object.entries(t).sort((a,b)=>b[1]-a[1]).slice(0,5);};
+  const ants=tally(abcEv.map(e=>e.antecedent).filter(Boolean));
+  const cons=tally(abcEv.map(e=>e.consequence).filter(Boolean));
+  const colW=(w-30)/2;
+  // Left column: antecedents
+  doc.setFont('helvetica','bold');doc.setFontSize(9);doc.setTextColor(67,97,238);
+  doc.text('Top Antecedents', x+10, y+14);
+  const aMax=Math.max(...ants.map(a=>a[1]),1);
+  ants.forEach((a,i)=>{
+    const yy=y+24+i*16;
+    doc.setFont('helvetica','normal');doc.setFontSize(8);doc.setTextColor(60,68,100);
+    doc.text(a[0], x+10, yy+8);
+    doc.setFillColor(220,224,245);doc.rect(x+10,yy+10,colW-30,4,'F');
+    doc.setFillColor(67,97,238);doc.rect(x+10,yy+10,(colW-30)*(a[1]/aMax),4,'F');
+    doc.setFont('helvetica','bold');doc.setFontSize(7);doc.setTextColor(67,97,238);
+    doc.text(String(a[1]), x+colW-12, yy+8);
+  });
+  // Right column: consequences
+  doc.setFont('helvetica','bold');doc.setFontSize(9);doc.setTextColor(194,65,12);
+  doc.text('Top Consequences', x+colW+20, y+14);
+  const cMax=Math.max(...cons.map(c=>c[1]),1);
+  cons.forEach((c,i)=>{
+    const yy=y+24+i*16;
+    doc.setFont('helvetica','normal');doc.setFontSize(8);doc.setTextColor(60,68,100);
+    doc.text(c[0], x+colW+20, yy+8);
+    doc.setFillColor(245,224,220);doc.rect(x+colW+20,yy+10,colW-30,4,'F');
+    doc.setFillColor(194,65,12);doc.rect(x+colW+20,yy+10,(colW-30)*(c[1]/cMax),4,'F');
+    doc.setFont('helvetica','bold');doc.setFontSize(7);doc.setTextColor(194,65,12);
+    doc.text(String(c[1]), x+w-22, yy+8);
+  });
 }
 
 function generatePrintHTML(client,sessions,goals){
@@ -3836,16 +4175,23 @@ function saveManualEntry(cid){
     if(!b) return;
     const freq=parseInt(e.freq)||0;
     const durMin=parseFloat(e.durMin)||0;
+    const intensity=e.intensity?parseInt(e.intensity):null;
 
     // Log frequency events
     for(let i=0;i<freq;i++){
       const ev={id:uid(),type:'frequency',behaviorId:b.id,behaviorLabel:b.label,behaviorIcon:b.icon,timestamp:startTs+(i*60000),antecedent:'',consequence:'',manual:true};
+      if(intensity) ev.intensity=intensity;
       events.push(ev);
     }
 
     // Log duration if provided
     if(durMin>0){
-      events.push({id:uid(),type:'duration',behaviorId:b.id,behaviorLabel:b.label,behaviorIcon:b.icon,timestamp:startTs,durationMs:durMin*60000,frequencyCount:0,antecedent:'',consequence:'',manual:true});
+      events.push({id:uid(),type:'duration',behaviorId:b.id,behaviorLabel:b.label,behaviorIcon:b.icon,timestamp:startTs,durationMs:durMin*60000,antecedent:'',consequence:'',manual:true,intensity:intensity||null});
+    }
+
+    // If only intensity provided (no freq or dur), log a single intensity event
+    if(intensity&&freq===0&&durMin===0){
+      events.push({id:uid(),type:'intensity',behaviorId:b.id,behaviorLabel:b.label,behaviorIcon:b.icon,timestamp:startTs,intensity,antecedent:'',consequence:'',manual:true});
     }
   });
 
@@ -3885,6 +4231,7 @@ function doAddClient(){
     grade:(document.getElementById('new-client-grade')?.value||'').trim(),
     dob:document.getElementById('new-client-dob')?.value||'',
     linkedBehaviorist:'',
+    behaviors:[],
     createdAt:Date.now()
   });
   persist();rerender();
@@ -3958,6 +4305,7 @@ function handleCSVUpload(input){
       S.clients.push({
         id:uid(),name:fullName,firstName:first,lastName:last,
         studentId:sid,grade,dob,linkedBehaviorist:'',
+        behaviors:[],
         createdAt:Date.now()
       });
       added.push(fullName);
@@ -4928,16 +5276,17 @@ function toggleLat(){
   if(!S.latRunning){S.latStart=Date.now()-S.latElapsed;S.latRunning=true;tick();}
   else{S.latRunning=false;S.activeSess.events.push({id:uid(),type:'latency',behaviorId:S.activeBeh.id,behaviorLabel:S.activeBeh.label,behaviorIcon:S.activeBeh.icon,timestamp:Date.now(),latencyMs:S.latElapsed,antecedent:S.abcA,consequence:S.abcC});S.latElapsed=0;rerender();}
 }
-function logInt(lvl){/* intensity removed — no-op kept for legacy callers */}
+function logInt(lvl){
+  S.activeSess.events.push({id:uid(),type:'intensity',behaviorId:S.activeBeh.id,behaviorLabel:S.activeBeh.label,behaviorIcon:S.activeBeh.icon,timestamp:Date.now(),intensity:lvl,antecedent:S.abcA,consequence:S.abcC});
+  rerender();
+}
 
 // ── Smart incident (tap-to-start / tap-to-end) ─────────────────────────────
-// All behaviors (except Latency) record as a Frequency Incident:
-// a duration timer with an embedded +1 counter for tally within the incident.
 function startIncident(bid){
   const b=allBehs().find(b=>b.id===bid);
   if(!b) return;
 
-  // ── FREQ tool override: when active, any tap = +1 count (legacy quick-tally) ──
+  // ── FREQ tool override: when active, any tap = +1 count ──
   if(S.measureMode==='FREQ'){
     S.activeSess.events.push({
       id:uid(),type:'frequency',
@@ -4950,6 +5299,18 @@ function startIncident(bid){
   }
 
   const measure=getBehMeasure(bid);
+
+  // ── FREQUENCY: instant log, no timer ──
+  if(measure==='frequency'){
+    S.activeSess.events.push({
+      id:uid(),type:'frequency',
+      behaviorId:b.id,behaviorLabel:b.label,behaviorIcon:b.icon,
+      timestamp:Date.now(),antecedent:S.abcA,consequence:''
+    });
+    S.abcA='';
+    rerender();
+    return;
+  }
 
   // ── LATENCY: tap start, tap end = log latency time ──
   if(measure==='latency'){
@@ -4973,25 +5334,21 @@ function startIncident(bid){
     return;
   }
 
-  // ── FREQUENCY INCIDENT (all other behaviors): duration timer + embedded count ──
+  // ── DURATION or INTENSITY: tap-to-start / tap-to-end ──
   if(S.incidents[bid]){
-    // Already active — END this incident, log a single combined event
-    _endIncidentDurationOnly(bid);
+    // Already active — END this behavior
+    if(measure==='duration'){
+      _endIncidentDurationOnly(bid);
+    } else {
+      _endIncidentById(bid); // intensity — shows rating prompt
+    }
     return;
   }
-  // START new incident — frequencyCount starts at 0 each time per spec
-  S.incidents[bid]={behId:bid,behLabel:b.label,behIcon:b.icon,startMs:Date.now(),elapsed:0,abcA:S.abcA,note:'',measure,frequencyCount:0};
+  // START new incident
+  S.incidents[bid]={behId:bid,behLabel:b.label,behIcon:b.icon,startMs:Date.now(),elapsed:0,abcA:S.abcA,note:'',measure};
   S.activeBeh=b;
   S.abcA='';
   tick();
-  rerender();
-}
-
-// Increment the embedded frequency counter on an active incident.
-function bumpIncFreq(bid){
-  const inc=S.incidents[bid];
-  if(!inc) return;
-  inc.frequencyCount=(inc.frequencyCount||0)+1;
   rerender();
 }
 
@@ -4999,22 +5356,31 @@ function _endIncidentDurationOnly(bid){
   const inc=S.incidents[bid];
   if(!inc) return;
   const durMs=Date.now()-inc.startMs;
-  const freqCount=inc.frequencyCount||0;
   delete S.incidents[bid];
-  // Single combined event: duration + embedded frequencyCount on the incident
   S.activeSess.events.push({
     id:uid(),type:'duration',
     behaviorId:inc.behId,behaviorLabel:inc.behLabel,behaviorIcon:inc.behIcon,
     timestamp:Date.now(),durationMs:durMs,
-    frequencyCount:freqCount,
     antecedent:inc.abcA,note:inc.note||'',consequence:''
   });
   rerender();
 }
 
 function _endIncidentById(bid){
-  // Legacy alias — previously triggered intensity prompt; now equivalent to duration-only end.
-  _endIncidentDurationOnly(bid);
+  const inc=S.incidents[bid];
+  if(!inc) return;
+  const durMs=Date.now()-inc.startMs;
+  delete S.incidents[bid];
+  // log duration event — consequence will be captured in intensity prompt
+  S.activeSess.events.push({
+    id:uid(),type:'duration',
+    behaviorId:inc.behId,behaviorLabel:inc.behLabel,behaviorIcon:inc.behIcon,
+    timestamp:Date.now(),durationMs:durMs,
+    antecedent:inc.abcA,note:inc.note||''
+  });
+  // Queue intensity prompt — includes consequence field
+  S.intensityPrompts.push({durMs,behId:inc.behId,behLabel:inc.behLabel,behIcon:inc.behIcon,abcA:inc.abcA,note:inc.note||'',consequence:''});
+  rerender();
 }
 
 // legacy alias kept for any callers
@@ -5024,10 +5390,35 @@ function updateIncNote(bid,val){
   if(S.incidents[bid])S.incidents[bid].note=val;
 }
 
-// Intensity removed — these stubs neutralize any legacy paths that still call them.
-function logIntFromPrompt(lvl){ /* removed */ }
-function skipIntensityPrompt(){ /* removed */ }
-function setEvIntensity(evIdx,lvl){ /* removed */ }
+function logIntFromPrompt(lvl){
+  if(!S.intensityPrompts.length) return;
+  const ip=S.intensityPrompts[0];
+  // Save consequence from the prompt modal input field if present
+  const cField=document.getElementById('int-consequence');
+  const consequence=cField?cField.value:(ip.consequence||'');
+  S.activeSess.events.push({
+    id:uid(),type:'intensity',
+    behaviorId:ip.behId,behaviorLabel:ip.behLabel,behaviorIcon:ip.behIcon,
+    timestamp:Date.now(),intensity:lvl,
+    antecedent:ip.abcA,consequence,note:ip.note||''
+  });
+  S.intensityPrompts.shift();
+  rerender();
+}
+
+function skipIntensityPrompt(){
+  if(!S.intensityPrompts.length) return;
+  S.intensityPrompts.shift();
+  rerender();
+}
+
+
+function setEvIntensity(evIdx,lvl){
+  if(!S.activeSess||!S.activeSess.events[evIdx]) return;
+  const ev=S.activeSess.events[evIdx];
+  ev.intensity=(ev.intensity===lvl)?null:lvl;
+  rerender();
+}
 
 function setEvField(evIdx,field,val){
   if(!S.activeSess||!S.activeSess.events[evIdx]) return;
@@ -5042,7 +5433,9 @@ function deleteEvent(evIdx){
   rerender();
 }
 
-function updateIntConsequence(val){ /* removed */ }
+function updateIntConsequence(val){
+  if(S.intensityPrompts.length)S.intensityPrompts[0].consequence=val;
+}
 // ── Multi-client session functions ────────────────────────────────────────
 
 function toggleMultiClient(cid){
@@ -5194,7 +5587,7 @@ function mStartIncident(bid){
   const b=allBehs().find(b=>b.id===bid);
   if(!b)return;
 
-  // FREQ tool override (legacy quick-tally)
+  // FREQ tool override
   if(slot.measureMode==='FREQ'){
     slot.events.push({id:uid(),type:'frequency',behaviorId:b.id,behaviorLabel:b.label,behaviorIcon:b.icon,timestamp:Date.now(),antecedent:cs().abcA||'',consequence:''});
     setCs({abcA:''});
@@ -5202,6 +5595,13 @@ function mStartIncident(bid){
   }
 
   const measure=getBehMeasure(bid);
+
+  // FREQUENCY: instant log
+  if(measure==='frequency'){
+    slot.events.push({id:uid(),type:'frequency',behaviorId:b.id,behaviorLabel:b.label,behaviorIcon:b.icon,timestamp:Date.now(),antecedent:cs().abcA||'',consequence:''});
+    setCs({abcA:''});
+    rerender();return;
+  }
 
   // LATENCY: tap start/stop = log latency
   if(measure==='latency'){
@@ -5218,24 +5618,14 @@ function mStartIncident(bid){
     rerender();return;
   }
 
-  // FREQUENCY INCIDENT (all other behaviors): duration timer + embedded count
   if(incs[bid]){
     // already active — tap again to end
-    mEndIncidentDurationOnly(bid);
+    if(measure==='duration') mEndIncidentDurationOnly(bid);
+    else mEndIncident(bid);
     return;
   }
-  incs[bid]={behId:bid,behLabel:b.label,behIcon:b.icon,startMs:Date.now(),elapsed:0,abcA:cs().abcA||"",note:"",measure,frequencyCount:0};
+  incs[bid]={behId:bid,behLabel:b.label,behIcon:b.icon,startMs:Date.now(),elapsed:0,abcA:cs().abcA||"",note:"",measure};
   setCs({incidents:incs,activeBeh:b,abcA:""});
-  rerender();
-}
-
-// Increment the embedded frequency counter on an active multi-client incident.
-function mBumpIncFreq(bid){
-  const slot=cs(); if(!slot) return;
-  const incs=slot.incidents||{};
-  const inc=incs[bid]; if(!inc) return;
-  inc.frequencyCount=(inc.frequencyCount||0)+1;
-  setCs({incidents:incs});
   rerender();
 }
 
@@ -5244,16 +5634,23 @@ function mEndIncidentDurationOnly(bid){
   const incs=slot.incidents||{};
   const inc=incs[bid]; if(!inc) return;
   const durMs=Date.now()-inc.startMs;
-  const freqCount=inc.frequencyCount||0;
   delete incs[bid];
-  slot.events.push({id:uid(),type:"duration",behaviorId:inc.behId,behaviorLabel:inc.behLabel,behaviorIcon:inc.behIcon,timestamp:Date.now(),durationMs:durMs,frequencyCount:freqCount,antecedent:inc.abcA,note:inc.note||"",consequence:""});
+  slot.events.push({id:uid(),type:"duration",behaviorId:inc.behId,behaviorLabel:inc.behLabel,behaviorIcon:inc.behIcon,timestamp:Date.now(),durationMs:durMs,antecedent:inc.abcA,note:inc.note||"",consequence:""});
   setCs({incidents:incs});
   rerender();
 }
 
 function mEndIncident(bid){
-  // Intensity removed — legacy alias now equivalent to duration-only end.
-  mEndIncidentDurationOnly(bid);
+  const slot=cs(); if(!slot) return;
+  const incs=slot.incidents||{};
+  const inc=incs[bid]; if(!inc) return;
+  const durMs=Date.now()-inc.startMs;
+  delete incs[bid];
+  slot.events.push({id:uid(),type:"duration",behaviorId:inc.behId,behaviorLabel:inc.behLabel,behaviorIcon:inc.behIcon,timestamp:Date.now(),durationMs:durMs,antecedent:inc.abcA,note:inc.note||""});
+  const prompts=(slot.intensityPrompts||[]);
+  prompts.push({durMs,behId:inc.behId,behLabel:inc.behLabel,behIcon:inc.behIcon,abcA:inc.abcA,note:inc.note||"",consequence:""});
+  setCs({incidents:incs,intensityPrompts:prompts});
+  rerender();
 }
 
 function mUpdateIncNote(bid,val){
@@ -5284,10 +5681,30 @@ function mToggleLat(){
   }
 }
 
-// Intensity removed — multi-mode overrides reduced to no-ops for back-compat.
-window.logIntFromPrompt=function(lvl){ /* removed */ };
-window.skipIntensityPrompt=function(){ /* removed */ };
-window.updateIntConsequence=function(val){ /* removed */ };
+// Override logIntFromPrompt and skipIntensityPrompt to handle multi mode
+// Multi-session logIntFromPrompt/skip use the slot's intensityPrompts array
+const _origLogIntFromPrompt=window.logIntFromPrompt;
+window.logIntFromPrompt=function(lvl){
+  if(S.isMulti){
+    const slot=cs(); if(!slot||!slot.intensityPrompts||!slot.intensityPrompts.length)return;
+    const ip=slot.intensityPrompts[0];
+    const cField=document.getElementById('int-consequence');
+    const consequence=cField?cField.value:(ip.consequence||'');
+    slot.events.push({id:uid(),type:'intensity',behaviorId:ip.behId,behaviorLabel:ip.behLabel,behaviorIcon:ip.behIcon,timestamp:Date.now(),intensity:lvl,antecedent:ip.abcA,consequence,note:ip.note||''});
+    const prompts=slot.intensityPrompts.slice(1);
+    setCs({intensityPrompts:prompts});
+    rerender();
+  } else {_origLogIntFromPrompt(lvl);}
+};
+const _origSkip=window.skipIntensityPrompt;
+window.skipIntensityPrompt=function(){
+  if(S.isMulti){const slot=cs();if(slot&&slot.intensityPrompts)slot.intensityPrompts.shift();rerender();}
+  else{_origSkip();}
+};
+window.updateIntConsequence=function(val){
+  if(S.isMulti){const slot=cs();if(slot&&slot.intensityPrompts.length)slot.intensityPrompts[0].consequence=val;}
+  else{if(S.intensityPrompts.length)S.intensityPrompts[0].consequence=val;}
+};
 
 // ── Settings ───────────────────────────────────────────────────────────────
 // ── Client Settings ────────────────────────────────────────────────────────
@@ -5483,18 +5900,14 @@ function saveStrength(sessId,val){
 function exportSessionCSV(sessId){
   const sess=S.sessions.find(s=>s.id===sessId);
   if(!sess)return;
-  // PRIVACY NOTE: CSV export is a local download (no transmission to a server).
-  // The file contains Student Data — clientName, behavior labels, ABC text, notes.
-  // It is the user's responsibility to handle the downloaded file per FERPA/SOPIPA.
-  // Intensity column replaced with FrequencyCount (in-incident tally).
-  const rows=[['Time','Type','Behavior','Duration(ms)','FrequencyCount','Latency(ms)','Antecedent','Consequence','Note']];
+  const rows=[['Time','Type','Behavior','Duration(ms)','Intensity','Latency(ms)','Antecedent','Consequence','Note']];
   (sess.events||[]).forEach(ev=>{
     rows.push([
       new Date(ev.timestamp).toLocaleString(),
       ev.type||'',
       ev.behaviorLabel||'',
       ev.durationMs||'',
-      (typeof ev.frequencyCount==='number'?ev.frequencyCount:''),
+      ev.intensity||'',
       ev.latencyMs||'',
       ev.antecedent||'',
       ev.consequence||'',
@@ -5609,14 +6022,20 @@ function adminUsersTab(){
       <span>Registered Users</span>
       <button class="btn btn-ghost btn-sm" onclick="loadAdminUsers()">↻ Refresh</button>
     </div>
+    ${users.length?`<div style="padding:10px 16px;background:var(--accent-soft);border-bottom:1px solid var(--border);font-size:.72rem;color:var(--muted);line-height:1.5">
+      ℹ️ <strong>Note on privacy:</strong> Supabase does not expose user emails through the client-facing API by design (FERPA-friendly). Email and display name are recorded the next time each user signs in. Users who haven't signed in since this feature shipped will show as "Pending next login" until they return.
+    </div>`:''}
     <div style="padding:0">
       ${users.length?`<table style="width:100%;border-collapse:collapse">
         <thead><tr>
           ${['User','Email','Role','Actions'].map(h=>'<th style="text-align:left;font-size:.68rem;text-transform:uppercase;letter-spacing:.5px;color:var(--muted);padding:8px 12px;border-bottom:2px solid var(--border)">'+h+'</th>').join('')}
         </tr></thead>
-        <tbody>${users.map(u=>`<tr>
-          <td style="padding:10px 12px;border-bottom:1px solid var(--border);font-size:.85rem;font-weight:600">${esc(u.name||u.email||'Unknown')}</td>
-          <td style="padding:10px 12px;border-bottom:1px solid var(--border);font-size:.82rem;color:var(--muted)">${esc(u.email||'')}</td>
+        <tbody>${users.map(u=>{
+          const hasEmail = u.email && u.email !== u.id;
+          const display = u.name || (hasEmail?u.email:'Pending next login');
+          return `<tr>
+          <td style="padding:10px 12px;border-bottom:1px solid var(--border);font-size:.85rem;font-weight:600">${esc(display)}</td>
+          <td style="padding:10px 12px;border-bottom:1px solid var(--border);font-size:.82rem;color:${hasEmail?'var(--muted)':'var(--amber)'}">${hasEmail?esc(u.email):'<span style="font-style:italic">Pending next login</span>'}</td>
           <td style="padding:10px 12px;border-bottom:1px solid var(--border)">
             <select onchange="changeUserRole('${u.id}',this.value)" style="font-size:.78rem;padding:4px 8px;border-radius:6px;border:1.5px solid var(--border);font-family:inherit;font-weight:700;background:#fff;cursor:pointer">
               <option value="teacher" ${u.role==='teacher'?'selected':''}>👩‍🏫 Teacher</option>
@@ -5625,7 +6044,7 @@ function adminUsersTab(){
             </select>
           </td>
           <td style="padding:10px 12px;border-bottom:1px solid var(--border);font-size:.78rem;color:var(--muted)">${u.id===_currentUser.id?'<span style="color:var(--accent);font-weight:700">You</span>':`<button onclick="deleteUser('${u.id}')" style="width:24px;height:24px;border-radius:6px;border:1px solid #fca5a5;background:#fff5f5;cursor:pointer;font-size:.7rem;color:var(--red);display:flex;align-items:center;justify-content:center" title="Remove user">✕</button>`}</td>
-        </tr>`).join('')}</tbody>
+        </tr>`;}).join('')}</tbody>
       </table>`:'<div style="padding:24px;text-align:center"><p class="muted">Click Refresh to load users.</p></div>'}
     </div>
   </div>`;
@@ -5682,14 +6101,23 @@ async function loadAdminUsers(){
   try{
     const {data:roles}=await sb.from('user_roles').select('*');
     if(!roles){S._adminUsers=[];rerender();return;}
-    // Get user emails from auth — we'll use the roles data
-    S._adminUsers=roles.map(r=>({id:r.user_id,role:r.role,email:r.user_id,name:''}));
-    // Try to get emails from user_data
-    for(const u of S._adminUsers){
+    // Start with empty email (not the UUID) so the UI can clearly show "Pending next login"
+    S._adminUsers=roles.map(r=>({id:r.user_id,role:r.role,email:'',name:''}));
+    // Batch fetch user_data rows for all known user IDs in one query (covered by RLS via admin policy).
+    // We only read the _email and _displayName fields written by storeUserMeta() on each user's own login.
+    const userIds=roles.map(r=>r.user_id);
+    if(userIds.length){
       try{
-        const {data:ud}=await sb.from('user_data').select('data').eq('user_id',u.id).single();
-        if(ud&&ud.data){u.email=ud.data._email||u.id;u.name=ud.data._displayName||'';}
-      }catch(e){}
+        const {data:userData}=await sb.from('user_data').select('user_id,data').in('user_id',userIds);
+        if(userData&&userData.length){
+          const byId={};
+          userData.forEach(row=>{byId[row.user_id]=row.data||{};});
+          S._adminUsers=S._adminUsers.map(u=>{
+            const d=byId[u.id]||{};
+            return {...u,email:d._email||'',name:d._displayName||''};
+          });
+        }
+      }catch(e){console.warn('Email lookup unavailable:',e.message);}
     }
     rerender();
   }catch(e){console.error('Load users error:',e);alert('Error loading users: '+e.message);}
