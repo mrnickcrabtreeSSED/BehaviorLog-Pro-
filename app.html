@@ -1945,9 +1945,9 @@ function buildModal(){
   if(m.type==='exportPDF'){
     const c=S.selClient;
     const sec=m.sections||{};
-    const chr=m.charts||{};
-    const row=(group,key,label,desc,recommended)=>{
-      const on=(group==='sections'?sec[key]:chr[key]);
+    const pri=m.privacy||{};
+    const row=(group,key,label,desc,recommended,sensitive)=>{
+      const on=(group==='sections'?sec[key]:pri[key]);
       return `<div onclick="toggleExportOpt('${group}','${key}')" style="display:flex;align-items:flex-start;gap:10px;padding:11px 12px;border-radius:10px;border:1.5px solid ${on?'var(--accent)':'var(--border)'};background:${on?'var(--accent-soft)':'var(--surface2)'};margin-bottom:6px;cursor:pointer;transition:all .15s">
         <div style="width:22px;height:22px;border-radius:6px;border:2px solid ${on?'var(--accent)':'var(--border2)'};background:${on?'var(--accent)':'#fff'};display:flex;align-items:center;justify-content:center;flex-shrink:0;transition:all .15s">
           ${on?'<span style="color:#fff;font-size:.78rem;font-weight:900">✓</span>':''}
@@ -1956,6 +1956,7 @@ function buildModal(){
           <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap">
             <span style="font-weight:700;font-size:.86rem;color:${on?'var(--accent)':'var(--text)'}">${esc(label)}</span>
             ${recommended?'<span style="font-size:.62rem;background:var(--green);color:#fff;padding:1px 6px;border-radius:8px;font-weight:700">RECOMMENDED</span>':''}
+            ${sensitive?'<span style="font-size:.62rem;background:var(--orange);color:#fff;padding:1px 6px;border-radius:8px;font-weight:700">SENSITIVE</span>':''}
           </div>
           <div style="font-size:.72rem;color:var(--muted);margin-top:2px;line-height:1.4">${esc(desc)}</div>
         </div>
@@ -1964,28 +1965,32 @@ function buildModal(){
     inner=`<div class="row between mb3">
         <div>
           <h2 style="margin:0;font-size:1.1rem">📄 Export PDF Report</h2>
-          <p class="muted" style="font-size:.74rem;margin-top:2px">For <strong>${esc(c?c.name:'')}</strong> · Choose what to include</p>
+          <p class="muted" style="font-size:.74rem;margin-top:2px">For <strong>${esc(c?c.name:'')}</strong> · Choose which tabs to include</p>
         </div>
         <button class="btn btn-ghost btn-sm" onclick="closeModal()">✕</button>
       </div>
       <div style="background:#fff7ed;border:1.5px solid #fed7aa;border-radius:10px;padding:10px 12px;margin-bottom:14px;font-size:.74rem;color:#9a3412;line-height:1.5">
-        🛡️ <strong>Privacy note:</strong> This PDF contains FERPA-protected student data. Only share with authorized IEP team members and store securely. ABC narratives and session notes are unchecked by default — enable only when needed.
+        🛡️ <strong>Privacy note:</strong> This PDF contains FERPA-protected student data. Each section below mirrors what you see in the corresponding tab. The PDF will be created in a new browser window — use <strong>Save as PDF</strong> from the print dialog.
       </div>
-      <div class="slabel" style="margin-bottom:8px">📊 Data Sections</div>
-      ${row('sections','summary','Summary Stats','Session count, total events, behaviors, goals (4 stat boxes)',true)}
-      ${row('sections','goals','Goals & Progress','Each goal listed with target, average, status (On Track / Needs Support)',true)}
-      ${row('sections','sessionTable','Session Data Table','Date/time row per session × first 5 behavior columns. Green/red coding requires Goals.',true)}
-      ${row('sections','notes','Session Notes Column','Adds a Notes column to the session table (truncated to 24 chars).',false)}
-      ${row('sections','abcLog','ABC Log','Full antecedent/consequence narratives per incident (up to 28 entries). Highest sensitivity.',false)}
 
-      <div class="slabel" style="margin-top:14px;margin-bottom:8px">📈 Charts</div>
-      ${row('charts','goalProgress','Goal Progress Bars','Visual progress bar under each goal (only if Goals section is checked).',false)}
-      ${row('charts','frequencyOverTime','Frequency Over Time','Line chart of total events per session, showing trend.',false)}
-      ${row('charts','behaviorBreakdown','Behavior Breakdown','Bar chart of event counts per behavior (top 8).',false)}
-      ${row('charts','abcPattern','ABC Pattern Analysis','Top antecedent and consequence categories with frequency bars.',false)}
+      <div class="row between" style="margin-bottom:8px;align-items:center">
+        <div class="slabel" style="margin:0">📊 Tab Sections</div>
+        <div class="row gap2">
+          <button class="btn btn-ghost btn-sm" onclick="setAllExportOpts('sections',true)" style="font-size:.7rem;padding:4px 10px">✓ All</button>
+          <button class="btn btn-ghost btn-sm" onclick="setAllExportOpts('sections',false)" style="font-size:.7rem;padding:4px 10px">○ None</button>
+        </div>
+      </div>
+      ${row('sections','charts','Charts Tab','Frequency Over Time, Duration, Intensity area charts, plus the Behavior Heatmap. Uses your current time-period and behavior filter.',true)}
+      ${row('sections','reports','Reports Tab','Session counts by type, behavior frequency bar chart, goal status summary.',true)}
+      ${row('sections','history','History Tab','Events-per-session line chart and a chronological list of every session.',true)}
+      ${row('sections','goals','Goals Tab','Each IEP goal with target, recent average, trend, progress bar, and 10-session line chart.',true)}
+
+      <div class="slabel" style="margin-top:14px;margin-bottom:8px">📝 Optional Detail Appendix</div>
+      ${row('privacy','includeNotes','Session Notes','Full text of every session note recorded for this student.',false,true)}
+      ${row('privacy','includeAbcLog','ABC Log (Full Narratives)','Every recorded antecedent and consequence narrative. Highest-sensitivity section.',false,true)}
 
       <div class="row gap2" style="margin-top:16px">
-        <button class="btn btn-primary" style="flex:1" onclick="doExportPDFWithOptions()">⬇ Export PDF</button>
+        <button class="btn btn-primary" style="flex:1" onclick="doExportPDFWithOptions()">⬇ Open Print Preview</button>
         <button class="btn btn-ghost" onclick="closeModal()">Cancel</button>
       </div>`;
   }
@@ -3729,356 +3734,300 @@ ${dataContext}`
   });
 }
 
-// ── PDF Export ─────────────────────────────────────────────────────────────
-// Entry point — opens a popup so the user chooses what data and charts to include.
-// (Privacy: by default, ABC narratives and session notes are NOT checked.)
+// ── PDF Export (HTML print-based, mirrors analytics tabs) ──────────────
+// Entry point — opens a popup so the user chooses which tabs to include.
 function doExportPDF(){
   if(!S.selClient){return;}
   S._modal={type:'exportPDF',
-    sections:{summary:true, goals:true, sessionTable:true, abcLog:false, notes:false},
-    charts:{goalProgress:true, frequencyOverTime:false, behaviorBreakdown:false, abcPattern:false}
+    sections:{charts:true, reports:true, history:true, goals:true},
+    privacy:{includeNotes:false, includeAbcLog:false}
   };
   rerender();
 }
 
-// Toggle a section/chart in the export modal
 function toggleExportOpt(group,key){
   if(!S._modal||S._modal.type!=='exportPDF')return;
   S._modal[group][key]=!S._modal[group][key];
   rerender();
 }
 
-// Run the actual export with the chosen options
+function setAllExportOpts(group,val){
+  if(!S._modal||S._modal.type!=='exportPDF')return;
+  Object.keys(S._modal[group]||{}).forEach(k=>{S._modal[group][k]=val;});
+  rerender();
+}
+
 function doExportPDFWithOptions(){
   const m=S._modal;
   if(!m||m.type!=='exportPDF')return;
-  const opts={sections:{...m.sections},charts:{...m.charts}};
+  const opts={sections:{...m.sections},privacy:{...m.privacy}};
   S._modal=null;
   rerender();
-  // Defer so the modal close paints before the (potentially slow) PDF build
-  setTimeout(()=>runPDFExport(opts),50);
+  setTimeout(()=>runHTMLExport(opts),60);
 }
 
-function runPDFExport(opts){
+// Build a printable HTML window that mirrors the analytics tabs (Charts, Reports,
+// History, Goals) exactly as the user sees them on screen. We reuse the same
+// build* functions that the in-app analytics view uses, so the PDF cannot drift
+// from the live UI. The browser's native Print-to-PDF gives us perfect chart
+// fidelity (the SVG charts render natively, no jsPDF approximations).
+function runHTMLExport(opts){
   const c=S.selClient;
-  const range=S._reportRange||'all';
-  let start=null;const end=new Date();
-  if(range==='week'){start=new Date();start.setDate(start.getDate()-7);}
-  if(range==='month'){start=new Date();start.setMonth(start.getMonth()-1);}
-  if(range==='quarter'){start=new Date();start.setMonth(start.getMonth()-3);}
-  const clientSessions=S.sessions.filter(s=>s.clientId===c.id)
-    .filter(s=>!start||(new Date(s.startedAt)>=start&&new Date(s.startedAt)<=end))
-    .sort((a,b)=>a.startedAt-b.startedAt);
-  const cGoals=clientGoals(c.id);
-  const jsPDF=window.jspdf&&window.jspdf.jsPDF;
-  if(!jsPDF){generatePrintHTML(c,clientSessions,cGoals);return;}
-  const doc=new jsPDF({orientation:'portrait',unit:'pt',format:'letter'});
-  const W=612,H=792,M=48,COL=W-M*2;let y=M;
-  const chk=(n=40)=>{if(y+n>H-M){doc.addPage();y=M;}};
-  // Header
-  doc.setFillColor(67,97,238);doc.rect(0,0,W,90,'F');
-  doc.setFillColor(124,58,237);doc.rect(W*.6,0,W*.4,90,'F');
-  doc.setFont('helvetica','bold');doc.setFontSize(22);doc.setTextColor(255,255,255);
-  doc.text('BehaviorLog',M,38);
-  doc.setFont('helvetica','normal');doc.setFontSize(10);doc.setTextColor(200,210,255);
-  doc.text('IEP Behavior Data Report',M,55);
-  doc.setFont('helvetica','bold');doc.setFontSize(13);doc.setTextColor(255,255,255);
-  doc.text(c.name,M,74);
-  doc.setFont('helvetica','normal');doc.setFontSize(9);doc.setTextColor(200,210,255);
-  doc.text('Generated: '+fmtDate(Date.now()),W-M,58,{align:'right'});
-  if(clientSessions.length>0)doc.text(fmtDate(clientSessions[0].startedAt)+' – '+fmtDate(clientSessions[clientSessions.length-1].startedAt),W-M,72,{align:'right'});
-  y=106;
+  if(!c) return;
 
-  // Pre-compute commonly needed values
-  const totalEv=clientSessions.flatMap(s=>s.events).length;
-  const uniqB=[...new Set(clientSessions.flatMap(s=>s.events.map(e=>e.behaviorLabel)))];
+  // Snapshot analytics-related state so we can restore it after capturing each tab
+  const savedTab=S._anaTab, savedAnaRange=S._anaRange, savedAnaBeh=S._anaBeh, savedRepRange=S._reportRange;
 
-  // ── Stats (Summary) ────────────────────────────────────────────────────
-  if(opts.sections.summary){
-    [{l:'Sessions',v:clientSessions.length},{l:'Total Events',v:totalEv},{l:'Behaviors',v:uniqB.length},{l:'Goals',v:cGoals.length}].forEach((st,i)=>{
-      const bx=M+i*(COL/4+2);
-      doc.setFillColor(238,241,253);doc.setDrawColor(220,225,245);doc.roundedRect(bx,y,COL/4-2,46,5,5,'FD');
-      doc.setFont('helvetica','bold');doc.setFontSize(18);doc.setTextColor(67,97,238);
-      doc.text(String(st.v),bx+(COL/4-2)/2,y+21,{align:'center'});
-      doc.setFont('helvetica','normal');doc.setFontSize(8);doc.setTextColor(120,128,164);
-      doc.text(st.l,bx+(COL/4-2)/2,y+35,{align:'center'});
-    });
-    y+=60;
+  // Use the user's currently selected ranges so the PDF matches what they see
+  if(!S._anaRange) S._anaRange='week';
+  if(!S._anaBeh) S._anaBeh='all';
+  if(!S._reportRange) S._reportRange='all';
+
+  const parts=[];
+
+  if(opts.sections.charts){
+    parts.push(_makeSection('📊 Charts — Frequency, Duration, Intensity, Heatmap', buildAnalyticsCharts()));
+  }
+  if(opts.sections.reports){
+    parts.push(_makeSection('📄 Reports — Session Summary & Goal Status', buildReports()));
+  }
+  if(opts.sections.history){
+    parts.push(_makeSection('🕐 History — Session Timeline', buildHistory()));
+  }
+  if(opts.sections.goals){
+    parts.push(_makeSection('🎯 Goals — IEP Behavior Goals & Progress', buildGoals()));
+  }
+  if(opts.privacy.includeNotes || opts.privacy.includeAbcLog){
+    parts.push(_makeSection('📝 Detail Appendix', _buildDetailAppendix(c, opts)));
   }
 
-  // ── Goals & Progress (with progress bars) ──────────────────────────────
-  if(opts.sections.goals && cGoals.length>0){
-    chk(55);
-    doc.setFont('helvetica','bold');doc.setFontSize(12);doc.setTextColor(26,31,58);
-    doc.text('Behavior Goals & Progress',M,y);y+=5;
-    doc.setFillColor(200,210,240);doc.rect(M,y,COL,1,'F');y+=9;
-    cGoals.forEach(g=>{
-      chk(50);
-      const counts=clientSessions.slice(-10).map(s=>behFreq(s,g.behaviorLabel));
-      const avg=counts.length?counts.reduce((a,v)=>a+v,0)/counts.length:0;
-      const met=avg<=g.target;
-      doc.setFont('helvetica','bold');doc.setFontSize(10);doc.setTextColor(26,31,58);
-      doc.text(g.behaviorLabel,M,y);
-      doc.setFont('helvetica','normal');doc.setFontSize(9);doc.setTextColor(120,128,164);
-      doc.text('Target: ≤'+g.target+'/session  |  Avg: '+avg.toFixed(1)+'  |  '+(met?'ON TRACK ✓':'NEEDS SUPPORT'),M,y+12);
-      // Progress bar only drawn if goalProgress chart option is on
-      if(opts.charts.goalProgress){
-        const bX=M,bY=y+19,bW2=COL*.65,bH=7;
-        doc.setFillColor(220,224,245);doc.roundedRect(bX,bY,bW2,bH,3,3,'F');
-        doc.setFillColor(...(met?[16,185,129]:[239,68,68]));
-        doc.roundedRect(bX,bY,Math.max(3,bW2*Math.min(1,avg/Math.max(g.target*1.5,1))),bH,3,3,'F');
-        const tX=bX+bW2*(g.target/Math.max(g.target*1.5,1));
-        doc.setDrawColor(67,97,238);doc.setLineWidth(1.5);doc.line(tX,bY-2,tX,bY+bH+2);
-        y+=g.notes?44:36;
-      } else {
-        y+=g.notes?28:20;
-      }
-      if(g.notes){doc.setFont('helvetica','italic');doc.setFontSize(8);doc.setTextColor(120,128,164);doc.text('Notes: '+g.notes,M,y-6);}
-      doc.setFillColor(220,225,245);doc.rect(M,y,COL,.5,'F');y+=7;
-    });y+=7;
-  }
+  // Restore state
+  S._anaTab=savedTab;
+  S._anaRange=savedAnaRange;
+  S._anaBeh=savedAnaBeh;
+  S._reportRange=savedRepRange;
 
-  // ── Frequency Over Time chart ──────────────────────────────────────────
-  if(opts.charts.frequencyOverTime && clientSessions.length>0){
-    chk(130);
-    doc.setFont('helvetica','bold');doc.setFontSize(11);doc.setTextColor(26,31,58);
-    doc.text('Frequency Over Time',M,y);y+=10;
-    drawLineChart(doc, M, y, COL, 110, clientSessions, uniqB);
-    y+=120;
-  }
+  const sessionCount=S.sessions.filter(s=>s.clientId===c.id).length;
+  const generated=new Date().toLocaleString('en-US',{month:'long',day:'numeric',year:'numeric',hour:'numeric',minute:'2-digit'});
 
-  // ── Behavior Breakdown bar chart ───────────────────────────────────────
-  if(opts.charts.behaviorBreakdown && uniqB.length>0){
-    chk(150);
-    doc.setFont('helvetica','bold');doc.setFontSize(11);doc.setTextColor(26,31,58);
-    doc.text('Behavior Breakdown',M,y);y+=10;
-    const evByB={};
-    uniqB.forEach(bl=>{evByB[bl]=clientSessions.flatMap(s=>s.events).filter(e=>e.behaviorLabel===bl).length;});
-    drawBarChart(doc, M, y, COL, 110, evByB);
-    y+=120;
-  }
+  // Privacy footer text varies based on what was included
+  const includedTabs=Object.entries(opts.sections).filter(([k,v])=>v).map(([k])=>k);
+  const sensitiveIncluded=opts.privacy.includeNotes||opts.privacy.includeAbcLog;
 
-  // ── Session Data Table ─────────────────────────────────────────────────
-  if(opts.sections.sessionTable && clientSessions.length>0&&uniqB.length>0){
-    chk(55);
-    doc.setFont('helvetica','bold');doc.setFontSize(12);doc.setTextColor(26,31,58);
-    doc.text('Session Data',M,y);y+=5;
-    doc.setFillColor(200,210,240);doc.rect(M,y,COL,1,'F');y+=9;
-    const dispB=uniqB.slice(0,5);
-    const showNotesCol=opts.sections.notes;
-    const dCW=88,nCW=showNotesCol?100:0,bCW=(COL-dCW-nCW)/dispB.length;
-    doc.setFillColor(238,241,253);doc.rect(M,y,COL,17,'F');
-    doc.setFont('helvetica','bold');doc.setFontSize(8);doc.setTextColor(26,31,58);
-    doc.text('Date / Time',M+3,y+11);
-    dispB.forEach((bl,i)=>doc.text((bl||'').slice(0,12),M+dCW+i*bCW+bCW/2,y+11,{align:'center'}));
-    if(showNotesCol) doc.text('Notes',M+dCW+dispB.length*bCW+3,y+11);
-    y+=17;
-    clientSessions.forEach((sess,si)=>{
-      chk(20);
-      doc.setFillColor(...(si%2===0?[248,249,255]:[255,255,255]));doc.rect(M,y,COL,17,'F');
-      doc.setFont('helvetica','normal');doc.setFontSize(8);doc.setTextColor(26,31,58);
-      doc.text(fmtDateS(sess.startedAt)+' '+fmtTime(sess.startedAt),M+3,y+11);
-      dispB.forEach((bl,i)=>{
-        const cnt=behFreq(sess,bl);
-        // If goals section omitted, drop the goal-based color coding (would be misleading)
-        const goal=opts.sections.goals?cGoals.find(g=>g.behaviorLabel===bl):null;
-        doc.setFont('helvetica',cnt>0?'bold':'normal');
-        doc.setTextColor(...(cnt>0&&goal&&cnt>goal.target?[239,68,68]:cnt>0?[16,185,129]:[120,128,164]));
-        doc.text(cnt>0?String(cnt):'—',M+dCW+i*bCW+bCW/2,y+11,{align:'center'});
-      });
-      if(showNotesCol){
-        doc.setFont('helvetica','normal');doc.setTextColor(120,128,164);
-        doc.text((sess.note||'').slice(0,24),M+dCW+dispB.length*bCW+3,y+11);
-      }
-      doc.setDrawColor(220,225,245);doc.setLineWidth(.5);doc.line(M,y+17,M+COL,y+17);y+=17;
-    });y+=10;
-  }
+  const html=`<!DOCTYPE html><html><head>
+<meta charset="UTF-8"/>
+<title>BehaviorLog — ${esc(c.name)}</title>
+<style>
+${_getPrintCSS()}
+</style>
+</head><body>
+<header class="print-header">
+  <div class="print-header-inner">
+    <div>
+      <div class="print-brand">BehaviorLog<span style="color:var(--accent);font-weight:400">  Pro</span></div>
+      <h1 class="print-title">${esc(c.name)} — Behavior Data Report</h1>
+      <p class="print-meta">Generated ${esc(generated)} · ${sessionCount} session${sessionCount!==1?'s':''} on record · Confidential — FERPA-protected</p>
+    </div>
+    <div class="print-toolbar no-print">
+      <button onclick="window.print()" class="print-btn">🖨 Save as PDF</button>
+      <button onclick="window.close()" class="print-btn print-btn-ghost">✕ Close</button>
+    </div>
+  </div>
+</header>
 
-  // ── ABC Pattern chart ──────────────────────────────────────────────────
-  if(opts.charts.abcPattern){
-    const abcEvAll=clientSessions.flatMap(s=>s.events.filter(e=>e.antecedent||e.consequence));
-    if(abcEvAll.length>0){
-      chk(150);
-      doc.setFont('helvetica','bold');doc.setFontSize(11);doc.setTextColor(26,31,58);
-      doc.text('ABC Pattern Analysis',M,y);y+=10;
-      drawABCPattern(doc, M, y, COL, 110, abcEvAll);
-      y+=120;
-    }
-  }
+<div class="no-print print-tip">
+  <strong>📄 To save:</strong> Click <strong>Save as PDF</strong> above, or press <strong>Ctrl/Cmd+P</strong> → choose <strong>Save as PDF</strong> as destination.
+</div>
 
-  // ── ABC Log ────────────────────────────────────────────────────────────
-  if(opts.sections.abcLog){
-    const abcEv=clientSessions.flatMap(s=>s.events.filter(e=>e.antecedent||e.consequence).map(e=>({...e,sDate:s.startedAt})));
-    if(abcEv.length>0){
-      chk(45);
-      doc.setFont('helvetica','bold');doc.setFontSize(12);doc.setTextColor(26,31,58);
-      doc.text('ABC Log',M,y);y+=5;
-      doc.setFillColor(200,210,240);doc.rect(M,y,COL,1,'F');y+=9;
-      abcEv.slice(0,28).forEach(ev=>{
-        chk(30);
-        doc.setFont('helvetica','bold');doc.setFontSize(8.5);doc.setTextColor(26,31,58);
-        doc.text((ev.behaviorLabel||'')+'  ·  '+fmtDateS(ev.sDate)+' '+fmtTime(ev.timestamp),M,y);y+=10;
-        if(ev.antecedent){doc.setFont('helvetica','bold');doc.setFontSize(8);doc.setTextColor(67,97,238);doc.text('A:',M+3,y);doc.setFont('helvetica','normal');doc.setTextColor(26,31,58);doc.text((ev.antecedent||'').slice(0,90),M+14,y);y+=10;}
-        if(ev.consequence){doc.setFont('helvetica','bold');doc.setFontSize(8);doc.setTextColor(194,65,12);doc.text('C:',M+3,y);doc.setFont('helvetica','normal');doc.setTextColor(26,31,58);doc.text((ev.consequence||'').slice(0,90),M+14,y);y+=10;}
-        doc.setFillColor(220,225,245);doc.rect(M,y,COL,.5,'F');y+=6;
-      });
-    }
-  }
+<main class="print-body">
+  ${parts.join('')}
+</main>
 
-  // Footers
-  const pc=doc.getNumberOfPages();
-  for(let i=1;i<=pc;i++){doc.setPage(i);doc.setFillColor(240,243,255);doc.rect(0,H-28,W,28,'F');doc.setFont('helvetica','normal');doc.setFontSize(8);doc.setTextColor(120,128,164);doc.text('BehaviorLog  ·  '+c.name+'  ·  Confidential',M,H-10);doc.text('Page '+i+' of '+pc,W-M,H-10,{align:'right'});}
-  doc.save('BehaviorLog_'+c.name.replace(/\s+/g,'_')+'_'+new Date().toISOString().slice(0,10)+'.pdf');
-}
+<footer class="print-footer">
+  <p>BehaviorLog Pro · Sure Step Education · This document contains FERPA-protected student data. Distribute only to authorized IEP team members.${sensitiveIncluded?' <strong>Includes free-text narrative content</strong> — heightened sensitivity.':''}</p>
+  <p>Report includes: ${includedTabs.map(t=>t.charAt(0).toUpperCase()+t.slice(1)).join(' · ')||'(empty)'}</p>
+</footer>
+</body></html>`;
 
-// ── Chart helpers for PDF (jsPDF native shapes) ─────────────────────────────
-
-// Line chart: total events per session, drawn with top behavior overlays
-function drawLineChart(doc, x, y, w, h, sessions, behaviors){
-  const P={t:8,r:8,b:24,l:30};
-  const cW=w-P.l-P.r, cH=h-P.t-P.b;
-  // Per-session totals
-  const totals=sessions.map(s=>(s.events||[]).length);
-  const max=Math.max(...totals,1);
-  const n=totals.length;
-  // Background + grid
-  doc.setFillColor(248,249,255);doc.rect(x,y,w,h,'F');
-  doc.setDrawColor(220,225,245);doc.setLineWidth(.5);
-  [0,0.5,1].forEach(f=>{
-    const yL=y+P.t+cH*(1-f);
-    doc.line(x+P.l,yL,x+w-P.r,yL);
-    doc.setFont('helvetica','normal');doc.setFontSize(7);doc.setTextColor(140,148,180);
-    doc.text(String(Math.round(max*f)),x+P.l-3,yL+2,{align:'right'});
-  });
-  // Line
-  if(n>=2){
-    doc.setDrawColor(67,97,238);doc.setLineWidth(1.5);
-    for(let i=0;i<n-1;i++){
-      const x1=x+P.l+i*(cW/(n-1)), y1=y+P.t+cH-(totals[i]/max)*cH;
-      const x2=x+P.l+(i+1)*(cW/(n-1)), y2=y+P.t+cH-(totals[i+1]/max)*cH;
-      doc.line(x1,y1,x2,y2);
-    }
-    // Dots
-    doc.setFillColor(67,97,238);
-    totals.forEach((v,i)=>{
-      const cx=x+P.l+i*(cW/(n-1)), cy=y+P.t+cH-(v/max)*cH;
-      doc.circle(cx,cy,2,'F');
-    });
-  } else if(n===1){
-    doc.setFillColor(67,97,238);
-    doc.circle(x+P.l+cW/2, y+P.t+cH-(totals[0]/max)*cH, 3, 'F');
-  }
-  // X labels (first / mid / last)
-  doc.setFont('helvetica','normal');doc.setFontSize(7);doc.setTextColor(140,148,180);
-  if(n>=1){
-    doc.text(fmtDateS(sessions[0].startedAt), x+P.l, y+h-6);
-    if(n>=3) doc.text(fmtDateS(sessions[Math.floor(n/2)].startedAt), x+P.l+cW/2, y+h-6, {align:'center'});
-    if(n>=2) doc.text(fmtDateS(sessions[n-1].startedAt), x+w-P.r, y+h-6, {align:'right'});
-  }
-  doc.setFont('helvetica','italic');doc.setFontSize(7);doc.setTextColor(120,128,164);
-  doc.text('Total events per session', x+P.l, y+P.t-2);
-}
-
-// Bar chart: events per behavior
-function drawBarChart(doc, x, y, w, h, evByB){
-  const entries=Object.entries(evByB).sort((a,b)=>b[1]-a[1]).slice(0,8);
-  const P={t:8,r:8,b:32,l:30};
-  const cW=w-P.l-P.r, cH=h-P.t-P.b;
-  const max=Math.max(...entries.map(e=>e[1]),1);
-  doc.setFillColor(248,249,255);doc.rect(x,y,w,h,'F');
-  // Y grid
-  doc.setDrawColor(220,225,245);doc.setLineWidth(.5);
-  [0,0.5,1].forEach(f=>{
-    const yL=y+P.t+cH*(1-f);
-    doc.line(x+P.l,yL,x+w-P.r,yL);
-    doc.setFont('helvetica','normal');doc.setFontSize(7);doc.setTextColor(140,148,180);
-    doc.text(String(Math.round(max*f)),x+P.l-3,yL+2,{align:'right'});
-  });
-  // Bars
-  const bw=cW/entries.length*0.7, gap=cW/entries.length*0.3;
-  entries.forEach((e,i)=>{
-    const bx=x+P.l+i*(cW/entries.length)+gap/2;
-    const bh=(e[1]/max)*cH;
-    const by=y+P.t+cH-bh;
-    doc.setFillColor(67,97,238);
-    doc.rect(bx,by,bw,bh,'F');
-    // Label
-    doc.setFont('helvetica','normal');doc.setFontSize(7);doc.setTextColor(80,88,120);
-    doc.text((e[0]||'').slice(0,10), bx+bw/2, y+h-18, {align:'center',angle:0});
-    doc.setFont('helvetica','bold');doc.setFontSize(7);doc.setTextColor(67,97,238);
-    doc.text(String(e[1]), bx+bw/2, by-2, {align:'center'});
-  });
-}
-
-// ABC Pattern: top antecedent and consequence categories
-function drawABCPattern(doc, x, y, w, h, abcEv){
-  doc.setFillColor(248,249,255);doc.rect(x,y,w,h,'F');
-  // Tally word-frequency on antecedents and consequences
-  const tally=arr=>{const t={};arr.forEach(e=>{(e||'').toLowerCase().split(/[\s,;.]+/).filter(w=>w.length>3).forEach(w=>{t[w]=(t[w]||0)+1;});});return Object.entries(t).sort((a,b)=>b[1]-a[1]).slice(0,5);};
-  const ants=tally(abcEv.map(e=>e.antecedent).filter(Boolean));
-  const cons=tally(abcEv.map(e=>e.consequence).filter(Boolean));
-  const colW=(w-30)/2;
-  // Left column: antecedents
-  doc.setFont('helvetica','bold');doc.setFontSize(9);doc.setTextColor(67,97,238);
-  doc.text('Top Antecedents', x+10, y+14);
-  const aMax=Math.max(...ants.map(a=>a[1]),1);
-  ants.forEach((a,i)=>{
-    const yy=y+24+i*16;
-    doc.setFont('helvetica','normal');doc.setFontSize(8);doc.setTextColor(60,68,100);
-    doc.text(a[0], x+10, yy+8);
-    doc.setFillColor(220,224,245);doc.rect(x+10,yy+10,colW-30,4,'F');
-    doc.setFillColor(67,97,238);doc.rect(x+10,yy+10,(colW-30)*(a[1]/aMax),4,'F');
-    doc.setFont('helvetica','bold');doc.setFontSize(7);doc.setTextColor(67,97,238);
-    doc.text(String(a[1]), x+colW-12, yy+8);
-  });
-  // Right column: consequences
-  doc.setFont('helvetica','bold');doc.setFontSize(9);doc.setTextColor(194,65,12);
-  doc.text('Top Consequences', x+colW+20, y+14);
-  const cMax=Math.max(...cons.map(c=>c[1]),1);
-  cons.forEach((c,i)=>{
-    const yy=y+24+i*16;
-    doc.setFont('helvetica','normal');doc.setFontSize(8);doc.setTextColor(60,68,100);
-    doc.text(c[0], x+colW+20, yy+8);
-    doc.setFillColor(245,224,220);doc.rect(x+colW+20,yy+10,colW-30,4,'F');
-    doc.setFillColor(194,65,12);doc.rect(x+colW+20,yy+10,(colW-30)*(c[1]/cMax),4,'F');
-    doc.setFont('helvetica','bold');doc.setFontSize(7);doc.setTextColor(194,65,12);
-    doc.text(String(c[1]), x+w-22, yy+8);
-  });
-}
-
-function generatePrintHTML(client,sessions,goals){
-  const uniqB=[...new Set(sessions.flatMap(s=>s.events.map(e=>e.behaviorLabel)))];
-  let html=`<!DOCTYPE html><html><head><meta charset="UTF-8"><title>BehaviorLog – ${esc(client.name)}</title>
-  <style>body{font-family:Arial,sans-serif;font-size:11pt;color:#1a1a2e;margin:0}
-  .hdr{background:linear-gradient(135deg,var(--accent),#7c3aed);color:#fff;padding:20px 30px}
-  h1{margin:0;font-size:17pt}p{margin:4px 0;opacity:.85;font-size:10pt}
-  .sec{padding:14px 30px}h2{font-size:12pt;color:#1a1a2e;border-bottom:2px solid #dce1f5;padding-bottom:4px;margin-bottom:10px}
-  table{width:100%;border-collapse:collapse;font-size:9pt}th{background:var(--accent-soft);padding:6px 8px;text-align:left;font-size:8pt;text-transform:uppercase;letter-spacing:.5px}
-  td{padding:5px 8px;border-bottom:1px solid #eaedfa}tr:nth-child(even)td{background:#f4f6fd}
-  .met{color:#059669;font-weight:700}.over{color:#ef4444;font-weight:700}
-  .stat{display:inline-block;background:var(--accent-soft);border-radius:8px;padding:10px 16px;text-align:center;margin:4px}
-  .sn{font-size:18pt;font-weight:700;color:var(--accent)}.sl{font-size:8pt;color:#7880a4}
-  @media print{.no-print{display:none}}</style></head><body>
-  <div class="hdr"><h1>BehaviorLog — IEP Report</h1><p>${esc(client.name)} · Generated ${fmtDate(Date.now())}</p>${sessions.length>0?`<p>${fmtDate(sessions[0].startedAt)} – ${fmtDate(sessions[sessions.length-1].startedAt)}</p>`:''}</div>
-  <div class="no-print" style="padding:10px 30px;background:#fffbeb;border-bottom:2px solid #fcd34d"><b>📄 Tip:</b> Use your browser's Print function (Ctrl/Cmd+P) → Save as PDF. <button onclick="window.print()" style="margin-left:8px">🖨 Print</button></div>
-  <div class="sec"><div>
-    <span class="stat"><div class="sn">${sessions.length}</div><div class="sl">Sessions</div></span>
-    <span class="stat"><div class="sn">${sessions.flatMap(s=>s.events).length}</div><div class="sl">Events</div></span>
-    <span class="stat"><div class="sn">${goals.length}</div><div class="sl">Goals</div></span>
-  </div></div>`;
-  if(goals.length>0){
-    html+=`<div class="sec"><h2>Goals & Progress</h2><table><tr><th>Behavior</th><th>Target</th><th>Avg</th><th>Status</th><th>Notes</th></tr>`;
-    goals.forEach(g=>{const counts=sessions.slice(-10).map(s=>behFreq(s,g.behaviorLabel));const avg=counts.length?counts.reduce((a,v)=>a+v,0)/counts.length:0;const met=avg<=g.target;html+=`<tr><td>${esc(g.behaviorLabel)}</td><td>≤${g.target}</td><td>${avg.toFixed(1)}</td><td class="${met?'met':'over'}">${met?'✓ On Track':'⚠ Needs Support'}</td><td>${esc(g.notes||'')}</td></tr>`;});
-    html+=`</table></div>`;
-  }
-  if(sessions.length>0&&uniqB.length>0){
-    html+=`<div class="sec"><h2>Session Data</h2><table><tr><th>Date</th>${uniqB.slice(0,6).map(b=>`<th>${esc(b)}</th>`).join('')}<th>Type</th><th>Notes</th></tr>`;
-    sessions.forEach(s=>{html+=`<tr><td>${fmtDateS(s.startedAt)} ${fmtTime(s.startedAt)}</td>`;uniqB.slice(0,6).forEach(bl=>{const cnt=behFreq(s,bl);const g=goals.find(g=>g.behaviorLabel===bl);html+=`<td class="${cnt>0&&g&&cnt>g.target?'over':cnt>0?'met':''}">${cnt>0?cnt:'—'}</td>`;});html+=`<td>${esc(s.sessType||'')}</td><td>${esc(s.note||'')}</td></tr>`;});
-    html+=`</table></div>`;
-  }
-  html+='</body></html>';
   const w=window.open('','_blank');
-  if(w){w.document.write(html);w.document.close();}else alert('Allow popups to export the report.');
+  if(!w){
+    alert('Allow popups for this site to export the report. Then try again.');
+    return;
+  }
+  w.document.open();
+  w.document.write(html);
+  w.document.close();
+  // Give SVG charts a moment to lay out before the print dialog opens
+  setTimeout(()=>{ try { w.focus(); } catch(e){} }, 200);
+}
+
+function _makeSection(title, htmlBody){
+  return `<section class="print-section">
+    <h2 class="print-section-title">${esc(title)}</h2>
+    <div class="print-section-body">${htmlBody}</div>
+  </section>`;
+}
+
+// Optional detail appendix — only renders when the user opted in to either of
+// these elevated-sensitivity sections.
+function _buildDetailAppendix(client, opts){
+  const sessions=S.sessions.filter(s=>s.clientId===client.id).sort((a,b)=>a.startedAt-b.startedAt);
+  let body='';
+  if(opts.privacy.includeNotes){
+    const withNotes=sessions.filter(s=>(s.note||'').trim().length>0);
+    body+=`<h3 style="font-size:1rem;margin-top:8px">Session Notes (${withNotes.length})</h3>`;
+    if(!withNotes.length){
+      body+='<p class="muted">No session notes recorded.</p>';
+    } else {
+      body+='<div style="display:flex;flex-direction:column;gap:8px">';
+      withNotes.forEach(s=>{
+        body+=`<div class="card" style="margin-bottom:6px;padding:12px 14px">
+          <div style="font-weight:700;font-size:.85rem;margin-bottom:4px">${fmtDate(s.startedAt)} · ${fmtTime(s.startedAt)}${s.location?' · 📍 '+esc(s.location):''}</div>
+          <div style="font-size:.88rem;color:var(--text2);line-height:1.5;white-space:pre-wrap">${esc(s.note)}</div>
+        </div>`;
+      });
+      body+='</div>';
+    }
+  }
+  if(opts.privacy.includeAbcLog){
+    const abcEvents=sessions.flatMap(s=>(s.events||[]).filter(e=>e.antecedent||e.consequence).map(e=>({...e,_sessStart:s.startedAt})));
+    body+=`<h3 style="font-size:1rem;margin-top:18px">ABC Log (${abcEvents.length} entries)</h3>`;
+    if(!abcEvents.length){
+      body+='<p class="muted">No antecedent/consequence data recorded.</p>';
+    } else {
+      body+='<table style="width:100%;border-collapse:collapse;font-size:.82rem;margin-top:4px"><thead><tr>'
+        +'<th style="text-align:left;padding:6px 8px;border-bottom:1.5px solid var(--border);font-size:.7rem;color:var(--muted);text-transform:uppercase;letter-spacing:.5px">Date / Behavior</th>'
+        +'<th style="text-align:left;padding:6px 8px;border-bottom:1.5px solid var(--border);font-size:.7rem;color:var(--muted);text-transform:uppercase;letter-spacing:.5px">Antecedent (A)</th>'
+        +'<th style="text-align:left;padding:6px 8px;border-bottom:1.5px solid var(--border);font-size:.7rem;color:var(--muted);text-transform:uppercase;letter-spacing:.5px">Consequence (C)</th>'
+        +'</tr></thead><tbody>';
+      abcEvents.forEach((ev,i)=>{
+        body+=`<tr style="background:${i%2?'var(--surface2)':'transparent'}">
+          <td style="padding:8px;vertical-align:top;font-size:.78rem;border-bottom:1px solid var(--border)">
+            <strong>${esc(ev.behaviorLabel||'')}</strong><br>
+            <span class="muted" style="font-size:.72rem">${fmtDateS(ev._sessStart)} ${fmtTime(ev.timestamp||ev._sessStart)}</span>
+          </td>
+          <td style="padding:8px;vertical-align:top;font-size:.8rem;border-bottom:1px solid var(--border);color:var(--accent)">${esc(ev.antecedent||'—')}</td>
+          <td style="padding:8px;vertical-align:top;font-size:.8rem;border-bottom:1px solid var(--border);color:var(--orange)">${esc(ev.consequence||'—')}</td>
+        </tr>`;
+      });
+      body+='</tbody></table>';
+    }
+  }
+  return body;
+}
+
+// CSS for the print window — mirrors the in-app analytics view exactly.
+// Variables match the live app so colors, spacing, charts all look identical.
+function _getPrintCSS(){
+  return `
+:root{
+  --bg:#f2f0ec;--bg2:#e8e5df;--surface:#ffffff;--surface2:#f7f5f1;--surface3:#edeae4;
+  --border:#dedad3;--border2:#c8c3ba;
+  --nav:#1e3a5f;--nav-text:#ffffff;
+  --accent:#1a7fa8;--accent-soft:#ddf0f8;--accent-hover:#15668a;
+  --orange:#e06018;--orange-soft:#fef0e6;
+  --amber:#e8a100;--amber-soft:#fef8e2;
+  --sky:#3498c0;--sky-soft:#e5f2fa;
+  --purple:#7b4ab4;--purple-soft:#f1eaf8;
+  --text:#1c1c1c;--text2:#3a3a3a;--muted:#88857e;
+  --red:#d43c3c;--red-soft:#fdf0f0;
+  --yellow:#d99200;--yellow-soft:#fef8e2;
+  --green:#1a7fa8;--green-soft:#ddf0f8;
+  --fba-green:#067a5f;--fba-soft:#e8f8f3;--fba-mid:#d0f0e4;--fba-dark:#044f3d;
+  --shadow:0 1px 3px rgba(0,0,0,.07),0 2px 8px rgba(0,0,0,.05);
+}
+*{box-sizing:border-box;-webkit-print-color-adjust:exact;print-color-adjust:exact;color-adjust:exact}
+html,body{margin:0;padding:0;background:#fff;color:var(--text);
+  font-family:-apple-system,BlinkMacSystemFont,'Segoe UI','Helvetica Neue',Arial,sans-serif;
+  font-size:11pt;line-height:1.45}
+.print-header{background:var(--nav);color:#fff;padding:24px 32px;border-bottom:4px solid var(--accent)}
+.print-header-inner{display:flex;justify-content:space-between;align-items:flex-start;gap:20px;max-width:900px;margin:0 auto}
+.print-brand{font-weight:800;font-size:.85rem;letter-spacing:1px;text-transform:uppercase;color:rgba(255,255,255,.7)}
+.print-title{font-size:1.5rem;font-weight:800;margin:6px 0 4px;color:#fff;letter-spacing:-.3px}
+.print-meta{font-size:.85rem;color:rgba(255,255,255,.75);margin:0}
+.print-toolbar{display:flex;gap:8px}
+.print-btn{padding:9px 16px;background:var(--accent);color:#fff;border:none;border-radius:8px;
+  font-weight:700;font-size:.82rem;cursor:pointer;font-family:inherit;box-shadow:0 2px 6px rgba(0,0,0,.2)}
+.print-btn:hover{background:var(--accent-hover)}
+.print-btn-ghost{background:rgba(255,255,255,.15);box-shadow:none}
+.print-tip{padding:12px 32px;background:#fffbeb;border-bottom:2px solid #fcd34d;font-size:.85rem;color:#92400e}
+.print-body{max-width:900px;margin:0 auto;padding:24px 32px 40px}
+.print-section{margin-bottom:32px;page-break-inside:auto}
+.print-section-title{font-size:1.15rem;font-weight:800;color:var(--nav);
+  padding-bottom:8px;margin:0 0 16px;border-bottom:3px solid var(--accent);
+  page-break-after:avoid}
+.print-section-body{}
+.print-footer{max-width:900px;margin:0 auto;padding:18px 32px;border-top:1px solid var(--border);
+  font-size:.75rem;color:var(--muted);line-height:1.5}
+.print-footer p{margin:3px 0}
+
+/* In-app classes used by build* functions — keep visually consistent with app */
+.muted{color:var(--muted);font-size:.83rem}
+.row{display:flex;align-items:center}
+.between{justify-content:space-between}
+.wrap{flex-wrap:wrap}
+.gap1{gap:4px}.gap2{gap:8px}.gap3{gap:12px}
+.mb1{margin-bottom:4px}.mb2{margin-bottom:8px}.mb3{margin-bottom:12px}.mb4{margin-bottom:16px}
+.mt1{margin-top:4px}.mt2{margin-top:8px}.mt3{margin-top:12px}.mt4{margin-top:16px}
+.grid2{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+.grid3{display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px}
+.slabel{font-size:.62rem;font-weight:700;letter-spacing:2px;text-transform:uppercase;
+  color:var(--muted);margin-bottom:6px}
+.tag{display:inline-flex;align-items:center;gap:4px;padding:3px 9px;border-radius:14px;
+  font-size:.72rem;font-weight:700;background:var(--surface2)}
+.mono{font-family:'Courier New',monospace}
+.card{background:var(--surface);border:1px solid var(--border);border-radius:12px;
+  padding:18px;margin-bottom:12px;box-shadow:var(--shadow);page-break-inside:avoid}
+.stat-box{background:var(--surface2);border:1px solid var(--border);border-radius:10px;
+  padding:12px;text-align:center}
+.stat-n{font-family:'Courier New',monospace;font-size:1.6rem;font-weight:500;color:var(--accent)}
+.stat-l{font-size:.68rem;color:var(--muted);margin-top:3px;font-weight:600}
+.prog-track{height:7px;background:var(--surface3);border-radius:8px;overflow:hidden;margin:5px 0}
+.prog-fill{height:100%;border-radius:8px}
+.goal-card{background:var(--surface);border:1px solid var(--border);border-radius:11px;
+  padding:15px;margin-bottom:11px;box-shadow:var(--shadow);page-break-inside:avoid}
+.goal-met{border-color:#7ec8e0!important;background:var(--green-soft)!important}
+.goal-risk{border-color:#f5aaaa!important;background:var(--red-soft)!important}
+.empty{text-align:center;padding:40px 22px;color:var(--muted)}
+.empty-icon{font-size:2.4rem;opacity:.3;margin-bottom:10px}
+.chip{padding:12px 15px;border-radius:10px;background:var(--surface);
+  border:1px solid var(--border);display:flex;align-items:center;
+  justify-content:space-between;margin-bottom:8px;box-shadow:var(--shadow);
+  page-break-inside:avoid}
+
+/* Buttons (mostly hidden in print, but visible when previewing on screen) */
+.btn{display:inline-flex;align-items:center;gap:5px;padding:6px 12px;border-radius:8px;
+  border:none;font-size:.78rem;font-weight:700;font-family:inherit;
+  background:var(--surface2);color:var(--text);cursor:default}
+.btn-primary{background:var(--accent);color:#fff}
+.btn-ghost{background:transparent}
+.btn-sm{padding:5px 10px;font-size:.74rem}
+.btn-xs{padding:3px 8px;font-size:.7rem}
+.btn-orange{background:var(--orange);color:#fff}
+.btn-danger{background:var(--red);color:#fff}
+
+table{width:100%;border-collapse:collapse}
+
+/* SVG charts inherit their viewBox from the build functions; ensure they
+   scale into the print page width */
+svg{max-width:100%;height:auto}
+
+/* Print-time rules */
+@media print{
+  .no-print{display:none!important}
+  body{font-size:10.5pt}
+  .print-header{padding:18px 24px}
+  .print-body{padding:16px 24px}
+  .print-section{page-break-inside:auto}
+  .print-section-title{page-break-after:avoid}
+  .card,.goal-card,.chip{page-break-inside:avoid}
+  /* Hide any interactive buttons that snuck through from build* outputs */
+  button{display:none!important}
+  /* But re-show our print-toolbar buttons just in case (they have no-print
+     wrapper, so this rule is defensive) */
+  .print-btn{display:none!important}
+}
+`;
 }
 
 // ── Event handlers ─────────────────────────────────────────────────────────
