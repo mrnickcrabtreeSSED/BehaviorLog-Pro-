@@ -228,8 +228,7 @@ select.input{cursor:pointer}
      >8 behaviors     → scroll inside .beh-grid-wrap, never reflow
    MOTION TOKENS (standardize easing to ease-in-out except fade):
      beh-pulse: 1.5s ease-in-out  |  pulse: 1s ease-in-out
-     splashFloat: 4-5s ease-in-out  |  fade: .22s ease (only exception)
-   ICON RULE: custom behaviors must pick from ICON_OPTS — see README §5 */
+     splashFloat: 4-5s ease-in-out  |  fade: .22s ease (only exception) */
 
 /* ── Grid layouts (locked column counts) ───────────────────────────────── */
 .beh-grid-standalone{display:grid;grid-template-columns:repeat(4,1fr);gap:9px}
@@ -253,6 +252,8 @@ select.input{cursor:pointer}
   width:100%;box-sizing:border-box}
 .beh-btn:hover{border-color:var(--accent);background:var(--accent-soft)}
 .beh-icon{font-size:1.6rem;line-height:1;flex-shrink:0}
+/* Behaviors have no emoji — hide the empty icon slot so the label stays centered */
+.beh-icon:empty{display:none}
 /* Label is always visible — never clipped to invisibility on small tiles */
 .beh-label{
   font-size:.78rem;font-weight:700;color:var(--text2);line-height:1.2;
@@ -797,19 +798,8 @@ window.addEventListener('offline',function(){
 });
 
 // ── Constants ──────────────────────────────────────────────────────────────
-const PRESETS=[
-  {id:'elo',label:'Elopement',       icon:'🏃'},
-  {id:'phy',label:'Physical Aggression', icon:'👊'},
-  {id:'si', label:'Self-Injury',     icon:'🤕'},
-  {id:'non',label:'Noncompliance',   icon:'🚫'},
-  {id:'tan',label:'Tantrum/Meltdown',icon:'😤'},
-  {id:'vba',label:'Verbal Aggression',icon:'📣'},
-  {id:'pro',label:'Prop. Destruction',icon:'💥'},
-  {id:'ste',label:'Repetitive Behavior',      icon:'🌀'},
-  {id:'oft',label:'Off-Task',        icon:'🌫️'},
-];
-// ICON_OPTS: curated set — no new emoji outside this list (see README §5)
-const ICON_OPTS=['🏃','👊','⚠️','📣','🚫','😤','💥','😢','😡','🤜','🦷','🛑','📌','🎯','🔴','⭕','🟠','🟡','💬','💭','🌫️','😰','🤸','🙈','✋','🖐️','👋','🌀','😬','🔕'];
+// No preloaded behaviors — users create the behaviors they wish to track.
+const PRESETS=[];
 const OPPOSITES={
   'Elopement':          'In Area ✓',
   'Physical Aggression':'Calm & Hands Down ✓',
@@ -1117,16 +1107,12 @@ function buildModal(){
   let showClose=true;
 
   if(m.type==='editBeh'||m.type==='addBeh'){
-    const b=m.beh||{label:'',icon:'📌'};
+    const b=m.beh||{label:'',icon:''};
     const isEdit=m.type==='editBeh';
     const curMeasure=isEdit?getBehMeasure(b.id):(m._newMeasure||'duration');
     inner=`<h2 style="margin-bottom:18px">${isEdit?'Edit Behavior':'New Behavior'}</h2>
       <div class="slabel">Label</div>
-      <input class="input mb3" id="m-beh-label" value="${esc(b.label)}" placeholder="Behavior name…"/>
-      <div class="slabel">Icon</div>
-      <div class="icon-grid mb4">
-        ${ICON_OPTS.map(ic=>`<div class="icon-opt${b.icon===ic?' selected':''}" onclick="pickIcon('${ic}')" id="iopt-${encodeURIComponent(ic)}">${ic}</div>`).join('')}
-      </div>
+      <input class="input mb4" id="m-beh-label" value="${esc(b.label)}" placeholder="Behavior name…"/>
       <div class="slabel">Measurement Type</div>
       <div style="display:flex;gap:6px;margin-bottom:18px">
         ${[{id:'frequency',icon:'🔢',label:'Frequency',desc:'Tap = +1 count'},{id:'duration',icon:'⏱',label:'Duration',desc:'Tap start/stop timer'},{id:'intensity',icon:'📊',label:'Intensity',desc:'Timer + severity rating'}].concat(isBehaviorist()?[{id:'latency',icon:'🔄',label:'Latency',desc:'Time to behavior onset'}]:[]).map(mt=>`<div onclick="${isEdit?"setBehMeasure('"+b.id+"','"+mt.id+"');S._modal.beh._m='"+mt.id+"'":"S._modal._newMeasure='"+mt.id+"'"};rerender()" style="flex:1;padding:10px 8px;border-radius:10px;border:2px solid ${curMeasure===mt.id?'var(--accent)':'var(--border)'};background:${curMeasure===mt.id?'var(--accent-soft)':'var(--surface2)'};text-align:center;cursor:pointer;transition:all .15s">
@@ -1211,7 +1197,6 @@ function buildModal(){
         <div class="slabel" style="margin-bottom:6px">Behaviors to Assess</div>
         <div class="row gap2 mb2" style="flex-wrap:wrap">
           <button class="btn btn-ghost btn-xs" onclick="S._modal.selectedBehs=[...PRESETS.map(b=>b.id),...S.customs.map(b=>b.id)];rerender()">Select All</button>
-          <button class="btn btn-ghost btn-xs" onclick="S._modal.selectedBehs=[...PRESETS.map(b=>b.id)];rerender()">Defaults Only</button>
           <button class="btn btn-ghost btn-xs" onclick="S._modal.selectedBehs=[];rerender()">Clear</button>
         </div>
         <div style="max-height:180px;overflow-y:auto;display:flex;flex-wrap:wrap;gap:5px;padding:2px">
@@ -1311,7 +1296,6 @@ function buildModal(){
         <div class="slabel" style="margin-bottom:6px">Behaviors to Score</div>
         <div class="row gap2 mb2" style="flex-wrap:wrap">
           <button class="btn btn-ghost btn-xs" onclick="S._modal.selectedBehs=[...PRESETS.map(b=>b.id),...S.customs.map(b=>b.id)];rerender()">Select All</button>
-          <button class="btn btn-ghost btn-xs" onclick="S._modal.selectedBehs=[...PRESETS.map(b=>b.id)];rerender()">Defaults Only</button>
           <button class="btn btn-ghost btn-xs" onclick="S._modal.selectedBehs=[];rerender()">Clear</button>
         </div>
         <div style="max-height:160px;overflow-y:auto;display:flex;flex-wrap:wrap;gap:5px;padding:2px">
@@ -1533,7 +1517,6 @@ function buildModal(){
         <div class="slabel" style="margin-bottom:6px">Behaviors to Score</div>
         <div class="row gap2 mb2" style="flex-wrap:wrap">
           <button class="btn btn-ghost btn-xs" onclick="S._modal.selectedBehs=[...PRESETS.map(b=>b.id),...S.customs.map(b=>b.id)];rerender()">Select All</button>
-          <button class="btn btn-ghost btn-xs" onclick="S._modal.selectedBehs=[...PRESETS.map(b=>b.id)];rerender()">Defaults Only</button>
           <button class="btn btn-ghost btn-xs" onclick="S._modal.selectedBehs=[];rerender()">Clear</button>
         </div>
         <div style="max-height:160px;overflow-y:auto;display:flex;flex-wrap:wrap;gap:5px;padding:2px">
@@ -1860,15 +1843,8 @@ function buildModal(){
         const addOrEditForm=(addingNew||editingId)?`
           <div style="background:var(--surface2);border:1.5px solid var(--accent);border-radius:12px;padding:14px;margin-top:10px">
             <div class="slabel mb2" style="color:var(--accent)">${editingId?'Edit Custom Behavior':'New Custom Behavior'}</div>
-            <input class="input mb2" id="cs-beh-label" placeholder="Behavior name…" value="${esc(editingId?(S.customs.find(x=>x.id===editingId)||{}).label||'':'')}"/>
-            <div style="font-size:.72rem;font-weight:700;letter-spacing:1.5px;text-transform:uppercase;color:var(--muted);margin-bottom:6px">Icon</div>
-            <div style="display:flex;flex-wrap:wrap;gap:5px;margin-bottom:12px">
-              ${ICON_OPTS.map(ic=>{
-                const curIcon=editingId?(S.customs.find(x=>x.id===editingId)||{}).icon||'📌':m.newBehIcon||'📌';
-                return`<div onclick="pickClientBehIcon('${ic}')" id="csiopt-${encodeURIComponent(ic)}" style="padding:6px;border-radius:7px;border:1.5px solid ${curIcon===ic?'var(--accent)':'var(--border)'};background:${curIcon===ic?'var(--accent-soft)':'#fff'};cursor:pointer;font-size:1.1rem;transition:all .12s">${ic}</div>`;
-              }).join('')}
-            </div>
-            <div style="font-size:.72rem;font-weight:700;letter-spacing:1.5px;text-transform:uppercase;color:var(--muted);margin-bottom:6px;margin-top:10px">Measurement Type</div>
+            <input class="input mb3" id="cs-beh-label" placeholder="Behavior name…" value="${esc(editingId?(S.customs.find(x=>x.id===editingId)||{}).label||'':'')}"/>
+            <div style="font-size:.72rem;font-weight:700;letter-spacing:1.5px;text-transform:uppercase;color:var(--muted);margin-bottom:6px">Measurement Type</div>
             <div style="display:flex;gap:5px;margin-bottom:12px">
               ${[{id:'frequency',icon:'🔢',label:'Frequency'},{id:'duration',icon:'⏱',label:'Duration'},{id:'intensity',icon:'📊',label:'Intensity'}].concat(isBehaviorist()?[{id:'latency',icon:'🔄',label:'Latency'}]:[]).map(mt=>{
                 const curMt=editingId?getBehMeasure(editingId):(m._newMeasure||'duration');
@@ -3174,7 +3150,7 @@ function buildFBA(){
     const bAbc=bevs.filter(e=>e.antecedent&&e.antecedent.trim().length>2);
     const bCons=bevs.filter(e=>e.consequence&&e.consequence.trim().length>2);
     const bNotes=bevs.filter(e=>e.note&&e.note.trim().length>2);
-    const bIcon=bevs[0]&&bevs[0].behaviorIcon||'🔲';
+    const bIcon=bevs[0]&&bevs[0].behaviorIcon||'';
 
     // Pattern analysis: most common antecedents
     const antWords={};
@@ -4180,7 +4156,7 @@ function doAddClient(){
 }
 
 // Behavior modal
-function openAddBeh(){S._modal={type:'addBeh',beh:{label:'',icon:'📌'}};rerender();}
+function openAddBeh(){S._modal={type:'addBeh',beh:{label:'',icon:''}};rerender();}
 
 // ── CSV Upload ─────────────────────────────────────────────────────────────
 function handleCSVUpload(input){
@@ -4290,19 +4266,11 @@ function openEditBeh(bid,isPreset){
 }
 function closeModal(){S._modal=null;rerender();}
 function overlayClose(e){if(e.target===e.currentTarget)closeModal();}
-function pickIcon(ic){
-  if(!S._modal||!S._modal.beh)return;
-  S._modal.beh.icon=ic;
-  // update UI without full rerender
-  document.querySelectorAll('.icon-opt').forEach(el=>el.classList.remove('selected'));
-  const target=document.getElementById('iopt-'+encodeURIComponent(ic));
-  if(target)target.classList.add('selected');
-}
 function saveBehModal(){
   if(!S._modal)return;
   const label=document.getElementById('m-beh-label').value.trim();
   if(!label)return;
-  const icon=S._modal.beh.icon||'📌';
+  const icon=S._modal.beh.icon||'';
   const newMeasure=S._modal._newMeasure||'duration';
   if(S._modal.type==='addBeh'){
     const newId=uid();
@@ -4369,7 +4337,7 @@ function liveAddBeh(){
   const inp=document.getElementById('live-add-beh');
   const label=(inp?.value||'').trim();
   if(!label) return;
-  const newBeh={id:uid(),label,icon:'📌',custom:true};
+  const newBeh={id:uid(),label,icon:'',custom:true};
   S.customs.push(newBeh);
   S._initialBehs.push(newBeh.id);
   if(S.activeSess) S.activeSess.selectedBehs=(S.activeSess.selectedBehs||[]).concat(newBeh.id);
@@ -4381,7 +4349,7 @@ function quickAddSessBeh(){
   const label=(inp?.value||'').trim();
   if(!label) return;
   // Create new custom behavior
-  const newBeh={id:uid(),label,icon:'📌',custom:true};
+  const newBeh={id:uid(),label,icon:'',custom:true};
   S.customs.push(newBeh);
   if(!S._modal.selectedBehs) S._modal.selectedBehs=[];
   S._modal.selectedBehs.push(newBeh.id);
@@ -4720,7 +4688,7 @@ function intervalLiveAddBeh(){
   const inp=document.getElementById('iv-live-add-input');
   const label=(inp?.value||'').trim();
   if(!label) return;
-  const newBeh={id:uid(),label,icon:'📌',custom:true};
+  const newBeh={id:uid(),label,icon:'',custom:true};
   S.customs.push(newBeh);
   sess.behaviorIds.push(newBeh.id);
   // Back-fill all existing intervals with false for this new behavior
@@ -4783,7 +4751,7 @@ function completeIntervalSession(){
             id:uid(),type:'interval',
             behaviorId:bid,
             behaviorLabel:beh?beh.label:'Unknown',
-            behaviorIcon:beh?beh.icon:'📌',
+            behaviorIcon:beh?beh.icon:'',
             timestamp:iv.startMs,
             intervalNum:iv.n,
             intervalMethod:sess.method,
@@ -5666,7 +5634,7 @@ function startAddClientBeh(){
   if(!S._modal) return;
   S._modal.addingBeh=true;
   S._modal.editingBehId=null;
-  S._modal.newBehIcon='📌';
+  S._modal.newBehIcon='';
   rerender();
 }
 
@@ -5688,22 +5656,11 @@ function cancelClientBehEdit(){
   rerender();
 }
 
-function pickClientBehIcon(ic){
-  if(!S._modal) return;
-  S._modal.newBehIcon=ic;
-  // Update icon picker highlight without full rerender
-  document.querySelectorAll('[id^="csiopt-"]').forEach(el=>{
-    const isSelected=el.id===('csiopt-'+encodeURIComponent(ic));
-    el.style.borderColor=isSelected?'var(--accent)':'var(--border)';
-    el.style.background=isSelected?'var(--accent-soft)':'#fff';
-  });
-}
-
 function saveClientCustomBeh(cid){
   if(!S._modal) return;
   const label=(document.getElementById('cs-beh-label')?.value||'').trim();
   if(!label){alert('Please enter a behavior name.');return;}
-  const icon=S._modal.newBehIcon||'📌';
+  const icon=S._modal.newBehIcon||'';
   const editingId=S._modal.editingBehId;
 
   if(editingId){
