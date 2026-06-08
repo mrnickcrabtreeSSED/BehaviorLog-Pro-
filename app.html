@@ -1214,6 +1214,17 @@ function buildModal(){
         </div>
       </div>
       `:''}
+      ${m.sel==='general'?`
+      <!-- Behaviors for General Tracking -->
+      <div style="margin-top:14px;margin-bottom:6px">
+        <div class="slabel" style="margin-bottom:6px">Behaviors to Track</div>
+        ${clientBehs(cid).length?`<div style="display:flex;flex-wrap:wrap;gap:5px;padding:2px;margin-bottom:8px">${clientBehs(cid).map(b=>`<span style="display:inline-flex;align-items:center;padding:6px 11px;border-radius:8px;border:1.5px solid var(--amber);background:var(--amber-soft);font-size:.78rem;font-weight:700">${esc(b.label)}</span>`).join('')}</div>`:`<div style="font-size:.74rem;color:var(--muted);margin-bottom:8px">No behaviors configured yet — add them below, or in the student's settings.</div>`}
+        <div class="row gap2">
+          <input class="input" id="gen-quick-beh" placeholder="Add new behavior on the fly…" style="flex:1;font-size:.82rem" onkeydown="if(event.key==='Enter')quickAddGeneralBeh('${cid}')"/>
+          <button class="btn btn-primary btn-xs" onclick="quickAddGeneralBeh('${cid}')">+ Add</button>
+        </div>
+      </div>
+      `:''}
       <!-- Interval Recording config (Momentary / Partial / Whole) -->
       ${m.sel==='interval'?`<div style="background:var(--fba-soft);border:1.5px solid var(--fba-mid);border-radius:10px;padding:14px;margin-top:14px;margin-bottom:6px">
         <div style="font-weight:800;font-size:.85rem;color:var(--fba-dark);margin-bottom:10px">⏲️ Interval Recording Setup</div>
@@ -1305,6 +1316,11 @@ function buildModal(){
               ${on?'<span style="color:var(--fba-green);font-size:.7rem">✓</span>':''}${b.icon} ${esc(b.label)}
             </div>`;
           }).join('')}
+        </div>
+        <!-- Quick-add behavior (interval) -->
+        <div class="row gap2 mt2">
+          <input class="input" id="sess-quick-beh" placeholder="Add new behavior on the fly…" style="flex:1;font-size:.82rem" onkeydown="if(event.key==='Enter')quickAddSessBeh()"/>
+          <button class="btn btn-primary btn-xs" onclick="quickAddSessBeh()">+ Add</button>
         </div>
 
         <!-- Peer Comparison -->
@@ -2276,7 +2292,7 @@ function buildRecord(){
     <textarea class="input" placeholder="Working hypotheses, function patterns, ecological variables observed…" oninput="S.fbaHypothesis=this.value;if(S.activeSess) S.activeSess.fbaHypothesis=this.value" style="min-height:70px;border-color:var(--fba-mid)">${esc(S.fbaHypothesis||'')}</textarea>
   </div>`:'';
 
-  const addBehOnFly=isInitial?'<div style="display:flex;gap:6px;margin-bottom:12px;align-items:center"><input class="input" id="live-add-beh" placeholder="Add new behavior on the fly…" style="flex:1;font-size:.82rem;padding:8px 10px" onkeydown="if(event.key===\'Enter\')liveAddBeh()"/><button class="btn btn-primary btn-xs" onclick="liveAddBeh()" style="white-space:nowrap">+ Add</button></div>':'';
+  const addBehOnFly=(isInitial||isGeneral)?'<div style="display:flex;gap:6px;margin-bottom:12px;align-items:center"><input class="input" id="live-add-beh" placeholder="Add new behavior on the fly…" style="flex:1;font-size:.82rem;padding:8px 10px" onkeydown="if(event.key===\'Enter\')liveAddBeh()"/><button class="btn btn-primary btn-xs" onclick="liveAddBeh()" style="white-space:nowrap">+ Add</button></div>':'';
 
   return `<div class="sub-view"><div class="live-banner" style="${overTime?'background:linear-gradient(135deg,#fde4e6,#ffe4e6);border-color:#fca5a5':''}"><div class="row gap2"><span class="live-dot" style="${overTime?'background:var(--red)':''}"></span><div><div style="font-weight:800;color:${overTime?'var(--red)':'var(--green)'}">Live Session — ${esc(S.selClient.name)}</div>
           ${sess.location?`<div style="font-size:.74rem;color:var(--muted);margin-top:1px">📍 ${esc(sess.location)} · ${new Date(sess.startedAt).toLocaleTimeString('en-US',{hour:'numeric',minute:'2-digit',hour12:true})}</div>`:`<div style="font-size:.74rem;color:var(--muted);margin-top:1px">${new Date(sess.startedAt).toLocaleTimeString('en-US',{hour:'numeric',minute:'2-digit',hour12:true})}</div>`}<div class="row gap2 mt1" style="flex-wrap:wrap"><span class="muted mono" id="sess-elapsed" style="font-size:.8rem">${fmt(elapsedNow)} elapsed</span>${plannedMs?`<span id="sess-remain" class="mono" style="font-size:.8rem;font-weight:700;color:${overTime?'var(--red)':'var(--muted)'}">${overTime?'⚠ +'+fmt(elapsedNow-plannedMs)+' over':'⏱ '+fmt(remainMs)+' left'}</span>`:''}</div></div></div><div class="row gap2">${sessionTypeBadge}<button class="btn btn-danger btn-sm" onclick="endSession()">⏹ End</button></div></div>${liveGoals}<div class="slabel" style="margin-bottom:10px">${isGoalSpec?'IEP Goal Behaviors':isGeneral?'Configured Behaviors':isInitial?'Assessment Behaviors':'All Behaviors'}</div>${abcPanel}${behs.length===0?`<div style="background:var(--surface2);border:1.5px dashed var(--border);border-radius:12px;padding:24px;text-align:center;margin-bottom:16px"><div style="font-size:2rem;margin-bottom:8px">📋</div><div style="font-weight:700;color:var(--muted);font-size:.88rem">No behaviors selected yet</div><div style="font-size:.74rem;color:var(--muted);margin-top:4px">Tap the settings icon to choose behaviors to track for this student.</div></div>`:`<div class="beh-grid-wrap mb3"><div class="beh-grid-standalone">${behGrid}</div></div>`}${addBehOnFly}${activeCards}${evFeed}${fbaHypField||''}</div>`;
@@ -4339,9 +4355,30 @@ function liveAddBeh(){
   if(!label) return;
   const newBeh={id:uid(),label,icon:'',custom:true};
   S.customs.push(newBeh);
-  S._initialBehs.push(newBeh.id);
-  if(S.activeSess) S.activeSess.selectedBehs=(S.activeSess.selectedBehs||[]).concat(newBeh.id);
+  const sess=S.activeSess;
+  const type=sess?sess.sessType:S.sessType;
+  if(type==='initial'){
+    S._initialBehs=(S._initialBehs||[]).concat(newBeh.id);
+    if(sess) sess.selectedBehs=(sess.selectedBehs||[]).concat(newBeh.id);
+  } else {
+    // General / goal tracking: add to the student's configured behaviors so it appears now and persists
+    const c=S.clients.find(x=>x.id===(sess?sess.clientId:(S.selClient&&S.selClient.id)));
+    if(c) c.behaviors=(c.behaviors||[]).concat(newBeh.id);
+  }
   persist();rerender();
+}
+
+function quickAddGeneralBeh(cid){
+  const inp=document.getElementById('gen-quick-beh');
+  const label=(inp?.value||'').trim();
+  if(!label) return;
+  const newBeh={id:uid(),label,icon:'',custom:true};
+  S.customs.push(newBeh);
+  const c=S.clients.find(x=>x.id===cid);
+  if(c) c.behaviors=(c.behaviors||[]).concat(newBeh.id);
+  persist();
+  if(inp) inp.value='';
+  rerender();
 }
 
 function quickAddSessBeh(){
@@ -4821,6 +4858,70 @@ function intervalDoneAndExit(){
   rerender();
 }
 
+// Build a printable window of the interval results (tables + bar charts) and
+// open the browser print dialog so the user can Save as PDF or print/share.
+// Mirrors the on-screen summary; reuses the app's print CSS + SVG charts.
+function exportIntervalSummary(){
+  const sess=S.intervalSess;
+  if(!sess||!sess.completed){ alert('No completed interval session to export.'); return; }
+  const summary=intervalComputeSummary(sess);
+  const methodLabel={momentary:'Momentary Time Sampling',partial:'Partial Interval',whole:'Whole Interval'}[sess.method]||sess.method;
+  const dur=Math.round((sess.endedAt-sess.startedAt)/60000);
+  const peerSum=sess.hasPeer?(summary['__peer__']||{}):null;
+  const genTime=new Date().toLocaleString('en-US',{month:'long',day:'numeric',year:'numeric',hour:'numeric',minute:'2-digit'});
+
+  const studentBlocks=sess.clientIds.map(cid=>{
+    const rows=sess.behaviorIds.map(bid=>{
+      const beh=allBehs().find(b=>b.id===bid);
+      const s=summary[cid][bid]||{scored:0,total:0,pct:0};
+      const p=peerSum?peerSum[bid]||{scored:0,total:0,pct:0}:null;
+      return `<tr><td>${beh?esc(beh.label):'Unknown'}</td><td style="text-align:center">${s.scored}/${s.total}</td><td style="text-align:right">${s.pct}%${p!==null?` <span style="color:#888">vs ${p.pct}%</span>`:''}</td></tr>`;
+    }).join('');
+    const chart=buildBarChart(sess.behaviorIds.map(bid=>({label:(allBehs().find(b=>b.id===bid)||{}).label||'?',val:(summary[cid][bid]||{pct:0}).pct})),'%');
+    return `<section class="print-section"><h2 class="print-section-title">🎯 ${esc(sess.clientNames[cid]||'Student')}</h2>
+      <table class="iv-table"><thead><tr><th>Behavior</th><th style="text-align:center">Intervals</th><th style="text-align:right">${peerSum?'Student % / Peer %':'% Occurrence'}</th></tr></thead><tbody>${rows}</tbody></table>
+      <div style="margin-top:10px">${chart}</div></section>`;
+  }).join('');
+
+  let peerBlock='';
+  if(peerSum){
+    const rows=sess.behaviorIds.map(bid=>{
+      const beh=allBehs().find(b=>b.id===bid);
+      const p=peerSum[bid]||{scored:0,total:0,pct:0};
+      return `<tr><td>${beh?esc(beh.label):'Unknown'}</td><td style="text-align:center">${p.scored}/${p.total}</td><td style="text-align:right">${p.pct}%</td></tr>`;
+    }).join('');
+    peerBlock=`<section class="print-section"><h2 class="print-section-title">👥 ${esc(sess.peerLabel||'Peer')} (comparison)</h2>
+      <table class="iv-table"><thead><tr><th>Behavior</th><th style="text-align:center">Intervals</th><th style="text-align:right">% Occurrence</th></tr></thead><tbody>${rows}</tbody></table></section>`;
+  }
+
+  const html=`<!DOCTYPE html><html><head><meta charset="UTF-8"/>
+<title>Interval Recording — ${esc(sess.clientNames[sess.clientIds[0]]||'Session')}</title>
+<style>${_getPrintCSS()}
+.iv-table{width:100%;border-collapse:collapse;margin-top:6px}
+.iv-table th{text-align:left;padding:6px 10px;font-size:.7rem;color:#666;text-transform:uppercase;letter-spacing:1px;border-bottom:2px solid #ddd}
+.iv-table td{padding:7px 10px;border-bottom:1px solid #eee;font-size:.85rem;font-weight:600}
+</style></head><body>
+<header class="print-header"><div class="print-header-inner"><div>
+  <div class="print-brand">BehaviorLog<span style="color:var(--accent);font-weight:400">  Pro</span></div>
+  <h1 class="print-title">Interval Recording — Results</h1>
+  <p class="print-meta">${esc(methodLabel)} · ${sess.intervalSec}s intervals · ${sess.totalIntervals} intervals · ${dur} min${sess.location?' · 📍 '+esc(sess.location):''} · Generated ${esc(genTime)} · Confidential — FERPA-protected</p>
+</div><div class="print-toolbar no-print">
+  <button onclick="window.print()" class="print-btn">🖨 Save as PDF</button>
+  <button onclick="window.close()" class="print-btn print-btn-ghost">✕ Close</button>
+</div></div></header>
+<div class="no-print print-tip"><strong>📄 To save:</strong> Click <strong>Save as PDF</strong> above, or press <strong>Ctrl/Cmd+P</strong> → choose <strong>Save as PDF</strong> as destination.</div>
+<main class="print-body">${studentBlocks}${peerBlock}</main>
+<footer class="print-footer"><p>BehaviorLog Pro · Interval Recording (${esc(methodLabel)}) · This document contains FERPA-protected student data. Distribute only to authorized IEP team members.</p></footer>
+</body></html>`;
+
+  const w=window.open('','_blank');
+  if(!w){ alert('Allow popups for this site to export the report. Then try again.'); return; }
+  w.document.open();
+  w.document.write(html);
+  w.document.close();
+  setTimeout(()=>{ try { w.focus(); } catch(e){} }, 200);
+}
+
 // ── Live recording UI ─────────────────────────────────────────────────────
 function buildIntervalRecord(){
   const sess=S.intervalSess;
@@ -5015,6 +5116,7 @@ function buildIntervalSummary(){
         </tr></thead>
         <tbody>${rows}</tbody>
       </table>
+      <div style="margin-top:10px">${buildBarChart(sess.behaviorIds.map(bid=>({label:(allBehs().find(b=>b.id===bid)||{}).label||'?',val:(summary[cid][bid]||{pct:0}).pct})),'%')}</div>
     </div>`;
   }).join('');
 
@@ -5049,10 +5151,11 @@ function buildIntervalSummary(){
     ${perStudent}
     ${peerCard}
     <div class="row gap2" style="margin-top:18px">
+      <button class="btn btn-ghost" style="flex:1" onclick="exportIntervalSummary()">📄 Save / Export (PDF)</button>
       <button class="btn btn-primary" style="flex:1;background:var(--fba-green);border-color:var(--fba-green)" onclick="intervalDoneAndExit()">Done</button>
     </div>
     <p style="font-size:.7rem;color:var(--muted);text-align:center;margin-top:14px;line-height:1.5">
-      Session saved. View again anytime under each student's session history.
+      Tap <strong>Save / Export</strong> to print or save this screen (data + graphs) as a PDF. Session is also saved under each student's history.
     </p>
   </div>`;
 }
