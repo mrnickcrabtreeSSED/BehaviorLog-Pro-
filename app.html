@@ -749,6 +749,32 @@ async function saveToCloud(d){
   }
 }
 
+// ── Shared access (teacher ↔ behaviorist / school psych) ───────────────────
+// (a) Loads the shares I created as owner (for card badges + the Share modal).
+// (b) Pulls students shared WITH me via the security-definer RPC and merges them
+//     into S.clients/sessions/goals tagged _shared (read-only; excluded from persist).
+async function loadShares(){
+  if(S._offline || !_currentUser || _currentUser.id==='offline') return;
+  try{
+    const {data:mine}=await sb.from('student_shares').select('*').eq('owner_id',_currentUser.id);
+    S._myShares=mine||[];
+  }catch(e){ console.warn('loadShares(owner) failed:',e); S._myShares=S._myShares||[]; }
+  try{
+    const {data:rows,error}=await sb.rpc('get_shared_students');
+    if(error) throw error;
+    // Re-merge cleanly: drop any prior shared items first
+    S.clients=S.clients.filter(c=>!c._shared);
+    S.sessions=S.sessions.filter(s=>!s._shared);
+    S.goals=S.goals.filter(g=>!g._shared);
+    (rows||[]).forEach(r=>{
+      if(!r.client) return;
+      S.clients.push({...r.client,_shared:true,_ownerEmail:r.owner_email,_ownerId:r.owner_id,_access:r.access,_specialistRole:r.specialist_role});
+      (r.sessions||[]).forEach(s=>S.sessions.push({...s,_shared:true}));
+      (r.goals||[]).forEach(g=>S.goals.push({...g,_shared:true}));
+    });
+  }catch(e){ console.warn('loadShares(rpc) failed:',e); }
+}
+
 function load(){ return {}; } // stub — real data loaded async in boot()
 function save(d){
   // Always save locally for offline backup
@@ -892,7 +918,7 @@ let S={
 function cs(){return S.multiSessions[S.activeClientIdx]||null;}
 function setCs(patch){if(!cs())return;Object.assign(S.multiSessions[S.activeClientIdx],patch);}
 
-function persist(){save({clients:S.clients,customs:S.customs,sessions:S.sessions,goals:S.goals,strengths:S._strengths||{},_bipTemplate:S._bipTemplate||null,_bipTemplateName:S._bipTemplateName||null,_goalTemplate:S._goalTemplate||null,_goalTemplateName:S._goalTemplateName||null,_fbaTemplate:S._fbaTemplate||null,_fbaTemplateName:S._fbaTemplateName||null,_apiKey:S._apiKey||null,_assSent:S._assSent||[],_assScored:S._assScored||[],_measureTypes:S._measureTypes||{},_role:S._role||'teacher'});}
+function persist(){save({clients:S.clients.filter(c=>!c._shared),customs:S.customs,sessions:S.sessions.filter(s=>!s._shared),goals:S.goals.filter(g=>!g._shared),strengths:S._strengths||{},_bipTemplate:S._bipTemplate||null,_bipTemplateName:S._bipTemplateName||null,_goalTemplate:S._goalTemplate||null,_goalTemplateName:S._goalTemplateName||null,_fbaTemplate:S._fbaTemplate||null,_fbaTemplateName:S._fbaTemplateName||null,_apiKey:S._apiKey||null,_assSent:S._assSent||[],_assScored:S._assScored||[],_measureTypes:S._measureTypes||{},_role:S._role||'teacher'});}
 function uid(){return Math.random().toString(36).slice(2,9);}
 function genCode(){return Math.random().toString(36).slice(2,8).toUpperCase();}
 function fmt(ms){if(!ms||ms<0)return'00:00';const s=Math.floor(ms/1000);return String(Math.floor(s/60)).padStart(2,'0')+':'+String(s%60).padStart(2,'0');}
@@ -1126,6 +1152,28 @@ function buildModal(){
         ${isEdit&&!m.beh.preset?`<button class="btn btn-danger" onclick="deleteBehModal()">Delete</button>`:''}
         <button class="btn btn-ghost" onclick="closeModal()">Cancel</button>
       </div>`;
+  }
+
+  if(m.type==='shareStudent'){
+    const c=S.clients.find(x=>x.id===m.cid);
+    const shares=(S._myShares||[]).filter(s=>s.student_id===m.cid);
+    const roleOpts=[{id:'behaviorist',label:'🧠 Behaviorist'},{id:'school_psych',label:'🧩 School Psych'}];
+    inner=`<h2 style="margin-bottom:4px">Share Student</h2>
+      <p class="muted mb3" style="font-size:.82rem">Give a behaviorist or school psychologist <strong>read-only</strong> access to <strong>${esc(c?c.name:'this student')}</strong>'s data. They sign in with their own account and see only this student — nothing else on your roster.</p>
+      <div class="slabel" style="margin-bottom:5px">Specialist email</div>
+      <input class="input mb3" id="share-email" placeholder="name@district.org" value="${esc(m._email||'')}" oninput="S._modal._email=this.value" onkeydown="if(event.key==='Enter')shareStudentWith('${m.cid}')"/>
+      <div class="slabel" style="margin-bottom:5px">Role</div>
+      <div class="row gap2 mb3">
+        ${roleOpts.map(r=>`<div onclick="S._modal._role='${r.id}';rerender()" style="flex:1;text-align:center;padding:10px 6px;border-radius:10px;border:2px solid ${(m._role||'behaviorist')===r.id?'var(--accent)':'var(--border)'};background:${(m._role||'behaviorist')===r.id?'var(--accent-soft)':'var(--surface2)'};cursor:pointer;font-weight:700;font-size:.84rem">${r.label}</div>`).join('')}
+      </div>
+      <button class="btn btn-primary" style="width:100%" onclick="shareStudentWith('${m.cid}')">＋ Share access</button>
+      <div style="font-size:.7rem;color:var(--muted);margin-top:8px;line-height:1.5">ℹ️ The specialist must sign in with the <strong>exact email</strong> you enter. Access appears under "Shared with me" the next time they open the app.</div>
+      <div class="slabel" style="margin-top:18px;margin-bottom:6px">Shared with (${shares.length})</div>
+      ${shares.length?shares.map(s=>`<div class="row between" style="padding:9px 11px;border:1px solid var(--border);border-radius:9px;margin-bottom:6px">
+          <div style="min-width:0"><div style="font-weight:700;font-size:.84rem;word-break:break-all">${esc(s.grantee_email)}</div><div class="muted" style="font-size:.72rem">${s.specialist_role==='school_psych'?'🧩 School Psych':'🧠 Behaviorist'} · read-only</div></div>
+          <button class="btn btn-ghost btn-xs" style="color:var(--red);flex-shrink:0" onclick="revokeShare('${s.id}')">Revoke</button>
+        </div>`).join(''):`<p class="muted" style="font-size:.8rem">Not shared with anyone yet.</p>`}
+      <div class="row gap2" style="margin-top:16px"><button class="btn btn-ghost" style="flex:1" onclick="closeModal()">Done</button></div>`;
   }
 
   if(m.type==='sessType'){
@@ -2067,12 +2115,30 @@ function buildHome(){
     </div>
   </div>`;
 
-  if(S.clients.length===0){
-    out+=`<div class="empty"><div class="empty-icon">👤</div><p style="font-weight:600;margin-bottom:6px">No students yet</p><p>Add a student above or import a CSV roster to get started.</p></div>`;
+  const _own=S.clients.filter(c=>!c._shared);
+  const _shared=S.clients.filter(c=>c._shared);
+  if(_shared.length){
+    out+=`<div style="margin-bottom:16px"><div class="slabel" style="margin-bottom:8px">🤝 Shared with me (${_shared.length})</div>`;
+    _shared.forEach(c=>{
+      const scs=S.sessions.filter(s=>s.clientId===c.id);
+      const scg=clientGoals(c.id);
+      out+=`<div class="client-card" style="border-left:3px solid var(--purple)"><div class="row between mb3"><div class="row gap3">
+        <div class="client-avatar" style="background:var(--purple)">${initials(c.name)}</div>
+        <div><div style="font-weight:800;font-size:1.05rem">${esc(c.name)}</div>
+          <div class="row gap2 mt1 wrap"><span class="tag" style="background:var(--purple-soft);color:var(--purple)">${c._specialistRole==='school_psych'?'🧩 School Psych':'🧠 Behaviorist'}</span><span class="muted" style="font-size:.72rem">from ${esc(c._ownerEmail||'teacher')}</span><span class="tag" style="background:var(--surface2);color:var(--text2)">read-only</span></div>
+          <div class="row gap2 mt1 wrap"><span class="muted">${scs.length} session${scs.length!==1?'s':''}</span>${scg.length>0?`<span class="tag" style="background:#ecfdf5;color:#065f46">🎯 ${scg.length} goal${scg.length!==1?'s':''}</span>`:''}</div>
+        </div></div>
+        <div class="client-actions"><button class="btn btn-primary btn-sm" onclick="goAnalytics('${c.id}','charts')">📊 View Data</button></div>
+      </div></div>`;
+    });
+    out+=`</div>`;
+  }
+  if(_own.length===0){
+    if(!_shared.length) out+=`<div class="empty"><div class="empty-icon">👤</div><p style="font-weight:600;margin-bottom:6px">No students yet</p><p>Add a student above or import a CSV roster to get started.</p></div>`;
   } else {
     // Search + A-Z
     const q=(S._clientSearch||'').toLowerCase();
-    const sorted=[...S.clients].sort((a,b)=>a.name.localeCompare(b.name));
+    const sorted=[..._own].sort((a,b)=>a.name.localeCompare(b.name));
     const filtered=q?sorted.filter(c=>c.name.toLowerCase().includes(q)||(c.studentId||'').toLowerCase().includes(q)||(c.grade||'').toLowerCase().includes(q)):sorted;
     const letters=[...new Set(sorted.map(c=>(c.name[0]||'').toUpperCase()))].sort();
 
@@ -2081,7 +2147,7 @@ function buildHome(){
         <input class="input" id="client-search" placeholder="Search students by name, ID, or grade…" value="${esc(S._clientSearch||'')}" oninput="S._clientSearch=this.value;rerender();setTimeout(()=>{const el=document.getElementById('client-search');if(el){el.focus();el.selectionStart=el.selectionEnd=el.value.length;}},10)" style="padding-left:32px;font-size:.88rem"/>
         <span style="position:absolute;left:10px;top:50%;transform:translateY(-50%);font-size:.85rem;pointer-events:none">🔍</span>
       </div>
-      <span class="muted" style="font-size:.78rem;white-space:nowrap">${filtered.length}/${S.clients.length}</span>
+      <span class="muted" style="font-size:.78rem;white-space:nowrap">${filtered.length}/${_own.length}</span>
     </div>`;
 
     // Bulk action bar
@@ -2128,14 +2194,14 @@ function buildHome(){
                 <span class="muted">${cs.length} session${cs.length!==1?'s':''}</span>
                 ${cg.length>0?`<span class="tag" style="background:#ecfdf5;color:#065f46">🎯 ${cg.length} goal${cg.length!==1?'s':''}</span>`:''}
                 ${todayCt>0?`<span class="tag" style="background:var(--sky-soft);color:var(--sky)">Today: ${todayCt} event${todayCt!==1?'s':''}</span>`:''}
-                ${c.linkedBehaviorist?`<span class="tag" style="background:var(--purple-soft);color:var(--purple)">🧠 ${esc(c.linkedBehaviorist)}</span>`:''}
+                ${(()=>{const sh=(S._myShares||[]).filter(x=>x.student_id===c.id);return sh.length?`<span class="tag" style="background:var(--purple-soft);color:var(--purple)">🤝 Shared (${sh.length})</span>`:(c.linkedBehaviorist?`<span class="tag" style="background:var(--purple-soft);color:var(--purple)">🧠 ${esc(c.linkedBehaviorist)}</span>`:'');})()}
               </div>
             </div>
           </div>
           ${S._selectMode?'':'<div class="client-actions">'}
           ${S._selectMode?'':`<button class="btn btn-ghost btn-sm" onclick="goAnalytics('${c.id}','charts')">📊 Data</button>`}
           ${S._selectMode?'':`<button class="btn btn-ghost btn-sm" onclick="openManualEntry('${c.id}')" title="Manual data entry" style="color:var(--purple)">📝 Enter</button>`}
-            ${S._selectMode?'':`<button class="btn btn-ghost btn-sm desktop-only" title="Link behaviorist" onclick="linkBehaviorist('${c.id}')" style="color:var(--purple)">🧠</button>`}
+            ${S._selectMode?'':`<button class="btn btn-ghost btn-sm" title="Share with behaviorist / school psych" onclick="openShareModal('${c.id}')" style="color:var(--purple)">🤝</button>`}
             ${S._selectMode?'':`<button class="btn btn-ghost btn-sm desktop-only" title="Student settings" onclick="openClientSettings('${c.id}')">⚙️</button>`}
             ${S._selectMode?'':`<button class="btn btn-ghost btn-sm desktop-only" title="Delete student" style="color:var(--red);border:1.5px solid #fca5a5;background:#fff5f5" onclick="confirmDeleteClient('${c.id}')">🗑</button>`}
             ${S._selectMode?'':`<button class="btn btn-primary btn-sm" onclick="openSessType('${c.id}')">▶ Record</button>`}
@@ -2479,7 +2545,7 @@ function buildSummary(){
             <div><div style="font-weight:700;font-size:.88rem">${esc(b.label)}</div>
             <div class="muted">${total} event${total!==1?'s':''} this session</div></div>
           </div>
-          ${alreadyHas?`<span class="tag" style="background:#ecfdf5;color:#065f46">✓ Goal exists</span>`:isBehaviorist()?`<button class="btn btn-sm" class="btn-purple" onclick="quickGoal('${esc(b.label)}')">+ Write Goal</button>`:''}
+          ${alreadyHas?`<span class="tag" style="background:#ecfdf5;color:#065f46">✓ Goal exists</span>`:(isBehaviorist()&&!isSharedClient())?`<button class="btn btn-sm" class="btn-purple" onclick="quickGoal('${esc(b.label)}')">+ Write Goal</button>`:''}
         </div>`;
       }).join('')}
     </div>`;
@@ -2646,7 +2712,7 @@ function buildGoals(){
             <span style="font-weight:800;font-size:1rem">${esc(g.behaviorLabel)}</span>
             <span class="tag" style="background:${met?'var(--green-soft)':'var(--red-soft)'};color:${met?'var(--green)':'var(--red)'}">${met?'✓ On Track':'⚠ Needs Support'}</span>
           </div>
-          ${isBehaviorist()?`<button class="btn btn-danger btn-xs" onclick="removeGoal('${g.id}')">Remove</button>`:''}
+          ${(isBehaviorist()&&!isSharedClient())?`<button class="btn btn-danger btn-xs" onclick="removeGoal('${g.id}')">Remove</button>`:''}
         </div>
         <div class="grid3 mb2">
           <div class="stat-box" style="padding:9px"><div class="stat-n" style="font-size:1.2rem">≤${g.target}</div><div class="stat-l">Target/session</div></div>
@@ -2665,7 +2731,7 @@ function buildGoals(){
 
   return`<div class="row between mb3">
     <div class="slabel" style="margin:0;align-self:center">IEP Goals</div>
-    ${isBehaviorist()?`<button class="btn btn-primary btn-sm" onclick="showGoalForm()">+ New Goal</button>`:''}
+    ${(isBehaviorist()&&!isSharedClient())?`<button class="btn btn-primary btn-sm" onclick="showGoalForm()">+ New Goal</button>`:''}
   </div>${isBehaviorist()?form:''}${cards}`;
 }
 function buildReports(){
@@ -4267,14 +4333,39 @@ function parseCSVRow(row){
 }
 
 // ── Link Behaviorist ───────────────────────────────────────────────────────
-function linkBehaviorist(clientId){
-  const c=S.clients.find(x=>x.id===clientId);
-  if(!c)return;
-  const email=prompt("Enter the behaviorist's email address to link to "+c.name+":",c.linkedBehaviorist||'');
-  if(email===null)return;
-  S.clients=S.clients.map(x=>x.id===clientId?{...x,linkedBehaviorist:email.trim()}:x);
-  persist();rerender();
+// Opens the Share modal (real cross-account sharing — replaces the old email prompt).
+function linkBehaviorist(clientId){ openShareModal(clientId); }
+function openShareModal(cid){
+  const c=S.clients.find(x=>x.id===cid);
+  if(!c || c._shared) return; // can't re-share a student that was shared TO you
+  S._modal={type:'shareStudent',cid,_email:'',_role:'behaviorist'};
+  rerender();
 }
+async function shareStudentWith(cid){
+  const c=S.clients.find(x=>x.id===cid); if(!c) return;
+  const email=(S._modal&&S._modal._email||'').trim().toLowerCase();
+  if(!email||!email.includes('@')){ alert('Enter a valid email address.'); return; }
+  if(_currentUser&&email===(_currentUser.email||'').toLowerCase()){ alert("That's your own email — share it with someone else."); return; }
+  const role=(S._modal&&S._modal._role)||'behaviorist';
+  try{
+    const {error}=await sb.from('student_shares').upsert(
+      {owner_id:_currentUser.id,grantee_email:email,student_id:cid,student_name:c.name,specialist_role:role,access:'read'},
+      {onConflict:'owner_id,grantee_email,student_id'});
+    if(error) throw error;
+    await loadShares();
+    if(S._modal) S._modal._email='';
+    rerender();
+  }catch(e){ console.error('share failed:',e); alert('Could not share: '+(e.message||e)); }
+}
+async function revokeShare(shareId){
+  try{
+    const {error}=await sb.from('student_shares').delete().eq('id',shareId);
+    if(error) throw error;
+    await loadShares(); rerender();
+  }catch(e){ console.error('revoke failed:',e); alert('Could not revoke: '+(e.message||e)); }
+}
+// Read-only guard: true when the currently selected student was shared TO this user.
+function isSharedClient(){ return !!(S.selClient && S.selClient._shared); }
 function openEditBeh(bid,isPreset){
   const b=isPreset?PRESETS.find(b=>b.id===bid):S.customs.find(b=>b.id===bid);
   if(!b)return;
@@ -5983,6 +6074,7 @@ function importDataPrompt(){
 function showGoalForm(){document.getElementById('goal-form').style.display='';}
 function hideGoalForm(){document.getElementById('goal-form').style.display='none';}
 function doAddGoal(){
+  if(isSharedClient())return; // read-only: can't edit a student shared TO you
   const b=document.getElementById('goal-beh').value;
   const t=document.getElementById('goal-target').value;
   const n=document.getElementById('goal-notes').value;
@@ -5990,7 +6082,7 @@ function doAddGoal(){
   S.goals.push({id:uid(),clientId:S.selClient.id,behaviorId:b,behaviorLabel:b,target:parseInt(t),notes:n,createdAt:Date.now()});
   persist();rerender();
 }
-function removeGoal(gid){S.goals=S.goals.filter(g=>g.id!==gid);persist();rerender();}
+function removeGoal(gid){if(isSharedClient())return;S.goals=S.goals.filter(g=>g.id!==gid);persist();rerender();}
 function quickGoal(label){
   S.view='analytics';
   S._anaTab='goals';
@@ -6658,6 +6750,9 @@ async function boot(){
 
   // If any legacy FBA sessions were just migrated, save the updated state so future loads are no-op
   if(_legacyFbaMigrated){ try { persist(); } catch(e){ console.warn('Migration save failed:',e); } }
+
+  // Load shares (owned + shared-with-me) and merge read-only shared students
+  await loadShares();
 
   rerender();
   tick();
