@@ -16,7 +16,7 @@ module.exports = function handler(req, res) {
   }
 
   var postData = JSON.stringify({
-    from: 'BehaviorLog Pro <onboarding@resend.dev>',
+    from: 'BehaviorLog Pro <noreply@surestepeducation.com>',
     to: body.to,
     subject: body.subject,
     html: body.html

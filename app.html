@@ -1167,6 +1167,7 @@ function buildModal(){
         ${roleOpts.map(r=>`<div onclick="S._modal._role='${r.id}';rerender()" style="flex:1;text-align:center;padding:10px 6px;border-radius:10px;border:2px solid ${(m._role||'behaviorist')===r.id?'var(--accent)':'var(--border)'};background:${(m._role||'behaviorist')===r.id?'var(--accent-soft)':'var(--surface2)'};cursor:pointer;font-weight:700;font-size:.84rem">${r.label}</div>`).join('')}
       </div>
       <button class="btn btn-primary" style="width:100%" onclick="shareStudentWith('${m.cid}')">＋ Share access</button>
+      ${m._sentMsg?`<div style="margin-top:10px;background:${m._sentMsg.ok?'var(--accent-soft)':'#fff5f5'};border:1.5px solid ${m._sentMsg.ok?'var(--accent)':'#fca5a5'};border-radius:9px;padding:9px 12px;font-size:.78rem;font-weight:600;color:${m._sentMsg.ok?'var(--accent)':'var(--red)'}">${m._sentMsg.pending?'✉️ Shared — emailing '+esc(m._sentMsg.email)+'…':m._sentMsg.ok?'✅ Shared. Invite emailed to '+esc(m._sentMsg.email):'✅ Shared, but email failed ('+esc(m._sentMsg.err||'')+'). They will still see the student on next sign-in.'}</div>`:''}
       <div style="font-size:.7rem;color:var(--muted);margin-top:8px;line-height:1.5">ℹ️ The specialist must sign in with the <strong>exact email</strong> you enter. Access appears under "Shared with me" the next time they open the app.</div>
       <div class="slabel" style="margin-top:18px;margin-bottom:6px">Shared with (${shares.length})</div>
       ${shares.length?shares.map(s=>`<div class="row between" style="padding:9px 11px;border:1px solid var(--border);border-radius:9px;margin-bottom:6px">
@@ -4353,9 +4354,52 @@ async function shareStudentWith(cid){
       {onConflict:'owner_id,grantee_email,student_id'});
     if(error) throw error;
     await loadShares();
-    if(S._modal) S._modal._email='';
+    if(S._modal){ S._modal._email=''; S._modal._sentMsg={ok:true,email,pending:true}; }
+    rerender();
+    // Best-effort invite email — the share itself already succeeded above.
+    const sent=await emailShareInvite(email,role,c.name);
+    if(S._modal&&S._modal.type==='shareStudent') S._modal._sentMsg=sent;
     rerender();
   }catch(e){ console.error('share failed:',e); alert('Could not share: '+(e.message||e)); }
+}
+
+// Emails the specialist that a student was shared with them, plus a link to sign in.
+// Access is keyed by email via student_shares — no invite code needed. Returns
+// {ok,email,err?}; never throws, so a failed email can't undo a successful share.
+async function emailShareInvite(email, role, studentName){
+  const ownerName=_currentUser?.user_metadata?.full_name||_currentUser?.email||'A teacher';
+  const roleLabel=role==='school_psych'?'School Psychologist':'Behaviorist';
+  const link=window.location.origin+'/index.html';
+  const html=`
+    <div style="font-family:-apple-system,BlinkMacSystemFont,sans-serif;max-width:600px;margin:0 auto;padding:20px">
+      <div style="background:#1e3a5f;border-radius:12px 12px 0 0;padding:20px;text-align:center">
+        <h1 style="color:#fff;font-size:1.3rem;margin:0">BehaviorLog Pro</h1>
+        <p style="color:rgba(255,255,255,.6);font-size:.8rem;margin:4px 0 0">Sure Step Education</p>
+      </div>
+      <div style="background:#fff;border:1px solid #e0e0e0;border-radius:0 0 12px 12px;padding:24px">
+        <p style="font-size:.95rem;margin-bottom:16px"><strong>${esc(ownerName)}</strong> has shared a student with you on <strong>BehaviorLog Pro</strong> as a <strong>${roleLabel}</strong>.</p>
+        <div style="background:#f0faf9;border:2px solid #2b7a78;border-radius:10px;padding:16px;text-align:center;margin-bottom:16px">
+          <div style="font-size:.72rem;color:#2b7a78;font-weight:700;text-transform:uppercase;letter-spacing:.05em;margin-bottom:4px">Student shared with you</div>
+          <div style="font-size:1.1rem;font-weight:800;color:#1e3a5f">${esc(studentName||'a student')}</div>
+        </div>
+        <p style="font-size:.9rem;line-height:1.6;margin-bottom:16px">Sign in with <strong>this email address (${esc(email)})</strong> to view this student's behavior data. You'll see only this student — read-only — under <strong>"Shared with me."</strong></p>
+        <div style="text-align:center;margin-bottom:16px">
+          <a href="${link}" style="display:inline-block;background:#2b7a78;color:#fff;font-weight:700;font-size:.95rem;text-decoration:none;padding:12px 28px;border-radius:10px">Open BehaviorLog Pro</a>
+        </div>
+        <p style="font-size:.82rem;color:#888;line-height:1.6">If you don't have an account yet, create one with your Google account using this same email address.</p>
+        <p style="font-size:.9rem;margin-top:20px">— Sure Step Education</p>
+      </div>
+    </div>`;
+  try{
+    const r=await fetch('/api/send-email',{
+      method:'POST',
+      headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({to:email,toName:roleLabel,subject:ownerName+' shared a student with you — BehaviorLog Pro',html})
+    });
+    const data=await r.json();
+    if(data&&data.success) return {ok:true,email};
+    return {ok:false,email,err:(data&&data.error)||'Email service error'};
+  }catch(e){ return {ok:false,email,err:e.message||'Network error'}; }
 }
 async function revokeShare(shareId){
   try{
