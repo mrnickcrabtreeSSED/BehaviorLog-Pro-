@@ -753,6 +753,22 @@ async function saveToCloud(d){
 // (a) Loads the shares I created as owner (for card badges + the Share modal).
 // (b) Pulls students shared WITH me via the security-definer RPC and merges them
 //     into S.clients/sessions/goals tagged _shared (read-only; excluded from persist).
+// Teacher/owner side of the shared library (P4): load behaviors specialists assigned
+// to MY students. Keyed by student_id; measures kept in a non-persisted map so
+// getBehMeasure() resolves them without polluting the teacher's saved settings.
+async function loadSharedBehaviors(){
+  if(S._offline||!_currentUser||_currentUser.id==='offline') return;
+  try{
+    const {data,error}=await sb.from('shared_behaviors').select('*').eq('owner_id',_currentUser.id);
+    if(error) throw error;
+    const map={}; S._sharedMeasures=S._sharedMeasures||{};
+    (data||[]).forEach(r=>{
+      (map[r.student_id]=map[r.student_id]||[]).push({id:r.beh_id,label:r.label,icon:r.icon||'',opDef:r.op_def||'',_sharedBeh:true,_specialistId:r.specialist_id});
+      S._sharedMeasures[r.beh_id]=r.measure||'duration';
+    });
+    S._sharedBehaviors=map;
+  }catch(e){ console.warn('loadSharedBehaviors failed',e); S._sharedBehaviors=S._sharedBehaviors||{}; }
+}
 async function loadShares(){
   if(S._offline || !_currentUser || _currentUser.id==='offline') return;
   try{
@@ -930,7 +946,7 @@ function fmtDateS(ts){return new Date(ts).toLocaleDateString('en-US',{month:'sho
 function fmtTime(ts){return new Date(ts).toLocaleTimeString('en-US',{hour:'numeric',minute:'2-digit'});}
 function isToday(ts){return new Date(ts).toISOString().slice(0,10)===new Date().toISOString().slice(0,10);}
 function allBehs(){return[...PRESETS,...S.customs];}
-function getBehMeasure(bid){return S._measureTypes[bid]||'duration';}
+function getBehMeasure(bid){return (S._sharedMeasures&&S._sharedMeasures[bid])||S._measureTypes[bid]||'duration';}
 function setBehMeasure(bid,mode){S._measureTypes[bid]=mode;persist();rerender();}
 // "Specialist" gate — behaviorist/school_psych/admin/founder get the FBA/assessment/generation UI.
 function isBehaviorist(){return S._role==='behaviorist'||S._role==='school_psych'||S._role==='admin'||S._role==='founder';}
@@ -947,10 +963,12 @@ function isFounder(){return S._role==='founder';}
 // New students start with zero behaviors; the observer adds them before/during observation.
 function clientBehs(cid){
   const c=S.clients.find(x=>x.id===cid);
-  if(!c||!c.behaviors||!c.behaviors.length) return [];
-  // Return behaviors in the client's chosen order, filtering out deleted customs
   const pool=allBehs();
-  return c.behaviors.map(bid=>pool.find(b=>b.id===bid)).filter(Boolean);
+  const own=(c&&c.behaviors&&c.behaviors.length)?c.behaviors.map(bid=>pool.find(b=>b.id===bid)).filter(Boolean):[];
+  // Merge in behaviors a connected specialist assigned to this student (P4 shared library).
+  const shared=(S._sharedBehaviors&&S._sharedBehaviors[cid])||[];
+  const seen=new Set(own.map(b=>b.id));
+  return own.concat(shared.filter(b=>b&&!seen.has(b.id)));
 }
 function clientGoals(cid){return S.goals.filter(g=>g.clientId===cid);}
 function behFreq(sess,label){return(sess.events||[]).filter(e=>e.behaviorLabel===label).length;}
@@ -1169,6 +1187,21 @@ function buildModal(){
         ${isEdit&&!m.beh.preset?`<button class="btn btn-danger" onclick="deleteBehModal()">Delete</button>`:''}
         <button class="btn btn-ghost" onclick="closeModal()">Cancel</button>
       </div>`;
+  }
+
+  if(m.type==='assignShared'){
+    const assignedIds=new Set((m.assigned||[]).map(a=>a.beh_id));
+    inner=`<h2 style="margin-bottom:4px">Assign behaviors</h2>
+      <p class="muted mb3" style="font-size:.82rem">Choose behaviors from your library for <strong>${esc(m.studentName||'this student')}</strong>. The connected teacher will be able to record these — with your operational definitions — for this student.</p>
+      ${m.loading?'<div class="muted" style="font-size:.82rem">Loading…</div>':(S.customs.length?S.customs.map(b=>{
+        const on=assignedIds.has(b.id);
+        return `<div class="row between" style="padding:9px 11px;border:1.5px solid ${on?'var(--purple)':'var(--border)'};border-radius:9px;margin-bottom:6px;background:${on?'var(--purple-soft)':'#fff'}">
+          <div style="min-width:0;margin-right:8px"><div style="font-weight:700;font-size:.84rem">${b.icon?esc(b.icon)+' ':''}${esc(b.label)} <span class="muted" style="font-size:.7rem">· ${esc(getBehMeasure(b.id))}</span></div>
+          ${b.opDef?`<div class="muted" style="font-size:.72rem">${esc(b.opDef)}</div>`:'<div style="font-size:.72rem;color:var(--amber)">⚠ no operational definition</div>'}</div>
+          <button class="btn btn-sm ${on?'btn-primary':'btn-ghost'}" style="flex-shrink:0" onclick="toggleSharedBeh('${b.id}')">${on?'✓ Assigned':'Assign'}</button>
+        </div>`;
+      }).join(''):'<p class="muted" style="font-size:.8rem">Your library is empty. Create behaviors (with operational definitions) in ⚙️ Settings → Behavior Library, then assign them here.</p>')}
+      <div class="row gap2" style="margin-top:14px"><button class="btn btn-ghost" style="flex:1" onclick="closeModal()">Done</button></div>`;
   }
 
   if(m.type==='shareStudent'){
@@ -2167,7 +2200,7 @@ function buildHome(){
           <div class="row gap2 mt1 wrap"><span class="tag" style="background:var(--purple-soft);color:var(--purple)">${c._specialistRole==='school_psych'?'🧩 School Psych':'🧠 Behaviorist'}</span><span class="muted" style="font-size:.72rem">from ${esc(c._ownerEmail||'teacher')}</span><span class="tag" style="background:var(--surface2);color:var(--text2)">read-only</span></div>
           <div class="row gap2 mt1 wrap"><span class="muted">${scs.length} session${scs.length!==1?'s':''}</span>${scg.length>0?`<span class="tag" style="background:#ecfdf5;color:#065f46">🎯 ${scg.length} goal${scg.length!==1?'s':''}</span>`:''}</div>
         </div></div>
-        <div class="client-actions"><button class="btn btn-primary btn-sm" onclick="goAnalytics('${c.id}','charts')">📊 View Data</button></div>
+        <div class="client-actions">${isSpecialist()?`<button class="btn btn-ghost btn-sm" style="color:var(--purple)" onclick="openAssignShared('${c.id}')">🧩 Assign behaviors</button>`:''}<button class="btn btn-primary btn-sm" onclick="goAnalytics('${c.id}','charts')">📊 View Data</button></div>
       </div></div>`;
     });
     out+=`</div>`;
@@ -4479,6 +4512,32 @@ async function revokeShare(shareId){
   }catch(e){ console.error('revoke failed:',e); alert('Could not revoke: '+(e.message||e)); }
 }
 // Read-only guard: true when the currently selected student was shared TO this user.
+// Specialist (P4): assign behaviors from my library to a student shared TO me.
+async function openAssignShared(cid){
+  const c=S.clients.find(x=>x.id===cid); if(!c||!c._shared) return;
+  S._modal={type:'assignShared',cid,ownerId:c._ownerId,studentName:c.name,assigned:[],loading:true};
+  rerender();
+  try{
+    const {data}=await sb.from('shared_behaviors').select('*').eq('student_id',cid).eq('specialist_id',_currentUser.id);
+    if(S._modal&&S._modal.type==='assignShared'){ S._modal.assigned=data||[]; S._modal.loading=false; rerender(); }
+  }catch(e){ console.warn('load assigned failed',e); if(S._modal){S._modal.loading=false;rerender();} }
+}
+async function toggleSharedBeh(behId){
+  const m=S._modal; if(!m||m.type!=='assignShared') return;
+  const b=S.customs.find(x=>x.id===behId); if(!b) return;
+  const existing=(m.assigned||[]).find(a=>a.beh_id===behId);
+  try{
+    if(existing){
+      const {error}=await sb.from('shared_behaviors').delete().eq('id',existing.id); if(error) throw error;
+      m.assigned=m.assigned.filter(a=>a.beh_id!==behId);
+    } else {
+      const {data,error}=await sb.from('shared_behaviors').insert({owner_id:m.ownerId,specialist_id:_currentUser.id,student_id:m.cid,beh_id:behId,label:b.label,icon:b.icon||'',op_def:b.opDef||'',measure:getBehMeasure(behId)}).select('*').single();
+      if(error) throw error;
+      m.assigned.push(data);
+    }
+    rerender();
+  }catch(e){ alert('Could not update assignment: '+(e.message||e)); }
+}
 function isSharedClient(){ return !!(S.selClient && S.selClient._shared); }
 function openEditBeh(bid,isPreset){
   const b=isPreset?PRESETS.find(b=>b.id===bid):S.customs.find(b=>b.id===bid);
@@ -7046,6 +7105,8 @@ async function boot(){
 
   // Load shares (owned + shared-with-me) and merge read-only shared students
   await loadShares();
+  // Load specialist-assigned behaviors for my students (P4 shared library)
+  await loadSharedBehaviors();
 
   rerender();
   tick();
