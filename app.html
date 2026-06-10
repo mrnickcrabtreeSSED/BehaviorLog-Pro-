@@ -885,6 +885,7 @@ let S={
   _role:'teacher',     // teacher|behaviorist|school_psych|admin|founder — gates features
   _district:null,      // district_id (uuid) the current user belongs to
   _districtName:'',    // district name, for display
+  _breakGlass:null,    // {email} when a founder is impersonating via break-glass
   _clientSearch:'',    // student search filter
   _adminTab:'users',   // admin panel tab
   _adminUsers:[],      // loaded users for admin
@@ -1130,7 +1131,8 @@ function buildApp(){
   if(S.view==='interval')     body=buildIntervalRecord();
   if(S.view==='intervalSummary') body=buildIntervalSummary();
 
-  return intOverlay+modeBar+`<div class="app fade">${body}</div>`+modal;
+  const bgBanner = S._breakGlass ? `<div style="position:fixed;top:0;left:0;right:0;z-index:300;background:#c0392b;color:#fff;padding:8px 14px;display:flex;align-items:center;justify-content:center;gap:12px;font-size:.82rem;font-weight:700;box-shadow:0 2px 10px rgba(0,0,0,.25)">🔓 BREAK-GLASS — viewing <strong>${esc(S._breakGlass.email||'account')}</strong><button onclick="exitBreakGlass()" style="background:#fff;color:#c0392b;border:none;border-radius:6px;padding:4px 12px;font-weight:800;cursor:pointer;font-family:inherit">Exit</button></div>` : '';
+  return bgBanner+intOverlay+modeBar+`<div class="app fade" style="${S._breakGlass?'padding-top:42px':''}">${body}</div>`+modal;
 }
 
 // ── MODAL ──────────────────────────────────────────────────────────────────
@@ -6237,6 +6239,7 @@ function founderUserRow(u,districts){
         <option value="">— move district —</option>${districts.map(d=>`<option value="${d.id}" ${u.district_id===d.id?'selected':''}>${esc(d.name)}</option>`).join('')}
       </select>
       <button class="btn btn-ghost btn-sm" onclick="founderExport('${u.user_id}')" title="FERPA export">⬇️ Export</button>
+      ${me?'':`<button class="btn btn-ghost btn-sm" onclick="breakGlass('${u.user_id}','${esc(u.email)}')" title="Break-glass: sign in as this user">🔓 Enter</button>`}
       ${me?'':`<button class="btn btn-ghost btn-sm" style="color:var(--red)" onclick="founderDeleteUser('${u.user_id}')" title="Delete user + data">🗑️</button>`}
     </div>
   </div>`;
@@ -6296,6 +6299,31 @@ async function founderExport(userId){
     document.body.appendChild(a); a.click(); a.remove();
     await logAudit('ferpa_export',u,null);
   }catch(e){ alert('Export failed: '+(e.message||e)); }
+}
+// ── Break-glass: founder signs in AS a target user (full session). ──────────
+async function breakGlass(userId,email){
+  if(!confirm('Enter '+email+' account for troubleshooting? You will be signed in AS this user until you click Exit. Every break-glass is logged.')) return;
+  try{
+    const {data:{session}}=await sb.auth.getSession();
+    if(!session){ alert('No active session.'); return; }
+    const resp=await fetch('/api/break-glass',{method:'POST',headers:{'Content-Type':'application/json','Authorization':'Bearer '+session.access_token},body:JSON.stringify({target_user_id:userId})});
+    const data=await resp.json().catch(()=>({}));
+    if(!resp.ok || !data.access_token){ alert('Break-glass failed: '+(data.error||('HTTP '+resp.status))); return; }
+    // Save the founder session so Exit can restore it; mark impersonation active.
+    localStorage.setItem('bl_bg_founder', JSON.stringify({access_token:session.access_token, refresh_token:session.refresh_token, email:(_currentUser&&_currentUser.email)||''}));
+    localStorage.setItem('bl_bg_active', JSON.stringify({email:(data.target&&data.target.email)||email}));
+    await sb.auth.setSession({access_token:data.access_token, refresh_token:data.refresh_token});
+    window.location.href='app.html';
+  }catch(e){ alert('Break-glass error: '+(e.message||e)); }
+}
+async function exitBreakGlass(){
+  try{
+    const saved=JSON.parse(localStorage.getItem('bl_bg_founder')||'null');
+    localStorage.removeItem('bl_bg_active');
+    if(saved&&saved.access_token){ await sb.auth.setSession({access_token:saved.access_token, refresh_token:saved.refresh_token}); }
+    localStorage.removeItem('bl_bg_founder');
+  }catch(e){ console.warn('exit break-glass',e); }
+  window.location.href='app.html';
 }
 async function founderDeleteUser(userId){
   const u=(S._founderUsers||[]).find(x=>x.user_id===userId);
@@ -6885,6 +6913,9 @@ render();
 async function boot(){
   const authed = await initAuth();
   if(!authed) return;
+
+  // If a founder is mid-break-glass, surface the banner (session is the target's).
+  try{ S._breakGlass = JSON.parse(localStorage.getItem('bl_bg_active')||'null'); }catch(e){ S._breakGlass=null; }
 
   // Load role + district from Supabase (user_roles is the source of truth)
   try{
