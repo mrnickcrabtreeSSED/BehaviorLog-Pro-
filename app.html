@@ -3727,12 +3727,10 @@ function clearTemplate(kind){
 
 // ── AI DOCUMENT GENERATION ─────────────────────────────────────────────────
 function generateFbaDoc(docType, clientId){
-  // GATE: AI document generation is a higher-tier paid feature.
-  // Even for behaviorists, surface the disclaimer + DPA requirements before any
-  // student data could be transmitted to the Anthropic API.
-  S._modal={type:'fbaPaywall', docType, clientId, expanded:false};
-  rerender();
-  return;
+  // AI generation is ON. Student/staff names are redacted before anything is sent
+  // to the Anthropic API (see _generateFbaDoc_internal) — only de-identified
+  // behavioral data leaves the app, then the real name is substituted back locally.
+  _generateFbaDoc_internal(docType, clientId);
 }
 
 // Original generation logic preserved for future activation under a signed DPA.
@@ -3779,16 +3777,16 @@ function _generateFbaDoc_internal(docType, clientId){
 
   const hypotheses = fbaSessions
     .filter(s=>s.fbaHypothesis&&s.fbaHypothesis.trim())
-    .map(s=>`[${new Date(s.startedAt).toLocaleDateString()} - ${s.behavioristName||'Behaviorist'}]: ${s.fbaHypothesis}`)
+    .map(s=>`[${new Date(s.startedAt).toLocaleDateString()} - [BEHAVIORIST]]: ${s.fbaHypothesis}`)
     .join('\n');
 
   const locations = [...new Set(fbaSessions.map(s=>s.location||'').filter(Boolean))];
   const behaviorists = [...new Set(fbaSessions.map(s=>s.behavioristName||'').filter(Boolean))];
 
-  const dataContext = `STUDENT: ${client.name}
+  const dataContext = `STUDENT: [STUDENT]
 FBA SESSIONS: ${fbaSessions.length} (plus ${suppSessions.length} supplemental sessions)
 SETTINGS OBSERVED: ${locations.join(', ')||'not specified'}
-BEHAVIORIST(S): ${behaviorists.join(', ')||'not specified'}
+BEHAVIORIST(S): ${behaviorists.length?'[BEHAVIORIST]':'not specified'}
 TOTAL EVENTS LOGGED: ${allEv.length}
 DATE RANGE: ${fbaSessions.length?new Date(fbaSessions[0].startedAt).toLocaleDateString()+' – '+new Date(fbaSessions[fbaSessions.length-1].startedAt).toLocaleDateString():''}
 
@@ -3844,6 +3842,25 @@ ${dataContext}`
 
   const docLabels = {bip:'BIP Draft', goals:'Behavior Goals', summary:'FBA Summary'};
 
+  // ── PII redaction — the model never receives the student's or staff real names ──
+  // Names are replaced with placeholders before the API call and substituted back
+  // locally after generation, so only de-identified behavioral data leaves the app.
+  const _studentName = client.name || '';
+  const _redact = (txt) => {
+    let out = txt || '';
+    behaviorists.forEach(bn=>{ if(bn&&bn.trim()) out = out.split(bn).join('[BEHAVIORIST]'); });
+    if(_studentName.trim()){
+      out = out.split(_studentName).join('[STUDENT]');
+      const fn = _studentName.trim().split(/\s+/)[0];
+      if(fn.length>2 && fn!==_studentName) out = out.split(fn).join('[STUDENT]');
+    }
+    return out;
+  };
+  const _restore = (txt) => (txt||'')
+    .split('[STUDENT]').join(_studentName||'the student')
+    .split('[BEHAVIORIST]').join(behaviorists.join(', ')||'the behaviorist');
+  const systemPrompt = 'You are an expert school behaviorist drafting professional special-education documents from DE-IDENTIFIED data. The student appears only as the placeholder [STUDENT] and staff as [BEHAVIORIST] — their real names were removed for privacy (FERPA). Write the placeholder [STUDENT] wherever the student would be named; it is substituted back to the real name locally after generation. Never invent, infer, or use any real name. Base everything strictly on the data provided.';
+
   // Show a generating modal
   S._modal = {type:'fbaGenerating', docType, clientId, label:docLabels[docType]};
   rerender();
@@ -3852,17 +3869,18 @@ ${dataContext}`
     method:'POST',
     headers:{'Content-Type':'application/json'},
     body:JSON.stringify({
-      model:'claude-sonnet-4-20250514',
-      max_tokens:2000,
-      messages:[{role:'user',content:prompts[docType]}]
+      model:'claude-opus-4-8',
+      max_tokens:4000,
+      system: systemPrompt,
+      messages:[{role:'user',content: _redact(prompts[docType])}]
     })
   })
   .then(r=>r.json())
   .then(data=>{
     if(data.error){
-      S._modal={type:'fbaDocResult', docType, clientId, label:docLabels[docType], content:'Error: '+data.error.message+'. Check your API key in Settings.'};
+      S._modal={type:'fbaDocResult', docType, clientId, label:docLabels[docType], content:'Error: '+((data.error&&data.error.message)||data.error)+'. Please try again or contact support.'};
     } else {
-      const text = (data.content||[]).map(b=>b.text||'').join('');
+      const text = _restore((data.content||[]).map(b=>b.text||'').join(''));
       S._modal={type:'fbaDocResult', docType, clientId, label:docLabels[docType], content:text};
     }
     rerender();
