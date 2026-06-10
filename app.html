@@ -935,6 +935,9 @@ function setBehMeasure(bid,mode){S._measureTypes[bid]=mode;persist();rerender();
 // "Specialist" gate — behaviorist/school_psych/admin/founder get the FBA/assessment/generation UI.
 function isBehaviorist(){return S._role==='behaviorist'||S._role==='school_psych'||S._role==='admin'||S._role==='founder';}
 function isSchoolPsych(){return S._role==='school_psych';}
+// Clinical specialists only (behaviorist + school psych) — gates latency, intensity,
+// and operational-definition authoring. Narrower than isBehaviorist() (which includes admin/founder).
+function isSpecialist(){return S._role==='behaviorist'||S._role==='school_psych';}
 // Founder inherits all admin powers (so it never loses capability); use isFounder() for founder-only UI.
 function isAdmin(){return S._role==='admin'||S._role==='founder';}
 function isFounder(){return S._role==='founder';}
@@ -1150,7 +1153,7 @@ function buildModal(){
       <input class="input mb4" id="m-beh-label" value="${esc(b.label)}" placeholder="Behavior name…"/>
       <div class="slabel">Measurement Type</div>
       <div style="display:flex;gap:6px;margin-bottom:18px">
-        ${[{id:'frequency',icon:'🔢',label:'Frequency',desc:'Tap = +1 count'},{id:'duration',icon:'⏱',label:'Duration',desc:'Tap start/stop timer'},{id:'intensity',icon:'📊',label:'Intensity',desc:'Timer + severity rating'}].concat(isBehaviorist()?[{id:'latency',icon:'🔄',label:'Latency',desc:'Time to behavior onset'}]:[]).map(mt=>`<div onclick="${isEdit?"setBehMeasure('"+b.id+"','"+mt.id+"');S._modal.beh._m='"+mt.id+"'":"S._modal._newMeasure='"+mt.id+"'"};rerender()" style="flex:1;padding:10px 8px;border-radius:10px;border:2px solid ${curMeasure===mt.id?'var(--accent)':'var(--border)'};background:${curMeasure===mt.id?'var(--accent-soft)':'var(--surface2)'};text-align:center;cursor:pointer;transition:all .15s">
+        ${[{id:'frequency',icon:'🔢',label:'Frequency',desc:'Tap = +1 count'},{id:'duration',icon:'⏱',label:'Duration',desc:'Tap start/stop timer'}].concat(isSpecialist()?[{id:'intensity',icon:'📊',label:'Intensity',desc:'Timer + 1–4 severity'},{id:'latency',icon:'🔄',label:'Latency',desc:'Antecedent → onset'}]:[]).map(mt=>`<div onclick="${isEdit?"setBehMeasure('"+b.id+"','"+mt.id+"');S._modal.beh._m='"+mt.id+"'":"S._modal._newMeasure='"+mt.id+"'"};rerender()" style="flex:1;padding:10px 8px;border-radius:10px;border:2px solid ${curMeasure===mt.id?'var(--accent)':'var(--border)'};background:${curMeasure===mt.id?'var(--accent-soft)':'var(--surface2)'};text-align:center;cursor:pointer;transition:all .15s">
           <div style="font-size:1.3rem">${mt.icon}</div>
           <div style="font-size:.75rem;font-weight:700;margin-top:4px;color:${curMeasure===mt.id?'var(--accent)':'var(--text)'}">${mt.label}</div>
           <div style="font-size:.65rem;color:var(--muted);margin-top:2px">${mt.desc}</div>
@@ -1935,7 +1938,7 @@ function buildModal(){
             <input class="input mb3" id="cs-beh-label" placeholder="Behavior name…" value="${esc(editingId?(S.customs.find(x=>x.id===editingId)||{}).label||'':'')}"/>
             <div style="font-size:.72rem;font-weight:700;letter-spacing:1.5px;text-transform:uppercase;color:var(--muted);margin-bottom:6px">Measurement Type</div>
             <div style="display:flex;gap:5px;margin-bottom:12px">
-              ${[{id:'frequency',icon:'🔢',label:'Frequency'},{id:'duration',icon:'⏱',label:'Duration'},{id:'intensity',icon:'📊',label:'Intensity'}].concat(isBehaviorist()?[{id:'latency',icon:'🔄',label:'Latency'}]:[]).map(mt=>{
+              ${[{id:'frequency',icon:'🔢',label:'Frequency'},{id:'duration',icon:'⏱',label:'Duration'}].concat(isSpecialist()?[{id:'intensity',icon:'📊',label:'Intensity'},{id:'latency',icon:'🔄',label:'Latency'}]:[]).map(mt=>{
                 const curMt=editingId?getBehMeasure(editingId):(m._newMeasure||'duration');
                 return`<div onclick="${editingId?"setBehMeasure('"+editingId+"','"+mt.id+"')":"S._modal._newMeasure='"+mt.id+"';rerender()"}" style="flex:1;padding:8px 4px;border-radius:8px;border:2px solid ${curMt===mt.id?'var(--accent)':'var(--border)'};background:${curMt===mt.id?'var(--accent-soft)':'#fff'};text-align:center;cursor:pointer;transition:all .12s">
                   <div style="font-size:1rem">${mt.icon}</div>
