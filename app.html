@@ -6186,18 +6186,18 @@ function quickGoal(label){
 // jsPDF loads async if available
 
 // ── ADMIN PANEL ────────────────────────────────────────────────────────────
-// ── FOUNDER CONSOLE (SureStep global tier) ──────────────────────────────────
+// ── FOUNDER CONSOLE (SureStep — business/macro only; NEVER employee or student data) ──
 function buildFounder(){
   if(!isFounder()) return '<div class="sub-view"><p>Access denied.</p></div>';
-  if(S._founderUsers===undefined){ loadFounder().then(rerender); }
+  if(S._founderData===undefined){ loadFounder().then(rerender); }
   const tab=S._founderTab||'districts';
-  const tabs=[{id:'districts',icon:'🏫',label:'Districts & Users'},{id:'audit',icon:'📜',label:'Audit Log'}];
+  const tabs=[{id:'districts',icon:'🏫',label:'Districts'},{id:'audit',icon:'📜',label:'Audit Log'}];
   let body='';
   if(tab==='audit'){ if(S._founderAudit===undefined){ loadFounderAudit().then(rerender); } body=founderAuditTab(); }
-  else body=founderDistrictsTab(S._founderUsers||[], S._founderDistricts||[]);
+  else body=founderDistrictsTab(S._founderData||[]);
   return `<div class="sub-view">
     <div class="row between" style="margin-bottom:14px">
-      <div><h1 style="margin:0;font-size:1.3rem">🏢 Founder Console</h1><div class="muted" style="font-size:.78rem">SureStep · ${esc(_currentUser&&_currentUser.email||'')}</div></div>
+      <div><h1 style="margin:0;font-size:1.3rem">🏢 Founder Console</h1><div class="muted" style="font-size:.78rem">SureStep · business overview · no employee or student data</div></div>
       <button class="btn btn-ghost btn-sm" onclick="S.view='home';rerender()">✕ Close</button>
     </div>
     <div class="row gap2" style="margin-bottom:14px">
@@ -6206,43 +6206,35 @@ function buildFounder(){
     ${body}
   </div>`;
 }
-function founderDistrictsTab(users,districts){
+function _daysLeft(end){ if(!end) return null; return Math.round((new Date(end+'T00:00:00')-new Date())/86400000); }
+function founderDistrictsTab(data){
   const ROLES=[['founder','🏢'],['admin','🛡️'],['behaviorist','🧠'],['school_psych','🧩'],['teacher','👩‍🏫']];
-  const byDist={}; users.forEach(u=>{const k=u.district_id||'_none';(byDist[k]=byDist[k]||[]).push(u);});
-  const cards=districts.map(d=>{
-    const us=byDist[d.id]||[];
-    const counts=ROLES.map(([r,ic])=>`${ic} ${us.filter(u=>u.role===r).length}`).join(' · ');
+  const cards=(data||[]).map(d=>{
+    const rc=d.role_counts||{};
+    const counts=ROLES.map(([r,ic])=>`${ic} ${rc[r]||0}`).join(' · ');
+    const billable=(d.billable_roles||[]).reduce((n,r)=>n+(rc[r]||0),0);
+    const rate=Number(d.monthly_rate||0);
+    const dl=_daysLeft(d.contract_end);
+    const badge = d.contract_end ? (dl<0?`<span class="tag" style="background:#fde8e8;color:var(--red)">contract expired ${-dl}d ago</span>`:(dl<=30?`<span class="tag" style="background:var(--amber-soft);color:var(--amber)">expires in ${dl}d</span>`:`<span class="tag" style="background:var(--accent-soft);color:var(--accent)">active · ${dl}d left</span>`)) : '<span class="tag" style="background:var(--surface2);color:var(--muted)">no contract dates</span>';
+    const sites=d.sites||[];
     return `<div class="card mb3">
-      <div style="font-weight:800">${esc(d.name)}</div>
-      <div class="muted" style="font-size:.74rem;margin-bottom:8px">${us.length} user${us.length!==1?'s':''} · ${counts}</div>
-      ${us.length?us.map(u=>founderUserRow(u,districts)).join(''):'<div class="muted" style="font-size:.8rem">No users yet.</div>'}
+      <div class="row between" style="align-items:flex-start"><div style="font-weight:800;font-size:1rem">${esc(d.name)}</div>${badge}</div>
+      <div class="muted" style="font-size:.78rem;margin:4px 0 10px">${d.total_users||0} user${d.total_users!==1?'s':''} · ${counts}</div>
+      <div class="row gap2 wrap" style="margin-bottom:10px">
+        <button class="btn btn-sm" onclick="founderEditContract('${d.district_id}')">📄 Contract & billing</button>
+        <button class="btn btn-sm" onclick="founderInvoice('${d.district_id}')">🧾 Export invoice</button>
+        <button class="btn btn-sm" onclick="founderAssignAdmin('${d.district_id}')">🛡️ Assign district admin</button>
+        <button class="btn btn-sm" onclick="founderBreakGlass('${d.district_id}')" title="Break-glass troubleshooting">🔓 Break-glass</button>
+      </div>
+      <div class="slabel" style="margin-bottom:5px">Sites — ${sites.length} <button class="btn btn-ghost btn-xs" onclick="founderAddSite('${d.district_id}')">＋ Add</button></div>
+      ${sites.length?sites.map(s=>`<div class="row between" style="font-size:.78rem;padding:4px 0;border-bottom:1px solid var(--border)"><span>🏫 ${esc(s.name)}</span><span class="muted">${s.users||0} user${s.users!==1?'s':''}</span></div>`).join(''):'<div class="muted" style="font-size:.76rem">No sites yet — add the schools in this district.</div>'}
+      <div class="muted" style="font-size:.72rem;margin-top:8px">Billing: ${billable} billable seat${billable!==1?'s':''} × $${rate}/mo = <strong>$${(billable*rate).toFixed(2)}/mo</strong></div>
     </div>`;
   }).join('');
-  const un=byDist['_none']||[];
-  const unCard=un.length?`<div class="card mb3" style="border-color:var(--amber)"><div style="font-weight:800;color:var(--amber)">⚠️ Unassigned (no district)</div><div class="muted" style="font-size:.74rem;margin-bottom:8px">New sign-ups land here until you assign a district.</div>${un.map(u=>founderUserRow(u,districts)).join('')}</div>`:'';
   return `<div class="card mb3">
       <div class="slabel" style="margin-bottom:6px">Create a district</div>
       <div class="row gap2"><input class="input" id="new-district" placeholder="e.g. Lincoln Unified School District" style="flex:1"/><button class="btn btn-primary" onclick="founderCreateDistrict()">＋ Create</button></div>
-    </div>${cards}${unCard}`;
-}
-function founderUserRow(u,districts){
-  const roleOpts=['teacher','behaviorist','school_psych','admin','founder'];
-  const me=u.user_id===(_currentUser&&_currentUser.id);
-  return `<div style="border:1px solid var(--border);border-radius:9px;padding:9px 11px;margin-bottom:7px">
-    <div style="font-weight:700;font-size:.84rem;word-break:break-all">${esc(u.display_name||u.email)} ${me?'<span class="tag" style="background:var(--accent-soft);color:var(--accent)">you</span>':''}</div>
-    <div class="muted" style="font-size:.72rem;word-break:break-all">${esc(u.email)} · ${u.students||0} student${u.students!==1?'s':''}</div>
-    <div class="row gap2 wrap" style="margin-top:8px;align-items:center">
-      <select onchange="founderSetRole('${u.user_id}',this.value)" class="input" style="font-size:.76rem;padding:4px 8px;width:auto">
-        ${roleOpts.map(r=>`<option value="${r}" ${u.role===r?'selected':''}>${r}</option>`).join('')}
-      </select>
-      <select onchange="founderMoveDistrict('${u.user_id}',this.value)" class="input" style="font-size:.76rem;padding:4px 8px;width:auto">
-        <option value="">— move district —</option>${districts.map(d=>`<option value="${d.id}" ${u.district_id===d.id?'selected':''}>${esc(d.name)}</option>`).join('')}
-      </select>
-      <button class="btn btn-ghost btn-sm" onclick="founderExport('${u.user_id}')" title="FERPA export">⬇️ Export</button>
-      ${me?'':`<button class="btn btn-ghost btn-sm" onclick="breakGlass('${u.user_id}','${esc(u.email)}')" title="Break-glass: sign in as this user">🔓 Enter</button>`}
-      ${me?'':`<button class="btn btn-ghost btn-sm" style="color:var(--red)" onclick="founderDeleteUser('${u.user_id}')" title="Delete user + data">🗑️</button>`}
-    </div>
-  </div>`;
+    </div>${cards||'<div class="muted">No districts yet.</div>'}`;
 }
 function founderAuditTab(){
   const a=S._founderAudit||[];
@@ -6251,62 +6243,79 @@ function founderAuditTab(){
   </div>`;
 }
 async function loadFounder(){
-  if(!isFounder()){ S._founderUsers=[]; S._founderDistricts=[]; return; }
-  try{
-    const [u,d]=await Promise.all([ sb.rpc('founder_list_users'), sb.from('districts').select('*').order('name') ]);
-    S._founderUsers=u.data||[]; S._founderDistricts=d.data||[];
-  }catch(e){ console.warn('loadFounder failed',e); S._founderUsers=S._founderUsers||[]; S._founderDistricts=S._founderDistricts||[]; }
+  if(!isFounder()){ S._founderData=[]; return; }
+  try{ const {data,error}=await sb.rpc('founder_overview'); if(error)throw error; S._founderData=data||[]; }
+  catch(e){ console.warn('loadFounder failed',e); S._founderData=S._founderData||[]; }
 }
 async function loadFounderAudit(){
   try{ const {data}=await sb.from('audit_log').select('*').order('created_at',{ascending:false}).limit(100); S._founderAudit=data||[]; }
   catch(e){ console.warn('audit load failed',e); S._founderAudit=[]; }
 }
-async function logAudit(action,target,detail){
-  try{ await sb.from('audit_log').insert({actor_id:_currentUser.id,actor_email:_currentUser.email,action:action,target_user_id:(target&&target.user_id)||null,target_email:(target&&target.email)||null,district_id:(target&&target.district_id)||S._district||null,detail:detail||null}); }
+async function logAudit(action,districtId,detail,targetEmail){
+  try{ await sb.from('audit_log').insert({actor_id:_currentUser.id,actor_email:_currentUser.email,action:action,target_email:targetEmail||null,district_id:districtId||null,detail:detail||null}); }
   catch(e){ console.warn('audit insert failed',e); }
 }
+function _founderDistrict(id){ return (S._founderData||[]).find(d=>d.district_id===id); }
 async function founderCreateDistrict(){
   const el=document.getElementById('new-district'); const name=(el&&el.value||'').trim();
   if(!name){ alert('Enter a district name.'); return; }
-  try{ const {error}=await sb.from('districts').insert({name:name,created_by:_currentUser.id}); if(error)throw error;
-    await logAudit('create_district',null,{name:name}); await loadFounder(); rerender();
+  try{ const {data,error}=await sb.from('districts').insert({name:name,created_by:_currentUser.id}).select('id').single(); if(error)throw error;
+    await logAudit('create_district',data&&data.id,{name:name}); await loadFounder(); rerender();
   }catch(e){ alert('Could not create district: '+(e.message||e)); }
 }
-async function founderSetRole(userId,role){
-  const u=(S._founderUsers||[]).find(x=>x.user_id===userId);
-  try{ const {error}=await sb.from('user_roles').update({role:role}).eq('user_id',userId); if(error)throw error;
-    await logAudit('set_role',u,{role:role}); if(userId===_currentUser.id) S._role=role;
-    await loadFounder(); rerender();
-  }catch(e){ alert('Could not change role: '+(e.message||e)); }
+async function founderAddSite(districtId){
+  const name=(prompt('Site / school name:')||'').trim(); if(!name) return;
+  try{ const {error}=await sb.from('sites').insert({district_id:districtId,name:name}); if(error)throw error;
+    await logAudit('create_site',districtId,{name:name}); await loadFounder(); rerender();
+  }catch(e){ alert('Could not add site: '+(e.message||e)); }
 }
-async function founderMoveDistrict(userId,districtId){
-  if(!districtId) return;
-  const u=(S._founderUsers||[]).find(x=>x.user_id===userId);
-  try{ const {error}=await sb.from('user_roles').update({district_id:districtId}).eq('user_id',userId); if(error)throw error;
-    await logAudit('move_district',u,{district_id:districtId}); if(userId===_currentUser.id) S._district=districtId;
-    await loadFounder(); rerender();
-  }catch(e){ alert('Could not move user: '+(e.message||e)); }
+async function founderEditContract(districtId){
+  const d=_founderDistrict(districtId); if(!d) return;
+  const start=prompt('Contract START date (YYYY-MM-DD), blank to clear:', d.contract_start||''); if(start===null) return;
+  const end=prompt('Contract END date (YYYY-MM-DD), blank to clear:', d.contract_end||''); if(end===null) return;
+  const rate=prompt('Monthly rate per billable seat (number):', d.monthly_rate||0); if(rate===null) return;
+  const patch={contract_start:start.trim()||null,contract_end:end.trim()||null,monthly_rate:Number(rate)||0};
+  try{ const {error}=await sb.from('districts').update(patch).eq('id',districtId); if(error)throw error;
+    await logAudit('set_contract',districtId,patch); await loadFounder(); rerender();
+  }catch(e){ alert('Could not save contract: '+(e.message||e)); }
 }
-async function founderExport(userId){
-  const u=(S._founderUsers||[]).find(x=>x.user_id===userId);
-  try{
-    const {data,error}=await sb.from('user_data').select('data,updated_at').eq('user_id',userId).single();
-    if(error&&error.code!=='PGRST116') throw error;
-    const payload={exported_at:new Date().toISOString(),exported_by:_currentUser.email,user:{id:userId,email:u&&u.email,role:u&&u.role,district:u&&u.district_name},data:data?data.data:{}};
-    const blob=new Blob([JSON.stringify(payload,null,2)],{type:'application/json'});
-    const a=document.createElement('a'); a.href=URL.createObjectURL(blob);
-    a.download='ferpa-export-'+(((u&&u.email)||userId).replace(/[^a-z0-9]/gi,'_'))+'.json';
-    document.body.appendChild(a); a.click(); a.remove();
-    await logAudit('ferpa_export',u,null);
-  }catch(e){ alert('Export failed: '+(e.message||e)); }
+async function founderAssignAdmin(districtId){
+  const d=_founderDistrict(districtId); if(!d) return;
+  const email=(prompt('Email to invite as District Admin of '+d.name+':')||'').trim().toLowerCase();
+  if(!email){ return; } if(!email.includes('@')){ alert('Enter a valid email.'); return; }
+  const code=Math.random().toString(36).slice(2,8).toUpperCase();
+  try{ const {error}=await sb.from('invites').insert({code:code,role:'admin',label:'District Admin — '+d.name,created_by:_currentUser.id,district_id:districtId}); if(error)throw error;
+    const link=window.location.origin+'/index.html?invite='+code;
+    await logAudit('assign_admin',districtId,null,email);
+    fetch('/api/send-email',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({to:email,subject:'You are invited as District Admin — BehaviorLog Pro',html:'<p>You have been invited to administer <strong>'+esc(d.name)+'</strong> on BehaviorLog Pro.</p><p>Sign in with <strong>'+esc(email)+'</strong>: <a href="'+link+'">'+link+'</a></p>'})}).catch(function(){});
+    prompt('District Admin invite created for '+email+'. Send them this link:', link);
+  }catch(e){ alert('Could not create admin invite: '+(e.message||e)); }
+}
+function founderInvoice(districtId){
+  const d=_founderDistrict(districtId); if(!d) return;
+  const rc=d.role_counts||{}; const rate=Number(d.monthly_rate||0);
+  const lines=(d.billable_roles||[]).map(r=>({role:r,seats:rc[r]||0,rate:rate,amount:(rc[r]||0)*rate}));
+  const total=lines.reduce((n,l)=>n+l.amount,0);
+  const invoice={invoice_generated:new Date().toISOString(),generated_by:_currentUser.email,district:d.name,contract_start:d.contract_start,contract_end:d.contract_end,monthly_rate:rate,billable_roles:d.billable_roles,line_items:lines,total_monthly:total,note:'Teachers are not billed.'};
+  const blob=new Blob([JSON.stringify(invoice,null,2)],{type:'application/json'});
+  const a=document.createElement('a'); a.href=URL.createObjectURL(blob);
+  a.download='invoice-'+d.name.replace(/[^a-z0-9]/gi,'_')+'.json';
+  document.body.appendChild(a); a.click(); a.remove();
+  logAudit('export_invoice',districtId,{total_monthly:total});
+}
+async function founderBreakGlass(districtId){
+  const d=_founderDistrict(districtId);
+  const email=(prompt('Break-glass: enter the email of the user in '+((d&&d.name)||'this district')+' to sign in AS for troubleshooting:')||'').trim().toLowerCase();
+  if(!email){ return; } if(!email.includes('@')){ alert('Enter a valid email.'); return; }
+  await breakGlass(email);
 }
 // ── Break-glass: founder signs in AS a target user (full session). ──────────
-async function breakGlass(userId,email){
+async function breakGlass(email){
   if(!confirm('Enter '+email+' account for troubleshooting? You will be signed in AS this user until you click Exit. Every break-glass is logged.')) return;
   try{
     const {data:{session}}=await sb.auth.getSession();
     if(!session){ alert('No active session.'); return; }
-    const resp=await fetch('/api/break-glass',{method:'POST',headers:{'Content-Type':'application/json','Authorization':'Bearer '+session.access_token},body:JSON.stringify({target_user_id:userId})});
+    const resp=await fetch('/api/break-glass',{method:'POST',headers:{'Content-Type':'application/json','Authorization':'Bearer '+session.access_token},body:JSON.stringify({target_email:email})});
     const data=await resp.json().catch(()=>({}));
     if(!resp.ok || !data.access_token){ alert('Break-glass failed: '+(data.error||('HTTP '+resp.status))); return; }
     // Save the founder session so Exit can restore it; mark impersonation active.
@@ -6324,16 +6333,6 @@ async function exitBreakGlass(){
     localStorage.removeItem('bl_bg_founder');
   }catch(e){ console.warn('exit break-glass',e); }
   window.location.href='app.html';
-}
-async function founderDeleteUser(userId){
-  const u=(S._founderUsers||[]).find(x=>x.user_id===userId);
-  if(!confirm('Permanently delete '+((u&&u.email)||'this user')+' and ALL their student data? This cannot be undone. Export first if you need a record.')) return;
-  try{
-    await logAudit('ferpa_delete',u,{students:(u&&u.students)||0});
-    await sb.from('user_data').delete().eq('user_id',userId);
-    await sb.from('user_roles').delete().eq('user_id',userId);
-    await loadFounder(); rerender();
-  }catch(e){ alert('Delete failed: '+(e.message||e)); }
 }
 function buildAdmin(){
   if(!isAdmin()) return '<div class="sub-view"><p>Access denied.</p></div>';
