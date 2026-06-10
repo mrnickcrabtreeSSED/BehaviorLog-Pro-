@@ -882,7 +882,9 @@ let S={
   _assScored:[],       // scored assessment results
   _assGenType:null,    // BIP or FBA
   _measureTypes:{},    // behId → 'frequency'|'duration'|'intensity' (default: duration)
-  _role:'teacher',     // 'teacher' or 'behaviorist' — gates FBA creation + assessments
+  _role:'teacher',     // teacher|behaviorist|school_psych|admin|founder — gates features
+  _district:null,      // district_id (uuid) the current user belongs to
+  _districtName:'',    // district name, for display
   _clientSearch:'',    // student search filter
   _adminTab:'users',   // admin panel tab
   _adminUsers:[],      // loaded users for admin
@@ -929,10 +931,12 @@ function isToday(ts){return new Date(ts).toISOString().slice(0,10)===new Date().
 function allBehs(){return[...PRESETS,...S.customs];}
 function getBehMeasure(bid){return S._measureTypes[bid]||'duration';}
 function setBehMeasure(bid,mode){S._measureTypes[bid]=mode;persist();rerender();}
-// "Specialist" gate — behaviorist AND school_psych get the FBA/assessment/generation UI; admin too.
-function isBehaviorist(){return S._role==='behaviorist'||S._role==='school_psych'||S._role==='admin';}
+// "Specialist" gate — behaviorist/school_psych/admin/founder get the FBA/assessment/generation UI.
+function isBehaviorist(){return S._role==='behaviorist'||S._role==='school_psych'||S._role==='admin'||S._role==='founder';}
 function isSchoolPsych(){return S._role==='school_psych';}
-function isAdmin(){return S._role==='admin';}
+// Founder inherits all admin powers (so it never loses capability); use isFounder() for founder-only UI.
+function isAdmin(){return S._role==='admin'||S._role==='founder';}
+function isFounder(){return S._role==='founder';}
 // Returns behaviors for a specific client — their custom selection only.
 // New students start with zero behaviors; the observer adds them before/during observation.
 function clientBehs(cid){
@@ -1122,6 +1126,7 @@ function buildApp(){
   if(S.view==='analytics')    body=buildAnalytics();
   if(S.view==='assessments')  body=buildAssessments();
   if(S.view==='admin')        body=buildAdmin();
+  if(S.view==='founder')      body=buildFounder();
   if(S.view==='interval')     body=buildIntervalRecord();
   if(S.view==='intervalSummary') body=buildIntervalSummary();
 
@@ -1640,15 +1645,17 @@ function buildModal(){
 
     <!-- Role selector -->
     <div class="slabel">Account Role</div>
-    <div style="display:flex;align-items:center;gap:10px;padding:12px 14px;border-radius:10px;border:1.5px solid ${S._role==='admin'?'var(--orange)':isBehaviorist()?'var(--fba-green)':'var(--accent)'};background:${S._role==='admin'?'var(--orange-soft)':isBehaviorist()?'var(--fba-soft)':'var(--accent-soft)'};margin-bottom:8px">
-      <div style="font-size:1.4rem">${S._role==='admin'?'🛡️':isSchoolPsych()?'🧩':isBehaviorist()?'🧠':'👩‍🏫'}</div>
+    <div style="display:flex;align-items:center;gap:10px;padding:12px 14px;border-radius:10px;border:1.5px solid ${isFounder()?'var(--purple)':S._role==='admin'?'var(--orange)':isBehaviorist()?'var(--fba-green)':'var(--accent)'};background:${isFounder()?'var(--purple-soft)':S._role==='admin'?'var(--orange-soft)':isBehaviorist()?'var(--fba-soft)':'var(--accent-soft)'};margin-bottom:8px">
+      <div style="font-size:1.4rem">${isFounder()?'🏢':S._role==='admin'?'🛡️':isSchoolPsych()?'🧩':isBehaviorist()?'🧠':'👩‍🏫'}</div>
       <div>
-        <div style="font-weight:800;font-size:.88rem;color:${S._role==='admin'?'var(--orange)':isBehaviorist()?'var(--fba-green)':'var(--accent)'}">${S._role==='admin'?'Administrator':isSchoolPsych()?'School Psychologist':isBehaviorist()?'Behaviorist':'Teacher'}</div>
-        <div style="font-size:.72rem;color:var(--muted)">${S._role==='admin'?'Full access + user management':isBehaviorist()?'Behaviorist sessions, assessments, goals, BIP/FBA reports':'Behavior tracking, data collection, view goals & FBA data'}</div>
+        <div style="font-weight:800;font-size:.88rem;color:${isFounder()?'var(--purple)':S._role==='admin'?'var(--orange)':isBehaviorist()?'var(--fba-green)':'var(--accent)'}">${isFounder()?'SureStep Founder':S._role==='admin'?'District Administrator':isSchoolPsych()?'School Psychologist':isBehaviorist()?'Behaviorist':'Teacher'}</div>
+        <div style="font-size:.72rem;color:var(--muted)">${isFounder()?'Global access · all districts · break-glass':S._role==='admin'?'Manages users in your district':isBehaviorist()?'Behaviorist sessions, assessments, goals, BIP/FBA reports':'Behavior tracking, data collection, view goals & FBA data'}</div>
       </div>
     </div>
-    <p style="font-size:.72rem;color:var(--muted);margin-bottom:4px">Role is assigned by your administrator. Contact them to change access level.</p>
-    ${isAdmin()?`<button class="btn btn-sm" style="background:var(--orange);color:#fff;margin-top:6px" onclick="S.view='admin';rerender();closeModal()">🛡️ Open Admin Panel</button>`:''}
+    ${S._districtName?`<div style="font-size:.74rem;color:var(--muted);margin-bottom:6px">🏫 District: <strong>${esc(S._districtName)}</strong></div>`:''}
+    <p style="font-size:.72rem;color:var(--muted);margin-bottom:4px">${isFounder()?'You hold SureStep founder access.':'Role is assigned by your administrator. Contact them to change access level.'}</p>
+    ${isFounder()?`<button class="btn btn-sm" style="background:var(--purple);color:#fff;margin-top:6px;margin-right:6px" onclick="S.view='founder';rerender();closeModal()">🏢 Founder Console</button>`:''}
+    ${S._role==='admin'?`<button class="btn btn-sm" style="background:var(--orange);color:#fff;margin-top:6px" onclick="S.view='admin';rerender();closeModal()">🛡️ Open Admin Panel</button>`:''}
 
     <hr class="divider" style="margin:18px 0"/>
 
@@ -6177,6 +6184,129 @@ function quickGoal(label){
 // jsPDF loads async if available
 
 // ── ADMIN PANEL ────────────────────────────────────────────────────────────
+// ── FOUNDER CONSOLE (SureStep global tier) ──────────────────────────────────
+function buildFounder(){
+  if(!isFounder()) return '<div class="sub-view"><p>Access denied.</p></div>';
+  if(S._founderUsers===undefined){ loadFounder().then(rerender); }
+  const tab=S._founderTab||'districts';
+  const tabs=[{id:'districts',icon:'🏫',label:'Districts & Users'},{id:'audit',icon:'📜',label:'Audit Log'}];
+  let body='';
+  if(tab==='audit'){ if(S._founderAudit===undefined){ loadFounderAudit().then(rerender); } body=founderAuditTab(); }
+  else body=founderDistrictsTab(S._founderUsers||[], S._founderDistricts||[]);
+  return `<div class="sub-view">
+    <div class="row between" style="margin-bottom:14px">
+      <div><h1 style="margin:0;font-size:1.3rem">🏢 Founder Console</h1><div class="muted" style="font-size:.78rem">SureStep · ${esc(_currentUser&&_currentUser.email||'')}</div></div>
+      <button class="btn btn-ghost btn-sm" onclick="S.view='home';rerender()">✕ Close</button>
+    </div>
+    <div class="row gap2" style="margin-bottom:14px">
+      ${tabs.map(t=>`<button class="btn btn-sm ${tab===t.id?'btn-primary':''}" onclick="S._founderTab='${t.id}';rerender()">${t.icon} ${t.label}</button>`).join('')}
+    </div>
+    ${body}
+  </div>`;
+}
+function founderDistrictsTab(users,districts){
+  const ROLES=[['founder','🏢'],['admin','🛡️'],['behaviorist','🧠'],['school_psych','🧩'],['teacher','👩‍🏫']];
+  const byDist={}; users.forEach(u=>{const k=u.district_id||'_none';(byDist[k]=byDist[k]||[]).push(u);});
+  const cards=districts.map(d=>{
+    const us=byDist[d.id]||[];
+    const counts=ROLES.map(([r,ic])=>`${ic} ${us.filter(u=>u.role===r).length}`).join(' · ');
+    return `<div class="card mb3">
+      <div style="font-weight:800">${esc(d.name)}</div>
+      <div class="muted" style="font-size:.74rem;margin-bottom:8px">${us.length} user${us.length!==1?'s':''} · ${counts}</div>
+      ${us.length?us.map(u=>founderUserRow(u,districts)).join(''):'<div class="muted" style="font-size:.8rem">No users yet.</div>'}
+    </div>`;
+  }).join('');
+  const un=byDist['_none']||[];
+  const unCard=un.length?`<div class="card mb3" style="border-color:var(--amber)"><div style="font-weight:800;color:var(--amber)">⚠️ Unassigned (no district)</div><div class="muted" style="font-size:.74rem;margin-bottom:8px">New sign-ups land here until you assign a district.</div>${un.map(u=>founderUserRow(u,districts)).join('')}</div>`:'';
+  return `<div class="card mb3">
+      <div class="slabel" style="margin-bottom:6px">Create a district</div>
+      <div class="row gap2"><input class="input" id="new-district" placeholder="e.g. Lincoln Unified School District" style="flex:1"/><button class="btn btn-primary" onclick="founderCreateDistrict()">＋ Create</button></div>
+    </div>${cards}${unCard}`;
+}
+function founderUserRow(u,districts){
+  const roleOpts=['teacher','behaviorist','school_psych','admin','founder'];
+  const me=u.user_id===(_currentUser&&_currentUser.id);
+  return `<div style="border:1px solid var(--border);border-radius:9px;padding:9px 11px;margin-bottom:7px">
+    <div style="font-weight:700;font-size:.84rem;word-break:break-all">${esc(u.display_name||u.email)} ${me?'<span class="tag" style="background:var(--accent-soft);color:var(--accent)">you</span>':''}</div>
+    <div class="muted" style="font-size:.72rem;word-break:break-all">${esc(u.email)} · ${u.students||0} student${u.students!==1?'s':''}</div>
+    <div class="row gap2 wrap" style="margin-top:8px;align-items:center">
+      <select onchange="founderSetRole('${u.user_id}',this.value)" class="input" style="font-size:.76rem;padding:4px 8px;width:auto">
+        ${roleOpts.map(r=>`<option value="${r}" ${u.role===r?'selected':''}>${r}</option>`).join('')}
+      </select>
+      <select onchange="founderMoveDistrict('${u.user_id}',this.value)" class="input" style="font-size:.76rem;padding:4px 8px;width:auto">
+        <option value="">— move district —</option>${districts.map(d=>`<option value="${d.id}" ${u.district_id===d.id?'selected':''}>${esc(d.name)}</option>`).join('')}
+      </select>
+      <button class="btn btn-ghost btn-sm" onclick="founderExport('${u.user_id}')" title="FERPA export">⬇️ Export</button>
+      ${me?'':`<button class="btn btn-ghost btn-sm" style="color:var(--red)" onclick="founderDeleteUser('${u.user_id}')" title="Delete user + data">🗑️</button>`}
+    </div>
+  </div>`;
+}
+function founderAuditTab(){
+  const a=S._founderAudit||[];
+  return `<div class="card"><div class="row between" style="margin-bottom:8px"><div class="slabel">Recent activity (${a.length})</div><button class="btn btn-ghost btn-sm" onclick="loadFounderAudit().then(rerender)">↻ Refresh</button></div>
+    ${a.length?a.map(e=>`<div style="border-bottom:1px solid var(--border);padding:7px 0;font-size:.78rem"><strong>${esc(e.action||'')}</strong> · ${esc(e.actor_email||'?')}${e.target_email?' → '+esc(e.target_email):''}<div class="muted" style="font-size:.7rem">${esc(new Date(e.created_at).toLocaleString())}${e.detail?' · '+esc(JSON.stringify(e.detail)):''}</div></div>`).join(''):'<div class="muted" style="font-size:.8rem">No audit entries yet.</div>'}
+  </div>`;
+}
+async function loadFounder(){
+  if(!isFounder()){ S._founderUsers=[]; S._founderDistricts=[]; return; }
+  try{
+    const [u,d]=await Promise.all([ sb.rpc('founder_list_users'), sb.from('districts').select('*').order('name') ]);
+    S._founderUsers=u.data||[]; S._founderDistricts=d.data||[];
+  }catch(e){ console.warn('loadFounder failed',e); S._founderUsers=S._founderUsers||[]; S._founderDistricts=S._founderDistricts||[]; }
+}
+async function loadFounderAudit(){
+  try{ const {data}=await sb.from('audit_log').select('*').order('created_at',{ascending:false}).limit(100); S._founderAudit=data||[]; }
+  catch(e){ console.warn('audit load failed',e); S._founderAudit=[]; }
+}
+async function logAudit(action,target,detail){
+  try{ await sb.from('audit_log').insert({actor_id:_currentUser.id,actor_email:_currentUser.email,action:action,target_user_id:(target&&target.user_id)||null,target_email:(target&&target.email)||null,district_id:(target&&target.district_id)||S._district||null,detail:detail||null}); }
+  catch(e){ console.warn('audit insert failed',e); }
+}
+async function founderCreateDistrict(){
+  const el=document.getElementById('new-district'); const name=(el&&el.value||'').trim();
+  if(!name){ alert('Enter a district name.'); return; }
+  try{ const {error}=await sb.from('districts').insert({name:name,created_by:_currentUser.id}); if(error)throw error;
+    await logAudit('create_district',null,{name:name}); await loadFounder(); rerender();
+  }catch(e){ alert('Could not create district: '+(e.message||e)); }
+}
+async function founderSetRole(userId,role){
+  const u=(S._founderUsers||[]).find(x=>x.user_id===userId);
+  try{ const {error}=await sb.from('user_roles').update({role:role}).eq('user_id',userId); if(error)throw error;
+    await logAudit('set_role',u,{role:role}); if(userId===_currentUser.id) S._role=role;
+    await loadFounder(); rerender();
+  }catch(e){ alert('Could not change role: '+(e.message||e)); }
+}
+async function founderMoveDistrict(userId,districtId){
+  if(!districtId) return;
+  const u=(S._founderUsers||[]).find(x=>x.user_id===userId);
+  try{ const {error}=await sb.from('user_roles').update({district_id:districtId}).eq('user_id',userId); if(error)throw error;
+    await logAudit('move_district',u,{district_id:districtId}); if(userId===_currentUser.id) S._district=districtId;
+    await loadFounder(); rerender();
+  }catch(e){ alert('Could not move user: '+(e.message||e)); }
+}
+async function founderExport(userId){
+  const u=(S._founderUsers||[]).find(x=>x.user_id===userId);
+  try{
+    const {data,error}=await sb.from('user_data').select('data,updated_at').eq('user_id',userId).single();
+    if(error&&error.code!=='PGRST116') throw error;
+    const payload={exported_at:new Date().toISOString(),exported_by:_currentUser.email,user:{id:userId,email:u&&u.email,role:u&&u.role,district:u&&u.district_name},data:data?data.data:{}};
+    const blob=new Blob([JSON.stringify(payload,null,2)],{type:'application/json'});
+    const a=document.createElement('a'); a.href=URL.createObjectURL(blob);
+    a.download='ferpa-export-'+(((u&&u.email)||userId).replace(/[^a-z0-9]/gi,'_'))+'.json';
+    document.body.appendChild(a); a.click(); a.remove();
+    await logAudit('ferpa_export',u,null);
+  }catch(e){ alert('Export failed: '+(e.message||e)); }
+}
+async function founderDeleteUser(userId){
+  const u=(S._founderUsers||[]).find(x=>x.user_id===userId);
+  if(!confirm('Permanently delete '+((u&&u.email)||'this user')+' and ALL their student data? This cannot be undone. Export first if you need a record.')) return;
+  try{
+    await logAudit('ferpa_delete',u,{students:(u&&u.students)||0});
+    await sb.from('user_data').delete().eq('user_id',userId);
+    await sb.from('user_roles').delete().eq('user_id',userId);
+    await loadFounder(); rerender();
+  }catch(e){ alert('Delete failed: '+(e.message||e)); }
+}
 function buildAdmin(){
   if(!isAdmin()) return '<div class="sub-view"><p>Access denied.</p></div>';
   const adminTab=S._adminTab||'users';
@@ -6399,7 +6529,8 @@ async function generateInvite(){
   const label=document.getElementById('invite-label')?.value||'';
   const code=Math.random().toString(36).slice(2,8).toUpperCase();
   try{
-    await sb.from('invites').insert({code,role,label,created_by:_currentUser.id});
+    // Stamp the inviter's district so the new user lands in the right one (redeem_invite reads it).
+    await sb.from('invites').insert({code,role,label,created_by:_currentUser.id,district_id:S._district||null});
     const link=window.location.origin+'/index.html?invite='+code;
     S._lastInviteLink=link;
     S._lastInviteRole=role;
@@ -6755,38 +6886,33 @@ async function boot(){
   const authed = await initAuth();
   if(!authed) return;
 
-  // Load role from Supabase
+  // Load role + district from Supabase (user_roles is the source of truth)
   try{
-    const {data:roleData}=await sb.from('user_roles').select('role').eq('user_id',_currentUser.id).single();
-    if(roleData) S._role=roleData.role;
-    else {
-      // Check for invite code in URL
+    let {data:roleData}=await sb.from('user_roles').select('role,district_id').eq('user_id',_currentUser.id).single();
+    if(!roleData){
+      // No role yet — provision server-side from an invite code (or default to teacher).
       const params=new URLSearchParams(window.location.search);
       const inviteCode=params.get('invite');
-      if(inviteCode){
-        const {data:inv}=await sb.from('invites').select('*').eq('code',inviteCode).is('used_by',null).single();
-        if(inv){
-          await sb.from('user_roles').upsert({user_id:_currentUser.id,role:inv.role});
-          await sb.from('invites').update({used_by:_currentUser.id,used_at:new Date().toISOString()}).eq('id',inv.id);
-          S._role=inv.role;
-          window.history.replaceState({},'',window.location.pathname);
-        } else {
-          await sb.from('user_roles').upsert({user_id:_currentUser.id,role:'teacher'});
-          S._role='teacher';
-        }
-      } else {
-        await sb.from('user_roles').upsert({user_id:_currentUser.id,role:'teacher'});
-        S._role='teacher';
-      }
+      try{ await sb.rpc('redeem_invite',{p_code:inviteCode||null}); }catch(re){ console.warn('redeem_invite failed:',re); }
+      if(inviteCode) window.history.replaceState({},'',window.location.pathname);
+      ({data:roleData}=await sb.from('user_roles').select('role,district_id').eq('user_id',_currentUser.id).single());
     }
+    S._role=(roleData&&roleData.role)||'teacher';
+    S._district=(roleData&&roleData.district_id)||null;
+    // Resolve the district name for display
+    if(S._district){
+      try{ const {data:d}=await sb.from('districts').select('name').eq('id',S._district).single(); S._districtName=(d&&d.name)||''; }
+      catch(de){ S._districtName=''; }
+    } else { S._districtName=''; }
   }catch(e){
     console.error('Role load error:',e);
-    // Try cached role from localStorage
-    try{ const cachedRole=localStorage.getItem('bl_role'); if(cachedRole) S._role=cachedRole; else S._role='teacher'; }
-    catch(le){S._role='teacher';}
+    // Offline fallback — cached role/district
+    try{ const cachedRole=localStorage.getItem('bl_role'); S._role=cachedRole||'teacher'; }catch(le){S._role='teacher';}
+    try{ S._districtName=localStorage.getItem('bl_district')||''; }catch(le){}
   }
-  // Cache role for offline use
+  // Cache role + district for offline use
   try{localStorage.setItem('bl_role',S._role);}catch(e){}
+  try{localStorage.setItem('bl_district',S._districtName||'');}catch(e){}
 
   // Load cloud data
   stored = await loadFromCloud();
