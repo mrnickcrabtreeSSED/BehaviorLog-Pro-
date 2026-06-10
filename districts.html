@@ -1,0 +1,329 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1.0">
+<title>BehaviorLog Pro — Behavior data your district can stand behind | Sure Step Education</title>
+<meta name="description" content="One-tap behavior capture for teachers, clinical-grade measurement for BCBAs and school psychologists, and district-level ownership, isolation, and audit trails. FERPA-first behavior data infrastructure for K–12 special education.">
+<style>
+:root{
+  --navy:#1e3a5f; --navy-deep:#162d4a; --teal:#2a8fa8; --teal-light:#3bbcd4;
+  --paper:#f7f5f1; --paper-deep:#efece5; --surface:#ffffff;
+  --ink:#22262e; --ink-soft:#5a6170; --rule:#e2ddd2; --rule-soft:#ece8de;
+  --amber:#e0962e; --amber-soft:#fdf3e1; --red:#c0563f; --green:#2e8c6a; --green-soft:#e7f4ee;
+  --font-display:Georgia,'Times New Roman',serif;
+  --font-body:-apple-system,BlinkMacSystemFont,'Segoe UI','Helvetica Neue',Arial,sans-serif;
+}
+*{margin:0;padding:0;box-sizing:border-box}
+html{scroll-behavior:smooth}
+body{font-family:var(--font-body);background:var(--paper);color:var(--ink);line-height:1.65;font-size:17px}
+h1,h2,h3,.serif{font-family:var(--font-display);font-weight:700;color:var(--navy);letter-spacing:-.01em}
+.wrap{max-width:1060px;margin:0 auto;padding:0 28px}
+.kicker{display:inline-block;font-size:.74rem;font-weight:700;letter-spacing:.16em;text-transform:uppercase;color:var(--teal);margin-bottom:14px}
+.btn{display:inline-block;padding:13px 26px;border-radius:10px;font-weight:700;font-size:.95rem;text-decoration:none;transition:transform .15s,box-shadow .15s;cursor:pointer}
+.btn-primary{background:var(--navy);color:#fff;box-shadow:0 4px 14px rgba(30,58,95,.25)}
+.btn-primary:hover{transform:translateY(-2px);box-shadow:0 8px 22px rgba(30,58,95,.3)}
+.btn-ghost{border:2px solid var(--rule);color:var(--navy);background:var(--surface)}
+.btn-ghost:hover{border-color:var(--teal);color:var(--teal)}
+section{padding:84px 0}
+.sec-head{max-width:740px;margin-bottom:44px}
+.sec-head h2{font-size:2.1rem;line-height:1.2;margin:8px 0 16px}
+.sec-head p{color:var(--ink-soft);font-size:1.05rem}
+
+/* nav */
+nav{position:sticky;top:0;z-index:50;background:rgba(247,245,241,.92);backdrop-filter:blur(10px);border-bottom:1px solid var(--rule-soft)}
+.nav-in{display:flex;align-items:center;gap:26px;height:64px}
+.brand{display:flex;align-items:center;gap:10px;text-decoration:none;margin-right:auto}
+.brand b{font-family:var(--font-display);font-size:1.12rem;color:var(--navy)}
+.brand b span{color:var(--teal)}
+.brand small{display:block;font-size:.62rem;letter-spacing:.14em;text-transform:uppercase;color:var(--ink-soft);font-weight:600}
+.nav-links{display:flex;gap:22px;align-items:center}
+.nav-links a{font-size:.86rem;font-weight:600;color:var(--ink-soft);text-decoration:none}
+.nav-links a:hover{color:var(--navy)}
+.nav-cta{background:var(--navy);color:#fff!important;padding:9px 18px;border-radius:9px}
+@media(max-width:840px){.nav-links a:not(.nav-cta){display:none}}
+
+/* hero */
+.hero{padding:96px 0 70px;background:linear-gradient(180deg,var(--paper) 0%,var(--paper-deep) 100%)}
+.hero h1{font-size:clamp(2.3rem,5.2vw,3.6rem);line-height:1.12;max-width:820px;margin-bottom:22px}
+.hero h1 em{font-style:italic;color:var(--teal)}
+.hero .sub{font-size:1.18rem;color:var(--ink-soft);max-width:680px;margin-bottom:34px}
+.hero .sub strong{color:var(--navy)}
+.hero-ctas{display:flex;gap:14px;flex-wrap:wrap;margin-bottom:54px}
+.stats{display:grid;grid-template-columns:repeat(auto-fit,minmax(190px,1fr));gap:1px;background:var(--rule);border:1px solid var(--rule);border-radius:14px;overflow:hidden}
+.stat{background:var(--surface);padding:20px 22px}
+.stat b{display:block;font-family:var(--font-display);font-size:1.6rem;color:var(--navy)}
+.stat span{font-size:.8rem;color:var(--ink-soft);font-weight:600}
+
+/* problem cards */
+.cards{display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:18px}
+.card{background:var(--surface);border:1px solid var(--rule);border-radius:14px;padding:26px 26px 24px}
+.card h3{font-size:1.12rem;margin-bottom:8px}
+.card p{font-size:.92rem;color:var(--ink-soft)}
+.card .tag{display:inline-block;font-size:.66rem;font-weight:800;letter-spacing:.12em;text-transform:uppercase;padding:4px 10px;border-radius:6px;margin-bottom:12px;background:var(--amber-soft);color:var(--amber)}
+
+/* roles */
+.roles{display:grid;grid-template-columns:repeat(auto-fit,minmax(290px,1fr));gap:18px}
+.role{background:var(--surface);border:1px solid var(--rule);border-radius:16px;padding:30px 28px;position:relative;overflow:hidden}
+.role::before{content:'';position:absolute;top:0;left:0;right:0;height:5px}
+.role.t::before{background:var(--teal-light)} .role.s::before{background:var(--green)} .role.d::before{background:var(--navy)}
+.role .who{font-size:.7rem;font-weight:800;letter-spacing:.13em;text-transform:uppercase;color:var(--ink-soft)}
+.role h3{font-size:1.3rem;margin:6px 0 14px}
+.role ul{list-style:none}
+.role li{font-size:.9rem;color:var(--ink-soft);padding:7px 0 7px 26px;position:relative;border-top:1px solid var(--rule-soft)}
+.role li::before{content:'✓';position:absolute;left:2px;color:var(--green);font-weight:800}
+.role li b{color:var(--ink)}
+
+/* district band */
+.band{background:var(--navy);color:#fff;border-radius:20px;padding:54px 48px;position:relative;overflow:hidden}
+.band::after{content:'';position:absolute;width:420px;height:420px;border-radius:50%;background:radial-gradient(circle,rgba(59,188,212,.25),transparent 70%);top:-160px;right:-120px}
+.band .kicker{color:var(--teal-light)}
+.band h2{color:#fff;font-size:2rem;max-width:620px;margin-bottom:14px}
+.band>p{color:rgba(255,255,255,.75);max-width:640px;margin-bottom:34px}
+.band-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(250px,1fr));gap:14px;position:relative;z-index:1}
+.band-item{background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.14);border-radius:12px;padding:18px 20px}
+.band-item b{display:block;font-size:.95rem;margin-bottom:5px;color:#fff}
+.band-item span{font-size:.83rem;color:rgba(255,255,255,.68)}
+@media(max-width:700px){.band{padding:38px 26px}}
+
+/* measurement table */
+.mtable{width:100%;border-collapse:collapse;background:var(--surface);border:1px solid var(--rule);border-radius:14px;overflow:hidden;font-size:.92rem}
+.mtable th{background:var(--paper-deep);text-align:left;padding:13px 18px;font-size:.72rem;letter-spacing:.1em;text-transform:uppercase;color:var(--ink-soft)}
+.mtable td{padding:14px 18px;border-top:1px solid var(--rule-soft);vertical-align:top}
+.mtable td:first-child{font-weight:700;color:var(--navy);white-space:nowrap}
+.mtable td:last-child{color:var(--ink-soft)}
+.pill{display:inline-block;font-size:.68rem;font-weight:800;padding:3px 10px;border-radius:20px;background:var(--green-soft);color:var(--green);margin-left:8px;vertical-align:middle}
+
+/* privacy */
+.priv{display:grid;grid-template-columns:repeat(auto-fit,minmax(300px,1fr));gap:18px}
+.priv .card h3{display:flex;align-items:center;gap:9px;font-size:1.05rem}
+
+/* AI */
+.ai-flow{display:flex;align-items:stretch;gap:0;flex-wrap:wrap;background:var(--surface);border:1px solid var(--rule);border-radius:16px;overflow:hidden}
+.ai-step{flex:1;min-width:230px;padding:28px 26px;border-right:1px solid var(--rule-soft)}
+.ai-step:last-child{border-right:none}
+.ai-step .n{font-family:var(--font-display);font-size:1.9rem;color:var(--teal);font-weight:700}
+.ai-step h3{font-size:1.02rem;margin:8px 0 8px}
+.ai-step p{font-size:.86rem;color:var(--ink-soft)}
+.ai-note{margin-top:18px;background:var(--amber-soft);border:1px solid #f0d9ab;border-radius:12px;padding:16px 20px;font-size:.88rem;color:#7a5a1e}
+
+/* pricing */
+.price-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:18px;align-items:stretch}
+.price{background:var(--surface);border:1px solid var(--rule);border-radius:16px;padding:32px 30px;text-align:left}
+.price.hot{border:2px solid var(--teal);box-shadow:0 12px 34px rgba(42,143,168,.14)}
+.price .who{font-size:.7rem;font-weight:800;letter-spacing:.13em;text-transform:uppercase;color:var(--ink-soft)}
+.price .amt{font-family:var(--font-display);font-size:2.2rem;color:var(--navy);margin:10px 0 2px}
+.price .amt small{font-size:.95rem;color:var(--ink-soft);font-family:var(--font-body);font-weight:600}
+.price p{font-size:.88rem;color:var(--ink-soft);margin-top:10px}
+
+/* fine print */
+.fine{background:var(--surface);border:1px solid var(--rule);border-radius:16px;padding:8px 30px}
+.fine details{border-bottom:1px solid var(--rule-soft);padding:16px 0}
+.fine details:last-child{border-bottom:none}
+.fine summary{cursor:pointer;font-weight:700;color:var(--navy);font-size:.97rem;list-style:none;display:flex;justify-content:space-between;align-items:center}
+.fine summary::after{content:'+';font-family:var(--font-display);font-size:1.3rem;color:var(--teal)}
+.fine details[open] summary::after{content:'–'}
+.fine details p{margin-top:10px;font-size:.9rem;color:var(--ink-soft)}
+
+/* CTA */
+.cta{background:linear-gradient(135deg,var(--navy-deep),var(--navy) 60%,#1a4a6f);border-radius:22px;padding:64px 48px;text-align:center;color:#fff}
+.cta h2{color:#fff;font-size:2.2rem;margin-bottom:14px}
+.cta p{color:rgba(255,255,255,.75);max-width:560px;margin:0 auto 30px}
+.cta .btn-primary{background:#fff;color:var(--navy)}
+footer{padding:44px 0 60px;color:var(--ink-soft);font-size:.82rem}
+footer a{color:var(--teal);text-decoration:none}
+.foot-in{display:flex;justify-content:space-between;gap:18px;flex-wrap:wrap;border-top:1px solid var(--rule);padding-top:28px}
+</style>
+</head>
+<body>
+
+<nav><div class="wrap nav-in">
+  <a class="brand" href="#top">
+    <svg width="34" height="34" viewBox="0 0 72 72"><rect x="4" y="52" width="12" height="12" rx="2" fill="none" stroke="#1e3a5f55" stroke-width="3"/><rect x="20" y="40" width="13" height="24" rx="3" fill="#3bbcd4"/><rect x="37" y="24" width="13" height="40" rx="3" fill="#2a8fa8"/><rect x="54" y="8" width="13" height="56" rx="3" fill="#1e3a5f"/></svg>
+    <span><b>BehaviorLog<span> Pro</span></b><small>Sure Step Education</small></span>
+  </a>
+  <div class="nav-links">
+    <a href="#problem">The problem</a>
+    <a href="#platform">Platform</a>
+    <a href="#district">District control</a>
+    <a href="#privacy">Privacy</a>
+    <a href="#pricing">Pricing</a>
+    <a class="nav-cta" href="mailto:nick@surestepeducation.com?subject=BehaviorLog%20Pro%20district%20demo">Book a demo</a>
+  </div>
+</div></nav>
+
+<header class="hero" id="top"><div class="wrap">
+  <span class="kicker">Behavior data infrastructure · K–12 special education districts</span>
+  <h1>Behavior data your district can <em>stand behind.</em></h1>
+  <p class="sub">One-tap capture for teachers. Clinical-grade measurement for your BCBAs and school psychologists. And for the district: <strong>ownership, isolation, and an audit trail</strong> — so the record that walks into the IEP meeting is the same one that survives a program review.</p>
+  <div class="hero-ctas">
+    <a class="btn btn-primary" href="mailto:nick@surestepeducation.com?subject=BehaviorLog%20Pro%20district%20demo&body=Hi%20Nick%2C%0A%0AWe%27d%20like%20to%20see%20BehaviorLog%20Pro%20for%20our%20district.%0A%0ADistrict%3A%20%0ARole%3A%20%0ANumber%20of%20behaviorists%2Fschool%20psychs%3A%20%0A%0AThanks">Book a 20-minute demo</a>
+    <a class="btn btn-ghost" href="#platform">See how it works ↓</a>
+  </div>
+  <div class="stats">
+    <div class="stat"><b>1 tap</b><span>to log a behavior event, timer running</span></div>
+    <div class="stat"><b>$0</b><span>per teacher — every teacher seat is free</span></div>
+    <div class="stat"><b>100%</b><span>district-owned data, exportable any time</span></div>
+    <div class="stat"><b>Row-level</b><span>security in the database — not just the app</span></div>
+  </div>
+</div></header>
+
+<section id="problem"><div class="wrap">
+  <div class="sec-head">
+    <span class="kicker">The problem</span>
+    <h2>The FBA is defensible. The data behind it usually isn't.</h2>
+    <p>Districts don't lose due-process cases because their behaviorists are wrong. They lose them because the observation record was reconstructed, undated, or sitting in a spreadsheet nobody can authenticate.</p>
+  </div>
+  <div class="cards">
+    <div class="card"><span class="tag">Compliance exposure</span><h3>Discovery finds the gaps</h3><p>A BIP without contemporaneous ABC data behind it is the first thing opposing counsel pulls apart. Clipboards and end-of-week recollection don't hold up — dated, per-event records do.</p></div>
+    <div class="card"><span class="tag">Stretched specialists</span><h3>Your BCBAs cover five schools</h3><p>Every hour a behaviorist spends chasing paper data or re-teaching a tally system is an hour of clinical capacity your district already paid for and didn't get.</p></div>
+    <div class="card"><span class="tag">Vendor sprawl</span><h3>Behavior data lives everywhere</h3><p>Point sheets here, a consumer spreadsheet there, a binder in the psych's car. No isolation between schools, no audit trail, and no answer when a parent asks who has seen their child's record.</p></div>
+  </div>
+</div></section>
+
+<section id="platform" style="background:var(--surface);border-top:1px solid var(--rule-soft);border-bottom:1px solid var(--rule-soft)"><div class="wrap">
+  <div class="sec-head">
+    <span class="kicker">The platform</span>
+    <h2>One record. Three roles. Zero re-entry.</h2>
+    <p>Teachers capture, specialists measure and write, the district governs — all against the same live record, scoped by role.</p>
+  </div>
+  <div class="roles">
+    <div class="role t">
+      <span class="who">Teachers · free, unlimited</span>
+      <h3>Capture in the moment</h3>
+      <ul>
+        <li><b>One tap</b> starts a behavior's duration timer; tap again to end it. Frequency counts ride along.</li>
+        <li><b>Antecedents prompted</b> at the moment of capture — ABC data builds itself, dated and timestamped.</li>
+        <li><b>Specialist-defined behaviors</b> appear on the teacher's screen with the clinical operational definition attached.</li>
+        <li>Works as a phone/tablet app, keeps working offline.</li>
+      </ul>
+    </div>
+    <div class="role s">
+      <span class="who">Behaviorists & school psychs</span>
+      <h3>Measure like a clinician</h3>
+      <ul>
+        <li><b>Latency → duration chains</b>: directive captured, time-to-onset timed, duration timed — in one flow.</li>
+        <li><b>1–4 intensity scales</b> with the specialist's own operational definitions; locked until defined.</li>
+        <li><b>QABF & FAST</b> screening, scored automatically; FBA-readiness gauge per student.</li>
+        <li><b>AI-drafted BIP / FBA / goals</b> from the actual observation data — with student names stripped before any AI processing.</li>
+      </ul>
+    </div>
+    <div class="role d">
+      <span class="who">District administrators</span>
+      <h3>Govern without touching records</h3>
+      <ul>
+        <li><b>Your own district tenant</b> — staff and invites scoped to your district at the database layer.</li>
+        <li><b>Role-based invitations</b>: assign teacher, behaviorist, or school-psych access in seconds.</li>
+        <li><b>Audit log</b> of sensitive actions — exports, deletions, role changes, support access.</li>
+        <li><b>FERPA export & deletion</b> on request, in machine-readable form.</li>
+      </ul>
+    </div>
+  </div>
+</div></section>
+
+<section id="district"><div class="wrap">
+  <div class="band">
+    <span class="kicker">District control</span>
+    <h2>Multi-tenant by architecture, not by promise.</h2>
+    <p>BehaviorLog Pro was rebuilt this year around districts as first-class tenants. Your data is isolated from every other district by row-level security in the database itself — and everything privileged is logged.</p>
+    <div class="band-grid">
+      <div class="band-item"><b>District isolation</b><span>A district admin sees only their district's staff. A teacher sees only their own students. Enforced in the database, verified by test.</span></div>
+      <div class="band-item"><b>Sites & headcounts</b><span>Organize staff by school site; see seats by role at a glance — the numbers your invoice is built from.</span></div>
+      <div class="band-item"><b>Contract clarity</b><span>Term dates and seat pricing visible on the account — no surprise renewals.</span></div>
+      <div class="band-item"><b>Audited support</b><span>If Sure Step ever signs into an account to troubleshoot, the access is disclosed in our privacy policy and written to the audit log — every time.</span></div>
+      <div class="band-item"><b>Scoped sharing</b><span>A teacher grants a specialist access to <em>one student</em> — never the roster. The specialist's behavior targets flow back to that student only.</span></div>
+      <div class="band-item"><b>Exit with your data</b><span>Full JSON export any time; certified deletion within 60 days of contract end. The record is the district's, full stop.</span></div>
+    </div>
+  </div>
+</div></section>
+
+<section id="measurement" style="background:var(--surface);border-top:1px solid var(--rule-soft);border-bottom:1px solid var(--rule-soft)"><div class="wrap">
+  <div class="sec-head">
+    <span class="kicker">Clinical measurement</span>
+    <h2>The four measures your specialists actually use — done right.</h2>
+    <p>Measurement types are role-gated: teachers get the simple ones, clinicians get the clinical ones. Intensity can't even be selected until the specialist has written their 1–4 operational definitions.</p>
+  </div>
+  <table class="mtable">
+    <tr><th>Measure</th><th>Who</th><th>How it works in the room</th></tr>
+    <tr><td>Frequency</td><td>Everyone</td><td>Tap = +1, timestamped, with the antecedent captured alongside. A +1 counter also rides inside a running duration window for repeat incidents.</td></tr>
+    <tr><td>Duration</td><td>Everyone</td><td>Tap the behavior to start the timer, tap to end. Notes and consequence captured on the way out.</td></tr>
+    <tr><td>Latency<span class="pill">specialist</span></td><td>BCBA / Psych</td><td>The directive (antecedent) is required up front, then time-to-onset is clocked; the moment the behavior is observed, the duration timer takes over in the same incident.</td></tr>
+    <tr><td>Intensity<span class="pill">specialist</span></td><td>BCBA / Psych</td><td>A 1–4 severity scale defined in the specialist's own operational language — unlocked only once the scale is written, so ratings are never ad-hoc.</td></tr>
+  </table>
+</div></section>
+
+<section id="ai"><div class="wrap">
+  <div class="sec-head">
+    <span class="kicker">AI, with guardrails</span>
+    <h2>Drafts the documents. Never sees a name.</h2>
+    <p>BehaviorLog Pro can draft a BIP, FBA summary, or measurable IEP goals directly from the observation record — using your district's own templates as the structural guide.</p>
+  </div>
+  <div class="ai-flow">
+    <div class="ai-step"><div class="n">1</div><h3>De-identify first</h3><p>Before anything leaves the app, the student's and staff names are stripped and replaced with placeholders. Only de-identified behavioral data is processed.</p></div>
+    <div class="ai-step"><div class="n">2</div><h3>Draft from real data</h3><p>The draft is built from the actual sessions — frequencies, durations, antecedent patterns, hypotheses — not from boilerplate.</p></div>
+    <div class="ai-step"><div class="n">3</div><h3>Restore locally</h3><p>The student's name is substituted back on the specialist's own device. The AI provider never received it.</p></div>
+    <div class="ai-step"><div class="n">4</div><h3>Clinician signs off</h3><p>Every output is a draft. It is reviewed, edited, and approved by your licensed behaviorist or school psychologist before it goes near an IEP.</p></div>
+  </div>
+  <div class="ai-note"><b>District choice, in writing.</b> AI drafting is enabled per-district under your data privacy agreement — and the de-identification above is documented in our privacy policy, not just in this brochure.</div>
+</div></section>
+
+<section id="privacy" style="background:var(--surface);border-top:1px solid var(--rule-soft);border-bottom:1px solid var(--rule-soft)"><div class="wrap">
+  <div class="sec-head">
+    <span class="kicker">Student privacy</span>
+    <h2>Built for the most protected records in education.</h2>
+    <p>You're not buying a promise — you're buying an architecture. The privacy policy says what the database enforces.</p>
+  </div>
+  <div class="priv">
+    <div class="card"><h3>🔐 Row-level security</h3><p>Every table is scoped at the database layer. A request without the right identity returns nothing — even if the application had a bug.</p></div>
+    <div class="card"><h3>🏛 FERPA school-official model</h3><p>The district owns the records; Sure Step operates as a school official under 34 CFR § 99.31(a)(1), with CSDPA / SDPC data privacy agreements supported.</p></div>
+    <div class="card"><h3>🚫 SOPIPA clean</h3><p>No ads, no profiles, no sale of data, ever. Deletion on request. Material policy changes carry 30-day written notice to your district.</p></div>
+    <div class="card"><h3>📜 Audit logging</h3><p>Exports, deletions, role changes, and any support access are written to an audit log your district administrator can review.</p></div>
+    <div class="card"><h3>🇺🇸 US hosting, encrypted</h3><p>TLS 1.2+ in transit, AES-256 at rest, US-region infrastructure. Sign-in by Google or email; passwords stored only as salted bcrypt hashes.</p></div>
+    <div class="card"><h3>🧾 Read it yourself</h3><p>The full privacy policy is public — including the sections on support access and audit logging. <a href="privacy.html" style="color:var(--teal)">Read it →</a></p></div>
+  </div>
+</div></section>
+
+<section id="pricing"><div class="wrap">
+  <div class="sec-head">
+    <span class="kicker">Pricing</span>
+    <h2>Priced like a tool, not a platform tax.</h2>
+    <p>You pay for the clinicians who get the clinical features. Everyone who feeds them data rides free — because charging per teacher is how behavior data ends up back on clipboards.</p>
+  </div>
+  <div class="price-grid">
+    <div class="price"><span class="who">Teachers</span><div class="amt">Free<small> · always</small></div><p>Unlimited teacher seats. Capture, ABC data, shared behavior targets, offline mode, exports. No per-teacher line item, ever.</p></div>
+    <div class="price hot"><span class="who">Specialists</span><div class="amt">Per seat<small> /month</small></div><p>Behaviorists and school psychologists. All clinical measurement, assessments, document drafting, and student-sharing. District admin seats included. Rate set per district contract.</p></div>
+    <div class="price"><span class="who">District pilot</span><div class="amt">Let's talk</div><p>Start with one school and your existing specialists. We set up your district tenant, import nothing (fresh, clean record), and you evaluate against a real caseload.</p></div>
+  </div>
+</div></section>
+
+<section id="fine" style="padding-top:0"><div class="wrap">
+  <div class="sec-head" style="margin-bottom:26px">
+    <span class="kicker">The fine print, up front</span>
+    <h2>What we'd want to know if we were you.</h2>
+  </div>
+  <div class="fine">
+    <details><summary>Who is behind this?</summary><p>Sure Step Education — founded by working special-education practitioners. BehaviorLog Pro is built and supported by the founders; when you email, a founder answers. DailyWins, our goal-progress tracker for non-public schools, is the sister product.</p></details>
+    <details><summary>What does rollout actually take?</summary><p>It's a web app (installable on phones and tablets — no app store). We create your district tenant; your district admin sends role-based invite links; staff sign in with Google or email. A school can be live the same afternoon.</p></details>
+    <details><summary>Can we leave?</summary><p>Yes, cleanly. Your data exports in machine-readable JSON at any time, and on contract end all pupil records are returned and then deleted within 60 days, with written certification.</p></details>
+    <details><summary>What about the AI features — can we turn them off?</summary><p>AI drafting is a district-level decision made under your DPA. With it off, everything else works identically. With it on, names are stripped before processing and every draft requires clinician review.</p></details>
+    <details><summary>Is this a student-facing app?</summary><p>No. Students never log in and never enter data. All records are created by your authorized staff, which keeps the COPPA surface simple and the FERPA chain of custody clean.</p></details>
+    <details><summary>What's genuinely new here vs. a spreadsheet?</summary><p>Three things a spreadsheet can't do: per-event timestamps captured in the moment (contemporaneity you can defend), database-enforced access scoping (who-saw-what you can answer), and clinical measurement flows (latency chains, defined intensity scales) that produce data a BCBA can actually base a function hypothesis on.</p></details>
+  </div>
+</div></section>
+
+<section style="padding-top:10px"><div class="wrap">
+  <div class="cta">
+    <h2>See your district's behavior data story in 20 minutes.</h2>
+    <p>Bring one real (de-identified) scenario from your caseload. We'll show you the teacher tap, the specialist's measurement, and the draft FBA — live, on the actual product.</p>
+    <a class="btn btn-primary" href="mailto:nick@surestepeducation.com?subject=BehaviorLog%20Pro%20district%20demo&body=Hi%20Nick%2C%0A%0AWe%27d%20like%20a%20district%20demo%20of%20BehaviorLog%20Pro.%0A%0ADistrict%3A%20%0ARole%3A%20%0ANumber%20of%20behaviorists%2Fschool%20psychs%3A%20%0APreferred%20times%3A%20%0A%0AThanks">Book the demo</a>
+    <p style="margin-top:22px;font-size:.84rem">nick@surestepeducation.com · <a href="pitch.html" style="color:var(--teal-light)">View the pitch deck →</a></p>
+  </div>
+</div></section>
+
+<footer><div class="wrap foot-in">
+  <div>© 2026 Sure Step Education. All rights reserved.</div>
+  <div><a href="privacy.html">Privacy policy</a> &nbsp;·&nbsp; <a href="index.html">Staff sign-in</a> &nbsp;·&nbsp; <a href="pitch.html">Pitch deck</a></div>
+</div></footer>
+
+</body>
+</html>
