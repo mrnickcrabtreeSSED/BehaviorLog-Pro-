@@ -37,10 +37,10 @@ tr:nth-child(even) td{background:#f4f2ee}
 </div>
 <div class="container">
 <a href="index.html" class="back">← Back to BehaviorLog Pro</a>
-<p class="meta">Effective Date: April 10, 2026 &nbsp;|&nbsp; Last Updated: April 10, 2026</p>
+<p class="meta">Effective Date: April 10, 2026 &nbsp;|&nbsp; Last Updated: June 10, 2026</p>
 
 <h2>1. Introduction</h2>
-<p>BehaviorLog Pro is a web-based behavior tracking and analysis application developed by Sure Step Education for use by special education professionals in K–12 school settings. The application enables teachers to record student behavioral data (frequency, duration, intensity) during classroom observations, and enables licensed behaviorists to conduct structured behavioral observations, administer functional assessment screening tools (QABF, FAST), score assessment results, manage behavioral goals, and generate Behavior Intervention Plans (BIP) and Functional Behavior Assessments (FBA).</p>
+<p>BehaviorLog Pro is a web-based behavior tracking and analysis application developed by Sure Step Education for use by special education professionals in K–12 school settings. The application enables teachers to record student behavioral data (frequency, duration, intensity) during classroom observations, and enables licensed behaviorists and school psychologists to conduct structured behavioral observations, administer functional assessment screening tools (QABF, FAST), score assessment results, manage behavioral goals, and generate Behavior Intervention Plans (BIP) and Functional Behavior Assessments (FBA). Access is organized by school district and by user role (teacher, behaviorist, school psychologist, district administrator, and Sure Step administrator), as described in §7.5–§7.6.</p>
 <p>BehaviorLog Pro is accessible at <strong>behavior-log-pro.vercel.app</strong> and is designed exclusively for educational purposes.</p>
 <p>This Privacy Policy describes how Sure Step Education collects, uses, stores, and protects information in connection with BehaviorLog Pro. This policy is designed to comply with:</p>
 <ul>
@@ -71,19 +71,21 @@ tr:nth-child(even) td{background:#f4f2ee}
 <li>Functional assessment responses (QABF and FAST instruments)</li>
 <li>Assessment scoring results and identified behavioral function categories</li>
 <li>Behavioral goals and progress data</li>
-<li>Linked behaviorist assignment</li>
+<li>Linked behaviorist / shared-specialist assignment, and specialist-defined behavior targets and operational definitions</li>
 </ul>
 <h3>3.2 Teacher / Staff Information</h3>
 <ul>
-<li>Full name (from Google OAuth profile)</li>
-<li>Email address (from Google OAuth profile)</li>
-<li>Profile avatar (from Google OAuth profile)</li>
-<li>User role (teacher, behaviorist, or admin)</li>
+<li>Full name and profile avatar (from Google sign-in, where used)</li>
+<li>Email address (from Google sign-in, or entered at email/password registration)</li>
+<li>Account password — applicable only to email/password accounts, and stored solely as a salted bcrypt hash by our authentication provider; never in plaintext and never accessible to Sure Step Education staff (see §7.2)</li>
+<li>User role (teacher, behaviorist, school psychologist, district administrator, or Sure Step administrator)</li>
+<li>Assigned school district and, where configured, site/school</li>
 </ul>
 <h3>3.3 Technical Information</h3>
 <ul>
 <li>Authentication session tokens</li>
 <li>Browser type and version (standard HTTP headers)</li>
+<li>A local copy of the signed-in user's own authorized data is cached in the browser's local storage to support offline use and faster loading; it remains on that device only and is intended to be cleared on sign-out</li>
 <li>No IP addresses, device identifiers, or tracking cookies are collected or stored by BehaviorLog Pro</li>
 </ul>
 
@@ -95,9 +97,9 @@ tr:nth-child(even) td{background:#f4f2ee}
 <li>Scoring assessment instruments (QABF, FAST) to identify behavioral functions</li>
 <li>Generating Behavior Intervention Plans, Functional Behavior Assessments, and behavioral goals</li>
 <li>Providing behaviorists with aggregated data visualizations and analytics</li>
-<li>Facilitating communication between teachers and behaviorists regarding student behavior</li>
+<li>Facilitating collaboration between teachers and specialists: a teacher may grant a behaviorist or school psychologist read access to a specific student, and those specialists may define behavior targets and operational definitions that the connected teacher then uses for that student</li>
 <li>Sending assessment forms to respondents (parents, teachers, staff) via email</li>
-<li>Managing user accounts, roles, and access permissions</li>
+<li>Managing user accounts, roles, and access permissions, and organizing access by school district (including district-administrator management of users within their own district)</li>
 </ul>
 
 <h2>5. Prohibited Uses</h2>
@@ -123,15 +125,15 @@ tr:nth-child(even) td{background:#f4f2ee}
 <ul>
 <li>Database and authentication: Supabase (AWS infrastructure, US regions)</li>
 <li>Application hosting and serverless functions: Vercel (US regions)</li>
-<li>No student data is stored on local devices or in browser storage beyond active session state</li>
+<li>A local copy of the signed-in user's own authorized data may be cached in browser local storage to enable offline use and faster loading; this cache is limited to that user's authorized data, remains on that device, and is intended to be cleared on sign-out</li>
 </ul>
 <h3>7.2 Security Measures</h3>
 <ul>
 <li>TLS 1.2+ encryption for all data in transit (HTTPS enforced)</li>
 <li>AES-256 encryption for data at rest (provided by Supabase/AWS)</li>
-<li>Google OAuth 2.0 authentication (no passwords stored by BehaviorLog Pro)</li>
-<li>Row-Level Security (RLS) policies on database tables ensuring users can only access their own data</li>
-<li>Role-based access control (teacher, behaviorist, admin) enforced at both application and database levels</li>
+<li>Authentication via Google OAuth 2.0 or email/password. For email/password accounts, credentials are stored only as salted bcrypt hashes by our authentication provider (Supabase) — never in plaintext and never accessible to Sure Step Education staff</li>
+<li>Row-Level Security (RLS) policies on database tables restricting each user to their authorized data — their own records, plus the specific district-scoped or shared-student data an administrator or specialist is authorized to access</li>
+<li>Role-based access control (teacher, behaviorist, school psychologist, district administrator, Sure Step administrator) enforced at both the application and database levels</li>
 <li>API keys stored exclusively as server-side environment variables, never exposed to the browser</li>
 <li>Serverless proxy architecture for all third-party API calls</li>
 <li>Invite-based registration system preventing unauthorized account creation</li>
@@ -142,6 +144,17 @@ tr:nth-child(even) td{background:#f4f2ee}
 <p><strong>Name:</strong> Nicholas Crabtree<br>
 <strong>Title:</strong> Co-Founder, Sure Step Education<br>
 <strong>Email:</strong> nicholas@surestepeducation.com</p>
+<h3>7.5 User Roles and District Organization</h3>
+<p>Access is organized by school district, and each user holds a role that determines what they can see and do:</p>
+<ul>
+<li><strong>Teacher</strong> — records behavioral data for their own students.</li>
+<li><strong>Behaviorist / School Psychologist</strong> — conduct assessments, define behavior targets and operational definitions, manage goals, and generate BIP/FBA documents; may be granted read access to a specific student by that student's teacher.</li>
+<li><strong>District Administrator</strong> — manages users and invitations within their own district only.</li>
+<li><strong>Sure Step Administrator (Founder)</strong> — Sure Step personnel who provision districts and oversee organization-level information such as per-district user counts and contract/billing details. In the ordinary course they see only this organization-level information and do <strong>not</strong> view student or staff records, except via the audited support access described in §7.6.</li>
+</ul>
+<h3>7.6 Administrative Access, Support ("Break-Glass") Access, and Audit Logging</h3>
+<p>To provide technical support and troubleshooting, authorized Sure Step personnel may temporarily sign in to and operate the application as a specific user ("break-glass" access). Consistent with Sure Step Education's role as a School Official with a legitimate educational interest under FERPA (34 CFR § 99.31(a)(1)), such access is limited to legitimate support and educational purposes.</p>
+<p>BehaviorLog Pro maintains an <strong>audit log</strong> of sensitive administrative actions — including break-glass access, data export, data deletion, and changes to a user's role or district assignment — recording who performed the action, the affected account, and the time it occurred. Audit records are available to Sure Step Administrators and, for actions scoped to a single district, to that District Administrator.</p>
 
 <h2>8. Breach Notification</h2>
 <p>In the event of an unauthorized disclosure of, or access to, pupil records, Sure Step Education will:</p>
@@ -208,7 +221,7 @@ tr:nth-child(even) td{background:#f4f2ee}
 <table>
 <tr><th>Service</th><th>Purpose</th><th>Data Processed</th></tr>
 <tr><td>Supabase</td><td>Database hosting, user authentication, cloud storage</td><td>All user and student data, authentication tokens</td></tr>
-<tr><td>Google OAuth</td><td>User identity verification and sign-in</td><td>Email address, display name, profile avatar</td></tr>
+<tr><td>Google OAuth</td><td>Optional user sign-in (email/password, handled by Supabase Auth, is the alternative)</td><td>Email address, display name, profile avatar</td></tr>
 <tr><td>Vercel</td><td>Application hosting and serverless function execution</td><td>HTTP requests, environment variables (API keys)</td></tr>
 <tr><td>Resend</td><td>Transactional email delivery (assessment links, invites)</td><td>Recipient email address, email content</td></tr>
 <tr><td>Anthropic (Claude API)</td><td>AI-assisted report generation (BIP, FBA, Goals)</td><td>Anonymized behavioral data for document generation</td></tr>
