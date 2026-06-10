@@ -2302,11 +2302,13 @@ function buildRecord(){
     const mIcon=measure==='frequency'?'🔢':measure==='intensity'?'📊':measure==='latency'?'🔄':'⏱';
     const freqCount=(S.activeSess.events||[]).filter(e=>e.behaviorId===b.id&&e.type==='frequency').length;
     if(inc){
-      return`<div class="beh-btn beh-recording" onclick="startIncident('${b.id}')" style="position:relative">
-        <span class="beh-icon" style="font-size:1.6rem">✅</span>
-        <span class="beh-label" style="color:#b91c1c;font-weight:800">${esc(oppLabel)}</span>
-        <span id="inc-timer-${b.id}" style="font-family:'Courier New',monospace;font-size:.7rem;color:var(--red);font-weight:700;margin-top:2px">${fmt(inc.elapsed||0)}</span>
-        <span style="position:absolute;top:4px;left:4px;width:7px;height:7px;border-radius:50%;background:var(--red);animation:pulse 1s infinite"></span>
+      const isLat=inc.phase==='latency';
+      return`<div class="beh-btn beh-recording" onclick="startIncident('${b.id}')" style="position:relative${isLat?';background:var(--purple-soft);border-color:var(--purple)':''}">
+        <span class="beh-icon" style="font-size:1.6rem">${isLat?'⏳':'✅'}</span>
+        <span class="beh-label" style="color:${isLat?'var(--purple)':'#b91c1c'};font-weight:800">${isLat?esc(b.label):esc(oppLabel)}</span>
+        <span id="inc-timer-${b.id}" style="font-family:'Courier New',monospace;font-size:.7rem;color:${isLat?'var(--purple)':'var(--red)'};font-weight:700;margin-top:2px">${fmt(inc.elapsed||0)}</span>
+        <span style="font-size:.55rem;color:var(--muted)">${isLat?'tap when observed':'tap to end'}</span>
+        <span style="position:absolute;top:4px;left:4px;width:7px;height:7px;border-radius:50%;background:${isLat?'var(--purple)':'var(--red)'};animation:pulse 1s infinite"></span>
       </div>`;
     } else if(measure==='frequency'){
       return`<div class="beh-btn ${activeIncs.length>0?'beh-dimmed':''}" onclick="startIncident('${b.id}')" title="${esc(b.opDef||'')}" style="position:relative">
@@ -2340,9 +2342,9 @@ function buildRecord(){
           </div>
         </div>
         <div style="text-align:center;flex-shrink:0">
-          <div id="inc-timer-${inc.behId}" style="font-family:'Courier New',monospace;font-size:1.4rem;font-weight:800;color:var(--red);line-height:1">${fmt(inc.elapsed||0)}</div>
-          <div style="font-size:.6rem;color:var(--muted);margin-top:2px">duration</div>
-          ${isInitial?`<button class="btn btn-sm" style="margin-top:8px;background:var(--accent);color:#fff;font-weight:800;white-space:nowrap" onclick="logIncidentFreq('${inc.behId}')">+1 incident${fc>0?' · '+fc:''}</button>`:''}
+          <div id="inc-timer-${inc.behId}" style="font-family:'Courier New',monospace;font-size:1.4rem;font-weight:800;color:${inc.phase==='latency'?'var(--purple)':'var(--red)'};line-height:1">${fmt(inc.elapsed||0)}</div>
+          <div style="font-size:.6rem;color:var(--muted);margin-top:2px">${inc.phase==='latency'?'latency · awaiting onset':(inc.latencyMs?'duration · lat '+fmt(inc.latencyMs):'duration')}</div>
+          ${inc.showFreq?`<button class="btn btn-sm" style="margin-top:8px;background:var(--accent);color:#fff;font-weight:800;white-space:nowrap" onclick="logIncidentFreq('${inc.behId}')">+1 incident${fc>0?' · '+fc:''}</button>`:''}
         </div>
       </div>`;}).join('')}
     </div>`;
@@ -5539,22 +5541,41 @@ function startIncident(bid){
     return;
   }
 
-  // ── LATENCY: tap start, tap end = log latency time ──
+  // ── LATENCY → DURATION chain ──
+  // 1) antecedent (the directive) is required to start the latency timer
+  // 2) when the behavior is observed, press the button: latency stops & logs, duration starts
+  // 3) press again to end the duration (with the +1 incident button available meanwhile)
   if(measure==='latency'){
-    if(S.incidents[bid]){
-      const inc=S.incidents[bid];
-      const latMs=Date.now()-inc.startMs;
+    const inc=S.incidents[bid];
+    if(inc){
+      if(inc.phase==='latency'){
+        // Behavior observed → log latency, then immediately start the duration timer (same card).
+        const latMs=Date.now()-inc.startMs;
+        S.activeSess.events.push({
+          id:uid(),type:'latency',
+          behaviorId:inc.behId,behaviorLabel:inc.behLabel,behaviorIcon:inc.behIcon,
+          timestamp:Date.now(),latencyMs:latMs,
+          antecedent:inc.abcA,note:inc.note||'',consequence:''
+        });
+        inc.phase='duration'; inc.startMs=Date.now(); inc.elapsed=0; inc.latencyMs=latMs; inc.showFreq=true;
+        tick();rerender();
+        return;
+      }
+      // Duration phase → end & log duration (carry the latency for context).
+      const durMs=Date.now()-inc.startMs;
       delete S.incidents[bid];
       S.activeSess.events.push({
-        id:uid(),type:'latency',
+        id:uid(),type:'duration',
         behaviorId:inc.behId,behaviorLabel:inc.behLabel,behaviorIcon:inc.behIcon,
-        timestamp:Date.now(),latencyMs:latMs,
+        timestamp:Date.now(),durationMs:durMs,latencyMs:inc.latencyMs||null,
         antecedent:inc.abcA,note:inc.note||'',consequence:''
       });
       rerender();
       return;
     }
-    S.incidents[bid]={behId:bid,behLabel:b.label,behIcon:b.icon,startMs:Date.now(),elapsed:0,abcA:S.abcA,note:'',measure};
+    // START latency — require the antecedent (directive) first.
+    if(!(S.abcA&&S.abcA.trim())){ alert('Enter the antecedent (the directive that triggered the latency) before starting the latency timer.'); return; }
+    S.incidents[bid]={behId:bid,behLabel:b.label,behIcon:b.icon,startMs:Date.now(),elapsed:0,abcA:S.abcA,note:'',measure:'latency',phase:'latency'};
     S.activeBeh=b;
     S.abcA='';
     tick();rerender();
@@ -5572,7 +5593,7 @@ function startIncident(bid){
     return;
   }
   // START new incident
-  S.incidents[bid]={behId:bid,behLabel:b.label,behIcon:b.icon,startMs:Date.now(),elapsed:0,abcA:S.abcA,note:'',measure};
+  S.incidents[bid]={behId:bid,behLabel:b.label,behIcon:b.icon,startMs:Date.now(),elapsed:0,abcA:S.abcA,note:'',measure,phase:'duration',showFreq:(measure==='duration'&&S.activeSess&&S.activeSess.sessType==='initial')};
   S.activeBeh=b;
   S.abcA='';
   tick();
