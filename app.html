@@ -921,7 +921,7 @@ let S={
 function cs(){return S.multiSessions[S.activeClientIdx]||null;}
 function setCs(patch){if(!cs())return;Object.assign(S.multiSessions[S.activeClientIdx],patch);}
 
-function persist(){save({clients:S.clients.filter(c=>!c._shared),customs:S.customs,sessions:S.sessions.filter(s=>!s._shared),goals:S.goals.filter(g=>!g._shared),strengths:S._strengths||{},_bipTemplate:S._bipTemplate||null,_bipTemplateName:S._bipTemplateName||null,_goalTemplate:S._goalTemplate||null,_goalTemplateName:S._goalTemplateName||null,_fbaTemplate:S._fbaTemplate||null,_fbaTemplateName:S._fbaTemplateName||null,_apiKey:S._apiKey||null,_assSent:S._assSent||[],_assScored:S._assScored||[],_measureTypes:S._measureTypes||{},_role:S._role||'teacher'});}
+function persist(){save({clients:S.clients.filter(c=>!c._shared),customs:S.customs,sessions:S.sessions.filter(s=>!s._shared),goals:S.goals.filter(g=>!g._shared),strengths:S._strengths||{},_bipTemplate:S._bipTemplate||null,_bipTemplateName:S._bipTemplateName||null,_goalTemplate:S._goalTemplate||null,_goalTemplateName:S._goalTemplateName||null,_fbaTemplate:S._fbaTemplate||null,_fbaTemplateName:S._fbaTemplateName||null,_apiKey:S._apiKey||null,_assSent:S._assSent||[],_assScored:S._assScored||[],_measureTypes:S._measureTypes||{},_intensityScale:S._intensityScale||null,_role:S._role||'teacher'});}
 function uid(){return Math.random().toString(36).slice(2,9);}
 function genCode(){return Math.random().toString(36).slice(2,8).toUpperCase();}
 function fmt(ms){if(!ms||ms<0)return'00:00';const s=Math.floor(ms/1000);return String(Math.floor(s/60)).padStart(2,'0')+':'+String(s%60).padStart(2,'0');}
@@ -938,6 +938,8 @@ function isSchoolPsych(){return S._role==='school_psych';}
 // Clinical specialists only (behaviorist + school psych) — gates latency, intensity,
 // and operational-definition authoring. Narrower than isBehaviorist() (which includes admin/founder).
 function isSpecialist(){return S._role==='behaviorist'||S._role==='school_psych';}
+// Intensity is selectable only once the user has defined all four levels of their 1–4 scale.
+function intensityScaleDefined(){const s=S._intensityScale;return !!(s&&[1,2,3,4].every(l=>s[l]&&String(s[l]).trim()));}
 // Founder inherits all admin powers (so it never loses capability); use isFounder() for founder-only UI.
 function isAdmin(){return S._role==='admin'||S._role==='founder';}
 function isFounder(){return S._role==='founder';}
@@ -1153,12 +1155,15 @@ function buildModal(){
       <input class="input mb4" id="m-beh-label" value="${esc(b.label)}" placeholder="Behavior name…"/>
       <div class="slabel">Measurement Type</div>
       <div style="display:flex;gap:6px;margin-bottom:18px">
-        ${[{id:'frequency',icon:'🔢',label:'Frequency',desc:'Tap = +1 count'},{id:'duration',icon:'⏱',label:'Duration',desc:'Tap start/stop timer'}].concat(isSpecialist()?[{id:'intensity',icon:'📊',label:'Intensity',desc:'Timer + 1–4 severity'},{id:'latency',icon:'🔄',label:'Latency',desc:'Antecedent → onset'}]:[]).map(mt=>`<div onclick="${isEdit?"setBehMeasure('"+b.id+"','"+mt.id+"');S._modal.beh._m='"+mt.id+"'":"S._modal._newMeasure='"+mt.id+"'"};rerender()" style="flex:1;padding:10px 8px;border-radius:10px;border:2px solid ${curMeasure===mt.id?'var(--accent)':'var(--border)'};background:${curMeasure===mt.id?'var(--accent-soft)':'var(--surface2)'};text-align:center;cursor:pointer;transition:all .15s">
+        ${[{id:'frequency',icon:'🔢',label:'Frequency',desc:'Tap = +1 count'},{id:'duration',icon:'⏱',label:'Duration',desc:'Tap start/stop timer'}].concat(isSpecialist()?((intensityScaleDefined()?[{id:'intensity',icon:'📊',label:'Intensity',desc:'Timer + 1–4 severity'}]:[]).concat([{id:'latency',icon:'🔄',label:'Latency',desc:'Antecedent → onset'}])):[]).map(mt=>`<div onclick="${isEdit?"setBehMeasure('"+b.id+"','"+mt.id+"');S._modal.beh._m='"+mt.id+"'":"S._modal._newMeasure='"+mt.id+"'"};rerender()" style="flex:1;padding:10px 8px;border-radius:10px;border:2px solid ${curMeasure===mt.id?'var(--accent)':'var(--border)'};background:${curMeasure===mt.id?'var(--accent-soft)':'var(--surface2)'};text-align:center;cursor:pointer;transition:all .15s">
           <div style="font-size:1.3rem">${mt.icon}</div>
           <div style="font-size:.75rem;font-weight:700;margin-top:4px;color:${curMeasure===mt.id?'var(--accent)':'var(--text)'}">${mt.label}</div>
           <div style="font-size:.65rem;color:var(--muted);margin-top:2px">${mt.desc}</div>
         </div>`).join('')}
       </div>
+      ${isSpecialist()&&!intensityScaleDefined()?`<div style="font-size:.72rem;color:var(--amber);margin:-8px 0 14px">📊 Define your 1–4 intensity scale in ⚙️ Settings to enable the Intensity measure.</div>`:''}
+      ${isSpecialist()?`<div class="slabel">Operational definition <span style="font-weight:400;text-transform:none;letter-spacing:0;font-size:.72rem;color:var(--muted);margin-left:6px">optional · reused across all your students</span></div>
+      <textarea class="input mb4" id="m-beh-opdef" placeholder="Observable, measurable description of this behavior…" style="min-height:62px;resize:vertical">${esc(b.opDef||'')}</textarea>`:''}
       <div class="row gap2">
         <button class="btn btn-primary" style="flex:1" onclick="saveBehModal()">Save</button>
         ${isEdit&&!m.beh.preset?`<button class="btn btn-danger" onclick="deleteBehModal()">Delete</button>`:''}
@@ -1670,13 +1675,19 @@ function buildModal(){
       <p style="font-size:.8rem;color:var(--muted);margin-bottom:12px">${allBehs().length} behaviors · tap to edit, or add custom ones</p>
       <div style="display:flex;flex-wrap:wrap;gap:6px;margin-bottom:12px">
         ${PRESETS.map(b=>`<div onclick="openEditBeh('${b.id}',true);closeModal();" style="display:inline-flex;align-items:center;gap:5px;padding:5px 11px;border-radius:8px;border:1.5px solid var(--border);background:var(--surface2);cursor:pointer;font-size:.78rem;font-weight:700;transition:all .15s" onmouseover="this.style.borderColor='var(--accent)';this.style.background='var(--accent-soft)'" onmouseout="this.style.borderColor='var(--border)';this.style.background='var(--surface2)'">${b.icon} ${esc(b.label)}</div>`).join('')}
-        ${S.customs.map(b=>`<div onclick="openEditBeh('${b.id}',false);closeModal();" style="display:inline-flex;align-items:center;gap:5px;padding:5px 11px;border-radius:8px;border:1.5px solid var(--purple);background:var(--purple-soft);cursor:pointer;font-size:.78rem;font-weight:700">${b.icon} ${esc(b.label)} ✏️</div>`).join('')}
+        ${S.customs.map(b=>`<div title="${esc(b.opDef||'No operational definition yet')}" onclick="openEditBeh('${b.id}',false);closeModal();" style="display:inline-flex;align-items:center;gap:5px;padding:5px 11px;border-radius:8px;border:1.5px solid var(--purple);background:var(--purple-soft);cursor:pointer;font-size:.78rem;font-weight:700">${b.icon} ${esc(b.label)} ${b.opDef?'📝':''}✏️</div>`).join('')}
       </div>
       <button class="btn btn-primary btn-sm" onclick="openAddBeh();closeModal()">+ Add Custom Behavior</button>
     </div>
 
     <hr class="divider" style="margin:18px 0"/>
 
+    <!-- Intensity scale (specialist only) -->
+    ${isSpecialist()?`<div class="slabel">📊 Intensity Scale (1–4)</div>
+    <p style="font-size:.76rem;color:var(--muted);margin:4px 0 10px;line-height:1.5">Define what each level means. Intensity becomes available as a measurement type once all four are filled, and these definitions apply to every behavior you measure by intensity.</p>
+    ${[1,2,3,4].map(l=>`<div style="margin-bottom:8px"><div class="slabel" style="font-size:.7rem;margin-bottom:3px;color:${INT_TEXT[l]}">Level ${l} · ${INT_LABELS[l]}</div><input class="input" id="int-scale-${l}" placeholder="What does ${INT_LABELS[l].toLowerCase()} look like?…" value="${esc((S._intensityScale&&S._intensityScale[l])||'')}" oninput="if(!S._intensityScale)S._intensityScale={};S._intensityScale[${l}]=this.value" onchange="persist()"/></div>`).join('')}
+    <div style="font-size:.74rem;font-weight:600;color:${intensityScaleDefined()?'var(--green)':'var(--amber)'}">${intensityScaleDefined()?'✓ Intensity measure is enabled.':'⚠ Fill all four levels to enable the Intensity measure.'}</div>
+    <hr class="divider" style="margin:18px 0"/>`:''}
     <!-- Document Templates (behaviorist only) -->
     ${isBehaviorist()?`<div class="slabel" style="color:var(--fba-dark)">🧠 FBA Document Templates</div>
     <p style="font-size:.78rem;color:var(--muted);margin-top:4px;margin-bottom:12px;line-height:1.5">Upload your district BIP and Goal templates. The AI will use them as structure guides when generating documents in the FBA tab.</p>
@@ -1938,7 +1949,7 @@ function buildModal(){
             <input class="input mb3" id="cs-beh-label" placeholder="Behavior name…" value="${esc(editingId?(S.customs.find(x=>x.id===editingId)||{}).label||'':'')}"/>
             <div style="font-size:.72rem;font-weight:700;letter-spacing:1.5px;text-transform:uppercase;color:var(--muted);margin-bottom:6px">Measurement Type</div>
             <div style="display:flex;gap:5px;margin-bottom:12px">
-              ${[{id:'frequency',icon:'🔢',label:'Frequency'},{id:'duration',icon:'⏱',label:'Duration'}].concat(isSpecialist()?[{id:'intensity',icon:'📊',label:'Intensity'},{id:'latency',icon:'🔄',label:'Latency'}]:[]).map(mt=>{
+              ${[{id:'frequency',icon:'🔢',label:'Frequency'},{id:'duration',icon:'⏱',label:'Duration'}].concat(isSpecialist()?((intensityScaleDefined()?[{id:'intensity',icon:'📊',label:'Intensity'}]:[]).concat([{id:'latency',icon:'🔄',label:'Latency'}])):[]).map(mt=>{
                 const curMt=editingId?getBehMeasure(editingId):(m._newMeasure||'duration');
                 return`<div onclick="${editingId?"setBehMeasure('"+editingId+"','"+mt.id+"')":"S._modal._newMeasure='"+mt.id+"';rerender()"}" style="flex:1;padding:8px 4px;border-radius:8px;border:2px solid ${curMt===mt.id?'var(--accent)':'var(--border)'};background:${curMt===mt.id?'var(--accent-soft)':'#fff'};text-align:center;cursor:pointer;transition:all .12s">
                   <div style="font-size:1rem">${mt.icon}</div>
@@ -2298,14 +2309,14 @@ function buildRecord(){
         <span style="position:absolute;top:4px;left:4px;width:7px;height:7px;border-radius:50%;background:var(--red);animation:pulse 1s infinite"></span>
       </div>`;
     } else if(measure==='frequency'){
-      return`<div class="beh-btn ${activeIncs.length>0?'beh-dimmed':''}" onclick="startIncident('${b.id}')" style="position:relative">
+      return`<div class="beh-btn ${activeIncs.length>0?'beh-dimmed':''}" onclick="startIncident('${b.id}')" title="${esc(b.opDef||'')}" style="position:relative">
         <span class="beh-icon">${b.icon}</span>
         <span class="beh-label">${esc(b.label)}</span>
         ${freqCount>0?`<span style="position:absolute;top:4px;right:6px;background:var(--accent);color:#fff;font-size:.68rem;font-weight:800;padding:1px 7px;border-radius:10px">${freqCount}</span>`:''}
         <span style="font-size:.6rem;color:var(--muted);margin-top:1px">${mIcon} tap to count</span>
       </div>`;
     } else {
-      return`<div class="beh-btn ${activeIncs.length>0?'beh-dimmed':''}" onclick="startIncident('${b.id}')" style="position:relative">
+      return`<div class="beh-btn ${activeIncs.length>0?'beh-dimmed':''}" onclick="startIncident('${b.id}')" title="${esc(b.opDef||'')}" style="position:relative">
         <span class="beh-icon">${b.icon}</span>
         <span class="beh-label">${esc(b.label)}</span>
         <span style="font-size:.6rem;color:var(--muted);margin-top:1px">${mIcon} ${measure}</span>
@@ -4480,12 +4491,14 @@ function saveBehModal(){
   if(!label)return;
   const icon=S._modal.beh.icon||'';
   const newMeasure=S._modal._newMeasure||'duration';
+  const opDefEl=document.getElementById('m-beh-opdef');
+  const opDef=opDefEl?opDefEl.value.trim():null; // null = field not shown (non-specialist) → leave as-is
   if(S._modal.type==='addBeh'){
     const newId=uid();
-    S.customs.push({id:newId,label,icon,custom:true});
+    S.customs.push({id:newId,label,icon,custom:true,opDef:opDef||''});
     S._measureTypes[newId]=newMeasure;
   } else if(S._modal.type==='editBeh'&&!S._modal.preset){
-    S.customs=S.customs.map(b=>b.id===S._modal.beh.id?{...b,label,icon}:b);
+    S.customs=S.customs.map(b=>b.id===S._modal.beh.id?{...b,label,icon,opDef:opDef!==null?opDef:(b.opDef||'')}:b);
   } else if(S._modal.type==='editBeh'&&S._modal.preset){
     // For presets, measurement type is saved via setBehMeasure inline
   }
@@ -7000,6 +7013,7 @@ async function boot(){
   S._assSent  = stored._assSent||[];
   S._assScored= stored._assScored||[];
   S._measureTypes= stored._measureTypes||{};
+  S._intensityScale= stored._intensityScale||null;
   // _role is NOT loaded from stored data — Supabase user_roles table is the source of truth
 
   // Show user info in header
