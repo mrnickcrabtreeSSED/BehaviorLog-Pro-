@@ -946,7 +946,13 @@ function fmtDateS(ts){return new Date(ts).toLocaleDateString('en-US',{month:'sho
 function fmtTime(ts){return new Date(ts).toLocaleTimeString('en-US',{hour:'numeric',minute:'2-digit'});}
 function isToday(ts){return new Date(ts).toISOString().slice(0,10)===new Date().toISOString().slice(0,10);}
 function allBehs(){return[...PRESETS,...S.customs];}
-function getBehMeasure(bid){return (S._sharedMeasures&&S._sharedMeasures[bid])||S._measureTypes[bid]||'duration';}
+function getBehMeasure(bid){
+  let mm=(S._sharedMeasures&&S._sharedMeasures[bid])||S._measureTypes[bid]||'duration';
+  // Intensity is a clinical severity rating — only specialists assess it. For anyone
+  // else (incl. a teacher recording a shared intensity behavior), collect duration instead.
+  if(mm==='intensity'&&!isSpecialist()) mm='duration';
+  return mm;
+}
 function setBehMeasure(bid,mode){S._measureTypes[bid]=mode;persist();rerender();}
 // "Specialist" gate — behaviorist/school_psych/admin/founder get the FBA/assessment/generation UI.
 function isBehaviorist(){return S._role==='behaviorist'||S._role==='school_psych'||S._role==='admin'||S._role==='founder';}
@@ -2407,7 +2413,7 @@ function buildRecord(){
   // ── Event feed with notes ─────────────────────────────────────────────────
   const evFeed=events.length>0?`<div class="card mb3"><div class="slabel" onclick="this.nextElementSibling.style.display=this.nextElementSibling.style.display==='none'?'block':'none'" style="cursor:pointer;user-select:none">Session Events (${events.length}) <span style="font-size:.7rem;color:var(--accent)">▼ tap to toggle</span></div><div class="scroll" style="display:none">${[...events].reverse().map((ev,ri)=>{
     const ei=events.length-1-ri;
-    const intPills=(!isInitial&&(ev.type==='duration'||ev.type==='intensity'||ev.type==='frequency'))?
+    const intPills=(isSpecialist()&&!isInitial&&(ev.type==='duration'||ev.type==='intensity'||ev.type==='frequency'))?
       '<div style="display:flex;gap:3px;margin-top:4px">'+[1,2,3,4].map(l=>'<div onclick="setEvIntensity('+ei+','+l+')" style="padding:2px 8px;border-radius:6px;font-size:.65rem;font-weight:700;cursor:pointer;background:'+(ev.intensity===l?INT_COLORS[l]:'var(--surface2)')+';color:'+(ev.intensity===l?INT_TEXT[l]:'var(--muted)')+'">'+INT_LABELS[l]+'</div>').join('')+'</div>':'';
     return `<div class="ev-row" style="position:relative">
     <span class="ev-badge b-${ev.type==='frequency'?'freq':ev.type==='duration'?'dur':ev.type==='intensity'?'int':'lat'}">${ev.type==='frequency'?'FREQ':ev.type==='duration'?'DUR':ev.type==='intensity'?'INT':'LAT'}</span>
