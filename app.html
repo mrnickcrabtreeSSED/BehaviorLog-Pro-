@@ -929,7 +929,9 @@ function isToday(ts){return new Date(ts).toISOString().slice(0,10)===new Date().
 function allBehs(){return[...PRESETS,...S.customs];}
 function getBehMeasure(bid){return S._measureTypes[bid]||'duration';}
 function setBehMeasure(bid,mode){S._measureTypes[bid]=mode;persist();rerender();}
-function isBehaviorist(){return S._role==='behaviorist'||S._role==='admin';}
+// "Specialist" gate — behaviorist AND school_psych get the FBA/assessment/generation UI; admin too.
+function isBehaviorist(){return S._role==='behaviorist'||S._role==='school_psych'||S._role==='admin';}
+function isSchoolPsych(){return S._role==='school_psych';}
 function isAdmin(){return S._role==='admin';}
 // Returns behaviors for a specific client — their custom selection only.
 // New students start with zero behaviors; the observer adds them before/during observation.
@@ -1158,8 +1160,21 @@ function buildModal(){
     const c=S.clients.find(x=>x.id===m.cid);
     const shares=(S._myShares||[]).filter(s=>s.student_id===m.cid);
     const roleOpts=[{id:'behaviorist',label:'🧠 Behaviorist'},{id:'school_psych',label:'🧩 School Psych'}];
+    const _sharedEmails=new Set(shares.map(s=>(s.grantee_email||'').toLowerCase()));
+    const _dirList=(S._specialists||[]).filter(sp=>sp.email&&!_sharedEmails.has(sp.email.toLowerCase()));
+    const dirBlock = (typeof S._specialists==='undefined')
+      ? '<div class="muted" style="font-size:.78rem;margin-bottom:12px">Loading specialists…</div>'
+      : _dirList.length
+        ? '<div class="slabel" style="margin-bottom:5px">Choose a specialist</div>'
+          +'<select class="input mb2" onchange="selectSpecialist(this.value)">'
+          +'<option value="">— Select a specialist —</option>'
+          +_dirList.map(sp=>'<option value="'+esc(sp.email)+'"'+(((m._email||'').toLowerCase()===(sp.email||'').toLowerCase())?' selected':'')+'>'+esc(sp.display_name||sp.email)+' — '+(sp.role==='school_psych'?'School Psych':'Behaviorist')+'</option>').join('')
+          +'</select>'
+          +'<div class="muted" style="font-size:.7rem;margin:-2px 0 12px">…or type an email below to invite someone new.</div>'
+        : '<div class="muted" style="font-size:.78rem;margin-bottom:12px">No specialists have accounts yet — type an email below to invite one.</div>';
     inner=`<h2 style="margin-bottom:4px">Share Student</h2>
       <p class="muted mb3" style="font-size:.82rem">Give a behaviorist or school psychologist <strong>read-only</strong> access to <strong>${esc(c?c.name:'this student')}</strong>'s data. They sign in with their own account and see only this student — nothing else on your roster.</p>
+      ${dirBlock}
       <div class="slabel" style="margin-bottom:5px">Specialist email</div>
       <input class="input mb3" id="share-email" placeholder="name@district.org" value="${esc(m._email||'')}" oninput="S._modal._email=this.value" onkeydown="if(event.key==='Enter')shareStudentWith('${m.cid}')"/>
       <div class="slabel" style="margin-bottom:5px">Role</div>
@@ -1626,9 +1641,9 @@ function buildModal(){
     <!-- Role selector -->
     <div class="slabel">Account Role</div>
     <div style="display:flex;align-items:center;gap:10px;padding:12px 14px;border-radius:10px;border:1.5px solid ${S._role==='admin'?'var(--orange)':isBehaviorist()?'var(--fba-green)':'var(--accent)'};background:${S._role==='admin'?'var(--orange-soft)':isBehaviorist()?'var(--fba-soft)':'var(--accent-soft)'};margin-bottom:8px">
-      <div style="font-size:1.4rem">${S._role==='admin'?'🛡️':isBehaviorist()?'🧠':'👩‍🏫'}</div>
+      <div style="font-size:1.4rem">${S._role==='admin'?'🛡️':isSchoolPsych()?'🧩':isBehaviorist()?'🧠':'👩‍🏫'}</div>
       <div>
-        <div style="font-weight:800;font-size:.88rem;color:${S._role==='admin'?'var(--orange)':isBehaviorist()?'var(--fba-green)':'var(--accent)'}">${S._role==='admin'?'Administrator':isBehaviorist()?'Behaviorist':'Teacher'}</div>
+        <div style="font-weight:800;font-size:.88rem;color:${S._role==='admin'?'var(--orange)':isBehaviorist()?'var(--fba-green)':'var(--accent)'}">${S._role==='admin'?'Administrator':isSchoolPsych()?'School Psychologist':isBehaviorist()?'Behaviorist':'Teacher'}</div>
         <div style="font-size:.72rem;color:var(--muted)">${S._role==='admin'?'Full access + user management':isBehaviorist()?'Behaviorist sessions, assessments, goals, BIP/FBA reports':'Behavior tracking, data collection, view goals & FBA data'}</div>
       </div>
     </div>
@@ -4341,6 +4356,28 @@ function openShareModal(cid){
   if(!c || c._shared) return; // can't re-share a student that was shared TO you
   S._modal={type:'shareStudent',cid,_email:'',_role:'behaviorist'};
   rerender();
+  // Populate the "Choose a specialist" dropdown (cached after first load).
+  loadSpecialists().then(()=>{ if(S._modal&&S._modal.type==='shareStudent') rerender(); });
+}
+// Loads the behaviorist/school-psych directory for the Share dropdown via the
+// list_specialists() security-definer RPC (no user_roles SELECT policy needed).
+async function loadSpecialists(){
+  if(S._offline || !_currentUser || _currentUser.id==='offline') return;
+  try{
+    const {data,error}=await sb.rpc('list_specialists');
+    if(error) throw error;
+    const myEmail=(_currentUser.email||'').toLowerCase();
+    S._specialists=(data||[]).filter(sp=>(sp.email||'').toLowerCase()!==myEmail);
+  }catch(e){ console.warn('loadSpecialists failed:',e); if(typeof S._specialists==='undefined') S._specialists=[]; }
+}
+// Picking a name from the dropdown fills the email + matches the share role.
+function selectSpecialist(email){
+  if(!S._modal) return;
+  const sp=(S._specialists||[]).find(x=>(x.email||'').toLowerCase()===(email||'').toLowerCase());
+  if(!sp) return;
+  S._modal._email=sp.email;
+  S._modal._role=(sp.role==='school_psych')?'school_psych':'behaviorist';
+  rerender();
 }
 async function shareStudentWith(cid){
   const c=S.clients.find(x=>x.id===cid); if(!c) return;
@@ -6187,6 +6224,7 @@ function adminUsersTab(){
             <select onchange="changeUserRole('${u.id}',this.value)" style="font-size:.78rem;padding:4px 8px;border-radius:6px;border:1.5px solid var(--border);font-family:inherit;font-weight:700;background:#fff;cursor:pointer">
               <option value="teacher" ${u.role==='teacher'?'selected':''}>👩‍🏫 Teacher</option>
               <option value="behaviorist" ${u.role==='behaviorist'?'selected':''}>🧠 Behaviorist</option>
+              <option value="school_psych" ${u.role==='school_psych'?'selected':''}>🧩 School Psych</option>
               <option value="admin" ${u.role==='admin'?'selected':''}>🛡️ Admin</option>
             </select>
           </td>
@@ -6206,6 +6244,7 @@ function adminInvitesTab(){
         <select class="input" id="invite-role" style="flex:1">
           <option value="teacher">👩‍🏫 Teacher</option>
           <option value="behaviorist">🧠 Behaviorist</option>
+          <option value="school_psych">🧩 School Psych</option>
         </select>
         <input class="input" id="invite-label" placeholder="Optional label (e.g. Mrs. Chen)" style="flex:2"/>
       </div>
@@ -6233,7 +6272,7 @@ function adminInvitesTab(){
         </tr></thead>
         <tbody>${invites.map(inv=>`<tr>
           <td style="padding:8px 12px;border-bottom:1px solid var(--border);font-family:monospace;font-size:.82rem;font-weight:700">${esc(inv.code)}</td>
-          <td style="padding:8px 12px;border-bottom:1px solid var(--border)"><span class="tag" style="background:${inv.role==='behaviorist'?'var(--fba-soft);color:var(--fba-green)':'var(--accent-soft);color:var(--accent)'}">${inv.role==='behaviorist'?'🧠':'👩‍🏫'} ${inv.role}</span></td>
+          <td style="padding:8px 12px;border-bottom:1px solid var(--border)"><span class="tag" style="background:${inv.role==='behaviorist'?'var(--fba-soft);color:var(--fba-green)':'var(--accent-soft);color:var(--accent)'}">${inv.role==='behaviorist'?'🧠':inv.role==='school_psych'?'🧩':'👩‍🏫'} ${inv.role}</span></td>
           <td style="padding:8px 12px;border-bottom:1px solid var(--border);font-size:.8rem;color:var(--muted)">${esc(inv.label||'')}</td>
           <td style="padding:8px 12px;border-bottom:1px solid var(--border)">${inv.used_by?'<span class="tag" style="background:var(--green-soft);color:var(--green)">✅ Used</span>':'<span class="tag" style="background:var(--amber-soft);color:var(--amber)">⏳ Unused</span>'}</td>
           <td style="padding:8px 12px;border-bottom:1px solid var(--border);font-size:.78rem;color:var(--muted)">${new Date(inv.created_at).toLocaleDateString()}</td>
@@ -6810,7 +6849,7 @@ function renderUserBadge(){
   if(!u) return;
   const name=u.user_metadata?.full_name||u.email||'Teacher';
   const avatar=u.user_metadata?.avatar_url;
-  const roleLabel=S._role==='behaviorist'?'Behaviorist':'Teacher';
+  const roleLabel=S._role==='admin'?'Administrator':S._role==='school_psych'?'School Psychologist':S._role==='behaviorist'?'Behaviorist':'Teacher';
   const initials=name.split(' ').map(w=>w[0]).join('').slice(0,2).toUpperCase();
   const badge=document.createElement('div');
   badge.id='user-badge';
