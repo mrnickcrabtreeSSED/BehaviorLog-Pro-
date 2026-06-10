@@ -2264,8 +2264,9 @@ function buildRecord(){
     behs=allBehs().filter(b=>goalLabels.includes(b.label));
     if(!behs.length)behs=clientBehs(sess.clientId);
   } else if(isInitial){
+    // Initial assessment starts with NO preloaded behaviors — add them on the fly.
     const selIds=S._initialBehs||sess.selectedBehs||[];
-    behs=selIds.length?allBehs().filter(b=>selIds.includes(b.id)):allBehs();
+    behs=selIds.length?allBehs().filter(b=>selIds.includes(b.id)):[];
   } else {
     behs=clientBehs(sess.clientId);
   }
@@ -2313,8 +2314,8 @@ function buildRecord(){
   let activeCards='';
   if(activeIncs.length>0){
     activeCards=`<div class="card mb3" style="background:linear-gradient(135deg,#fde4e6,#ffe4e6);border:2px solid #fca5a5;padding:14px 16px">
-      <div class="slabel" style="color:var(--red);margin-bottom:10px">⏱ ${activeIncs.length} Behavior${activeIncs.length>1?'s':''} in Progress — tap button to end</div>
-      ${activeIncs.map(inc=>`<div style="display:flex;align-items:center;gap:10px;padding:10px 12px;background:#fff;border-radius:12px;border:1.5px solid #fca5a5;margin-bottom:8px">
+      <div class="slabel" style="color:var(--red);margin-bottom:10px">⏱ ${activeIncs.length} Behavior${activeIncs.length>1?'s':''} in Progress — tap the behavior button to end${isInitial?' · +1 to count repeats':''}</div>
+      ${activeIncs.map(inc=>{const fc=(S.activeSess.events||[]).filter(e=>e.behaviorId===inc.behId&&e.type==='frequency').length;return `<div style="display:flex;align-items:center;gap:10px;padding:10px 12px;background:#fff;border-radius:12px;border:1.5px solid #fca5a5;margin-bottom:8px">
         <div style="flex:1;min-width:0">
           <div style="font-weight:800;font-size:.88rem;color:var(--red)">${inc.behIcon} ${esc(inc.behLabel)}</div>
           <div style="margin-top:6px"><div class="slabel" style="font-size:.65rem">Antecedent (A — captured at start)</div>
@@ -2327,8 +2328,9 @@ function buildRecord(){
         <div style="text-align:center;flex-shrink:0">
           <div id="inc-timer-${inc.behId}" style="font-family:'Courier New',monospace;font-size:1.4rem;font-weight:800;color:var(--red);line-height:1">${fmt(inc.elapsed||0)}</div>
           <div style="font-size:.6rem;color:var(--muted);margin-top:2px">duration</div>
+          ${isInitial?`<button class="btn btn-sm" style="margin-top:8px;background:var(--accent);color:#fff;font-weight:800;white-space:nowrap" onclick="logIncidentFreq('${inc.behId}')">+1 incident${fc>0?' · '+fc:''}</button>`:''}
         </div>
-      </div>`).join('')}
+      </div>`;}).join('')}
     </div>`;
   }
 
@@ -2345,7 +2347,7 @@ function buildRecord(){
     abcPanel=`<div class="card mb3" style="padding:14px 16px">
       <div class="slabel" style="margin-bottom:6px">Antecedent <span class="muted" style="font-weight:400;text-transform:none;letter-spacing:0;font-size:.75rem;margin-left:6px">What's happening before — captured when you tap a behavior</span></div>
       <input class="input mb3" id="abc-a" placeholder="Describe what happened before the behavior…" value="${esc(S.abcA)}" oninput="S.abcA=this.value"/>
-      <div class="row between"><span class="slabel" style="margin:0">Additional Tools</span><div class="row gap1">${mBtns}</div></div>${ctrl}
+      ${isInitial?'':`<div class="row between"><span class="slabel" style="margin:0">Additional Tools</span><div class="row gap1">${mBtns}</div></div>${ctrl}`}
     </div>`;
   } else {
     abcPanel=`<div class="card mb3" style="padding:10px 14px;background:var(--surface2);border:1px dashed var(--border2)">
@@ -2356,7 +2358,7 @@ function buildRecord(){
   // ── Event feed with notes ─────────────────────────────────────────────────
   const evFeed=events.length>0?`<div class="card mb3"><div class="slabel" onclick="this.nextElementSibling.style.display=this.nextElementSibling.style.display==='none'?'block':'none'" style="cursor:pointer;user-select:none">Session Events (${events.length}) <span style="font-size:.7rem;color:var(--accent)">▼ tap to toggle</span></div><div class="scroll" style="display:none">${[...events].reverse().map((ev,ri)=>{
     const ei=events.length-1-ri;
-    const intPills=(ev.type==='duration'||ev.type==='intensity'||ev.type==='frequency')?
+    const intPills=(!isInitial&&(ev.type==='duration'||ev.type==='intensity'||ev.type==='frequency'))?
       '<div style="display:flex;gap:3px;margin-top:4px">'+[1,2,3,4].map(l=>'<div onclick="setEvIntensity('+ei+','+l+')" style="padding:2px 8px;border-radius:6px;font-size:.65rem;font-weight:700;cursor:pointer;background:'+(ev.intensity===l?INT_COLORS[l]:'var(--surface2)')+';color:'+(ev.intensity===l?INT_TEXT[l]:'var(--muted)')+'">'+INT_LABELS[l]+'</div>').join('')+'</div>':'';
     return `<div class="ev-row" style="position:relative">
     <span class="ev-badge b-${ev.type==='frequency'?'freq':ev.type==='duration'?'dur':ev.type==='intensity'?'int':'lat'}">${ev.type==='frequency'?'FREQ':ev.type==='duration'?'DUR':ev.type==='intensity'?'INT':'LAT'}</span>
@@ -2384,9 +2386,15 @@ function buildRecord(){
   </div>`:'';
 
   const addBehOnFly=(isInitial||isGeneral)?'<div style="display:flex;gap:6px;margin-bottom:12px;align-items:center"><input class="input" id="live-add-beh" placeholder="Add new behavior on the fly…" style="flex:1;font-size:.82rem;padding:8px 10px" onkeydown="if(event.key===\'Enter\')liveAddBeh()"/><button class="btn btn-primary btn-xs" onclick="liveAddBeh()" style="white-space:nowrap">+ Add</button></div>':'';
+  const _emptyInit='<div style="background:var(--surface2);border:1.5px dashed var(--border);border-radius:12px;padding:24px;text-align:center;margin-bottom:16px"><div style="font-size:2rem;margin-bottom:8px">🔍</div><div style="font-weight:700;color:var(--muted);font-size:.88rem">No behaviors yet</div><div style="font-size:.74rem;color:var(--muted);margin-top:4px">Add a behavior on the fly above to begin. Tapping it starts a duration timer; use +1 to count repeats.</div></div>';
+  const _emptyOther='<div style="background:var(--surface2);border:1.5px dashed var(--border);border-radius:12px;padding:24px;text-align:center;margin-bottom:16px"><div style="font-size:2rem;margin-bottom:8px">📋</div><div style="font-weight:700;color:var(--muted);font-size:.88rem">No behaviors selected yet</div><div style="font-size:.74rem;color:var(--muted);margin-top:4px">Tap the settings icon to choose behaviors to track for this student.</div></div>';
+  const gridBlock=behs.length===0?(isInitial?_emptyInit:_emptyOther):'<div class="beh-grid-wrap mb3"><div class="beh-grid-standalone">'+behGrid+'</div></div>';
+  const behLabel='<div class="slabel" style="margin-bottom:10px">'+(isGoalSpec?'IEP Goal Behaviors':isGeneral?'Configured Behaviors':isInitial?'Assessment Behaviors':'All Behaviors')+'</div>';
+  // Initial: antecedent sits BELOW the add-behavior field. Others keep antecedent on top.
+  const mainBlocks=isInitial?(behLabel+addBehOnFly+abcPanel+gridBlock):(behLabel+abcPanel+gridBlock+addBehOnFly);
 
   return `<div class="sub-view"><div class="live-banner" style="${overTime?'background:linear-gradient(135deg,#fde4e6,#ffe4e6);border-color:#fca5a5':''}"><div class="row gap2"><span class="live-dot" style="${overTime?'background:var(--red)':''}"></span><div><div style="font-weight:800;color:${overTime?'var(--red)':'var(--green)'}">Live Session — ${esc(S.selClient.name)}</div>
-          ${sess.location?`<div style="font-size:.74rem;color:var(--muted);margin-top:1px">📍 ${esc(sess.location)} · ${new Date(sess.startedAt).toLocaleTimeString('en-US',{hour:'numeric',minute:'2-digit',hour12:true})}</div>`:`<div style="font-size:.74rem;color:var(--muted);margin-top:1px">${new Date(sess.startedAt).toLocaleTimeString('en-US',{hour:'numeric',minute:'2-digit',hour12:true})}</div>`}<div class="row gap2 mt1" style="flex-wrap:wrap"><span class="muted mono" id="sess-elapsed" style="font-size:.8rem">${fmt(elapsedNow)} elapsed</span>${plannedMs?`<span id="sess-remain" class="mono" style="font-size:.8rem;font-weight:700;color:${overTime?'var(--red)':'var(--muted)'}">${overTime?'⚠ +'+fmt(elapsedNow-plannedMs)+' over':'⏱ '+fmt(remainMs)+' left'}</span>`:''}</div></div></div><div class="row gap2">${sessionTypeBadge}<button class="btn btn-danger btn-sm" onclick="endSession()">⏹ End</button></div></div>${liveGoals}<div class="slabel" style="margin-bottom:10px">${isGoalSpec?'IEP Goal Behaviors':isGeneral?'Configured Behaviors':isInitial?'Assessment Behaviors':'All Behaviors'}</div>${abcPanel}${behs.length===0?`<div style="background:var(--surface2);border:1.5px dashed var(--border);border-radius:12px;padding:24px;text-align:center;margin-bottom:16px"><div style="font-size:2rem;margin-bottom:8px">📋</div><div style="font-weight:700;color:var(--muted);font-size:.88rem">No behaviors selected yet</div><div style="font-size:.74rem;color:var(--muted);margin-top:4px">Tap the settings icon to choose behaviors to track for this student.</div></div>`:`<div class="beh-grid-wrap mb3"><div class="beh-grid-standalone">${behGrid}</div></div>`}${addBehOnFly}${activeCards}${evFeed}${fbaHypField||''}</div>`;
+          ${sess.location?`<div style="font-size:.74rem;color:var(--muted);margin-top:1px">📍 ${esc(sess.location)} · ${new Date(sess.startedAt).toLocaleTimeString('en-US',{hour:'numeric',minute:'2-digit',hour12:true})}</div>`:`<div style="font-size:.74rem;color:var(--muted);margin-top:1px">${new Date(sess.startedAt).toLocaleTimeString('en-US',{hour:'numeric',minute:'2-digit',hour12:true})}</div>`}<div class="row gap2 mt1" style="flex-wrap:wrap"><span class="muted mono" id="sess-elapsed" style="font-size:.8rem">${fmt(elapsedNow)} elapsed</span>${plannedMs?`<span id="sess-remain" class="mono" style="font-size:.8rem;font-weight:700;color:${overTime?'var(--red)':'var(--muted)'}">${overTime?'⚠ +'+fmt(elapsedNow-plannedMs)+' over':'⏱ '+fmt(remainMs)+' left'}</span>`:''}</div></div></div><div class="row gap2">${sessionTypeBadge}<button class="btn btn-danger btn-sm" onclick="endSession()">⏹ End</button></div></div>${liveGoals}${mainBlocks}${activeCards}${evFeed}${fbaHypField||''}</div>`;
 }
 
 // ── MULTI-CLIENT RECORD ────────────────────────────────────────────────────
@@ -5489,8 +5497,8 @@ function startIncident(bid){
   const b=allBehs().find(b=>b.id===bid);
   if(!b) return;
 
-  // ── FREQ tool override: when active, any tap = +1 count ──
-  if(S.measureMode==='FREQ'){
+  // ── FREQ tool override: when active, any tap = +1 count (not in Initial — tap always starts a timer there) ──
+  if(S.measureMode==='FREQ' && (S.activeSess&&S.activeSess.sessType)!=='initial'){
     S.activeSess.events.push({
       id:uid(),type:'frequency',
       behaviorId:b.id,behaviorLabel:b.label,behaviorIcon:b.icon,
@@ -5588,6 +5596,14 @@ function _endIncidentById(bid){
 
 // legacy alias kept for any callers
 function endIncident(bid){ _endIncidentById(bid); }
+
+// Initial assessment: while a behavior's duration timer runs, log a +1 incident
+// count (a frequency event) for it — to capture multiple occurrences in one episode.
+function logIncidentFreq(bid){
+  const inc=S.incidents[bid]; if(!inc||!S.activeSess) return;
+  S.activeSess.events.push({id:uid(),type:'frequency',behaviorId:bid,behaviorLabel:inc.behLabel,behaviorIcon:inc.behIcon,timestamp:Date.now(),antecedent:inc.abcA||'',consequence:'',duringIncident:true});
+  rerender();
+}
 
 function updateIncNote(bid,val){
   if(S.incidents[bid])S.incidents[bid].note=val;
