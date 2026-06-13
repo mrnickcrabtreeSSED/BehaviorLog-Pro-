@@ -1,4 +1,4 @@
-var CACHE_NAME = 'behaviorlog-v22';
+var CACHE_NAME = 'behaviorlog-v23';
 var SHELL_FILES = [
   '/app.html',
   '/index.html',

@@ -6934,6 +6934,7 @@ function assTabSend(){
     <td style="padding:8px 10px;border-bottom:1px solid var(--border);font-size:.82rem">${esc(s.respondent)}<br><span class="muted">${esc(s.email)}</span></td>
     <td style="padding:8px 10px;border-bottom:1px solid var(--border);font-size:.82rem">${fmtDateS(s.sentAt)}</td>
     <td style="padding:8px 10px;border-bottom:1px solid var(--border)"><span class="tag" style="background:${s.status==='pending'?'var(--yellow-soft);color:var(--yellow)':'var(--green-soft);color:var(--accent)'}">${s.status==='pending'?'⏳ Pending':'✅ Done'}</span></td>
+    <td style="padding:8px 10px;border-bottom:1px solid var(--border)"><button class="btn btn-sm btn-ghost" title="Delete sent record" onclick="assDeleteSent('${s.id}')">🗑</button></td>
   </tr>`).join('');
 
   return `<div class="card mb4"><div style="padding:14px 16px;font-weight:700;border-bottom:1px solid var(--border)">Send Assessment</div><div style="padding:16px">
@@ -6960,7 +6961,7 @@ function assTabSend(){
   </div></div>
   ${sentRows?`<div class="card"><div style="padding:14px 16px;font-weight:700;border-bottom:1px solid var(--border)">Sent</div>
     <div style="overflow-x:auto"><table style="width:100%;border-collapse:collapse"><thead><tr>
-      ${['Student','Type','Respondent','Sent','Status'].map(h=>`<th style="text-align:left;font-size:.68rem;text-transform:uppercase;letter-spacing:.5px;color:var(--muted);padding:8px 10px;border-bottom:2px solid var(--border)">${h}</th>`).join('')}
+      ${['Student','Type','Respondent','Sent','Status',''].map(h=>`<th style="text-align:left;font-size:.68rem;text-transform:uppercase;letter-spacing:.5px;color:var(--muted);padding:8px 10px;border-bottom:2px solid var(--border)">${h}</th>`).join('')}
     </tr></thead><tbody>${sentRows}</tbody></table></div></div>`:''}`;
 }
 
@@ -7048,8 +7049,9 @@ function assTabInbox(subs,scoredIds){
       <td style="padding:10px;border-bottom:1px solid var(--border);font-size:.82rem">${esc(s.respondent||s.informant||'Unknown')}</td>
       <td style="padding:10px;border-bottom:1px solid var(--border);font-size:.82rem">${fmtDateS(s.submittedAt)}</td>
       <td style="padding:10px;border-bottom:1px solid var(--border)"><span class="tag" style="background:${done?'#e5f2fa;color:var(--accent)':'var(--green-soft);color:#065f46'}">${done?'✅ Scored':'📥 Ready'}</span></td>
-      <td style="padding:10px;border-bottom:1px solid var(--border)">
+      <td style="padding:10px;border-bottom:1px solid var(--border);white-space:nowrap">
         <button class="btn btn-sm ${done?'btn-ghost':'btn-primary'}" onclick="assScore('${s.id}')">${done?'View':'Score'}</button>
+        <button class="btn btn-sm btn-ghost" title="Delete submission" onclick="assDeleteSubmission('${s.id}','${s.type}')" style="margin-left:6px">🗑</button>
       </td>
     </tr>`;
   }).join('');
@@ -7115,13 +7117,38 @@ function assSaveScore(){
   persist();S._modal=null;S._scoringTemp=null;rerender();
 }
 
+// ── Delete assessments ──────────────────────────────────────────────────────
+// Submissions live in localStorage (qabf_submissions / fast_submissions); sent +
+// scored records live in S (persisted to user_data). Each delete is confirm-gated
+// and irreversible (no undo) — deleting a submission also drops any score from it.
+function assDeleteSubmission(subId,type){
+  if(!confirm('Delete this assessment submission? The response and any score from it will be permanently removed.')) return;
+  const key=type==='QABF'?'qabf_submissions':'fast_submissions';
+  const arr=JSON.parse(localStorage.getItem(key)||'[]').filter(s=>s.id!==subId);
+  localStorage.setItem(key,JSON.stringify(arr));
+  const before=S._assScored.length;
+  S._assScored=S._assScored.filter(s=>s.submissionId!==subId);
+  if(S._assScored.length!==before) persist();
+  rerender();
+}
+function assDeleteScored(subId){
+  if(!confirm('Delete this scored result? The original submission stays in the Inbox. This cannot be undone.')) return;
+  S._assScored=S._assScored.filter(s=>s.submissionId!==subId);
+  persist();rerender();
+}
+function assDeleteSent(sentId){
+  if(!confirm('Delete this sent-assessment record? This only removes the tracking entry, not the respondent’s copy. This cannot be undone.')) return;
+  S._assSent=S._assSent.filter(s=>s.id!==sentId);
+  persist();rerender();
+}
+
 function assTabScored(){
   if(!S._assScored.length) return '<div class="empty"><div class="empty-icon">✅</div><p>No scored assessments yet.</p></div>';
   const catColors={att:'#4a90d9',esc:'#e67e22',non:'#27ae60',phy:'#e74c3c',tan:'#9b59b6',sen:'#27ae60',pain:'#e74c3c'};
   return S._assScored.sort((a,b)=>new Date(b.scoredAt)-new Date(a.scoredAt)).map(s=>`<div class="card mb3">
     <div style="padding:14px 16px;border-bottom:1px solid var(--border);display:flex;justify-content:space-between;align-items:center">
       <div><strong>${esc(s.studentName)}</strong> <span class="tag" style="background:${s.type==='QABF'?'#f0e6f8;color:#7b4ab4':'#e5f2fa;color:#3498c0'}">${s.type}</span></div>
-      <span class="muted" style="font-size:.78rem">${fmtDateS(s.scoredAt)}</span>
+      <div style="display:flex;align-items:center;gap:10px"><span class="muted" style="font-size:.78rem">${fmtDateS(s.scoredAt)}</span><button class="btn btn-sm btn-ghost" title="Delete scored result" onclick="assDeleteScored('${s.submissionId}')">🗑</button></div>
     </div>
     <div style="padding:14px 16px">
       <p class="muted" style="font-size:.82rem;margin-bottom:8px">Behavior: ${esc(s.behavior||'N/A')} · Respondent: ${esc(s.respondent||'')}</p>
