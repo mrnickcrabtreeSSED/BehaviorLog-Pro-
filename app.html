@@ -7328,7 +7328,7 @@ function renderUserBadge(){
   const initials=name.split(' ').map(w=>w[0]).join('').slice(0,2).toUpperCase();
   const badge=document.createElement('div');
   badge.id='user-badge';
-  badge.style.cssText='position:fixed;bottom:16px;right:16px;z-index:9000;display:flex;align-items:center;gap:8px;background:#fff;border:1.5px solid var(--border);border-radius:40px;padding:6px 14px 6px 8px;box-shadow:0 2px 12px rgba(0,0,0,.12);cursor:pointer;font-family:inherit';
+  badge.style.cssText='position:fixed;top:calc(env(safe-area-inset-top,0px) + 70px);right:16px;z-index:9000;display:flex;align-items:center;gap:8px;background:#fff;border:1.5px solid var(--border);border-radius:40px;padding:6px 14px 6px 8px;box-shadow:0 2px 12px rgba(0,0,0,.12);cursor:pointer;font-family:inherit';
   badge.title='Sign out';
   badge.onclick=signOut;
   badge.innerHTML=(avatar
