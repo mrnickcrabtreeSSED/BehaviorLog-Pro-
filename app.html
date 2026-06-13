@@ -1482,6 +1482,34 @@ function buildModal(){
     showClose=false;
   }
 
+  if(m.type==='fbaReview'){
+    const raw=m.redacted||'';
+    const hl=esc(raw)
+      .replace(/\[STUDENT(?:\s\d+)?\]/g,'<span style="background:#d1fae5;color:#065f46;border-radius:4px;padding:0 3px;font-weight:700">$&</span>')
+      .replace(/\[BEHAVIORIST\]/g,'<span style="background:#e0e7ff;color:#3730a3;border-radius:4px;padding:0 3px;font-weight:700">$&</span>');
+    const sc=m.studentCount||1, fc=m.staffCount||0;
+    inner=`<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px">
+      <div>
+        <h2 style="margin:0;color:var(--fba-dark)">🔒 Review before sending</h2>
+        <p style="font-size:.74rem;color:var(--muted);margin-top:2px">De-identified data for your ${esc(m.label||'document')} — nothing leaves the app until you confirm.</p>
+      </div>
+      <button class="btn btn-ghost btn-sm" onclick="cancelFbaSend()">✕</button>
+    </div>
+    <div style="background:#ecfdf5;border:1.5px solid #a7f3d0;border-radius:8px;padding:10px 12px;margin-bottom:12px;font-size:.76rem;color:#065f46;line-height:1.55">
+      ✓ Auto-removed <strong>${sc} student name${sc!==1?'s':''}</strong> and <strong>${fc} staff name${fc!==1?'s':''}</strong>, replaced with placeholders (highlighted below).<br>
+      ⚠ Free-text notes may still contain names the app can't know — peers from another school, parents, or other teachers. <strong>Read the preview and delete anything identifying in the editable box before sending.</strong>
+    </div>
+    <div style="font-size:.7rem;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.5px;margin-bottom:4px">Preview · highlighted = removed</div>
+    <div style="max-height:150px;overflow:auto;background:var(--surface2);border:1.5px solid var(--border);border-radius:8px;padding:10px;font-size:.72rem;line-height:1.6;white-space:pre-wrap;margin-bottom:12px">${hl}</div>
+    <div style="font-size:.7rem;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.5px;margin-bottom:4px">Editable · this exact text is what gets sent</div>
+    <textarea id="fba-review-text" style="width:100%;min-height:150px;font-size:.74rem;line-height:1.6;padding:10px;border:1.5px solid var(--border);border-radius:8px;font-family:inherit;resize:vertical">${esc(raw)}</textarea>
+    <div class="row gap2 mt3 wrap">
+      <button class="btn btn-primary btn-sm" style="flex:1;background:var(--fba-green);border-color:var(--fba-green)" onclick="confirmFbaSend()">🔒 Send de-identified data</button>
+      <button class="btn btn-ghost btn-sm" onclick="cancelFbaSend()">Cancel</button>
+    </div>`;
+    showClose=false;
+  }
+
   if(m.type==='fbaDocResult'){
     const txt=m.content||'';
     inner=`<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px">
@@ -1729,53 +1757,13 @@ function buildModal(){
     <hr class="divider" style="margin:18px 0"/>`:''}
     <!-- Document Templates (behaviorist only) -->
     ${isBehaviorist()?`<div class="slabel" style="color:var(--fba-dark)">🧠 FBA Document Templates</div>
-    <p style="font-size:.78rem;color:var(--muted);margin-top:4px;margin-bottom:12px;line-height:1.5">Upload your district BIP and Goal templates. The AI will use them as structure guides when generating documents in the FBA tab.</p>
+    <p style="font-size:.78rem;color:var(--muted);margin-top:4px;margin-bottom:12px;line-height:1.5">${(isAdmin()||isFounder())
+        ? 'Upload your district’s official BIP, FBA, and Goal templates. Every specialist in your district inherits them automatically as AI structure guides.'
+        : 'Your district sets the official templates below. You can upload a <strong>personal override</strong> for any format. Supported: .txt, .pdf, .docx.'}</p>
     <div style="display:flex;flex-direction:column;gap:10px;margin-bottom:4px">
-      <!-- BIP Template -->
-      <div style="background:var(--fba-soft);border:1.5px solid var(--fba-mid);border-radius:10px;padding:12px 14px">
-        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px">
-          <div style="font-weight:700;font-size:.82rem;color:var(--fba-dark)">📋 BIP Template</div>
-          ${S._bipTemplate?'<span style="font-size:.7rem;background:var(--fba-green);color:#fff;padding:2px 8px;border-radius:10px;font-weight:700">✓ Uploaded</span>':'<span style="font-size:.7rem;color:var(--muted)">Not uploaded</span>'}
-        </div>
-        ${S._bipTemplate?`<div style="display:flex;align-items:center;gap:8px;font-size:.78rem;color:var(--text2);margin-bottom:8px">📄 ${esc(S._bipTemplateName||'BIP Template')}</div>`:''}
-        <div style="display:flex;gap:6px">
-          <label style="flex:1;padding:7px 10px;border-radius:8px;border:1.5px solid var(--fba-mid);background:#fff;cursor:pointer;text-align:center;font-size:.75rem;font-weight:700;color:var(--fba-dark)">
-            ${S._bipTemplate?'↑ Replace':'↑ Upload'} BIP Template
-            <input type="file" accept=".txt,.pdf,.doc,.docx" style="display:none" onchange="uploadTemplate(this,'bip')"/>
-          </label>
-          ${S._bipTemplate?`<button onclick="clearTemplate('bip')" style="padding:7px 10px;border-radius:8px;border:1.5px solid #fca5a5;background:#fff5f5;cursor:pointer;font-size:.75rem;font-weight:700;color:var(--red)">✕</button>`:''}
-        </div>
-      </div>
-      <!-- Goal Template -->
-      <div style="background:var(--accent-soft);border:1.5px solid #b8d8e8;border-radius:10px;padding:12px 14px">
-        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px">
-          <div style="font-weight:700;font-size:.82rem;color:var(--accent)">🎯 Goal Template</div>
-          ${S._goalTemplate?'<span style="font-size:.7rem;background:var(--accent);color:#fff;padding:2px 8px;border-radius:10px;font-weight:700">✓ Uploaded</span>':'<span style="font-size:.7rem;color:var(--muted)">Not uploaded</span>'}
-        </div>
-        ${S._goalTemplate?`<div style="display:flex;align-items:center;gap:8px;font-size:.78rem;color:var(--text2);margin-bottom:8px">📄 ${esc(S._goalTemplateName||'Goal Template')}</div>`:''}
-        <div style="display:flex;gap:6px">
-          <label style="flex:1;padding:7px 10px;border-radius:8px;border:1.5px solid #b8d8e8;background:#fff;cursor:pointer;text-align:center;font-size:.75rem;font-weight:700;color:var(--accent)">
-            ${S._goalTemplate?'↑ Replace':'↑ Upload'} Goal Template
-            <input type="file" accept=".txt,.pdf,.doc,.docx" style="display:none" onchange="uploadTemplate(this,'goal')"/>
-          </label>
-          ${S._goalTemplate?`<button onclick="clearTemplate('goal')" style="padding:7px 10px;border-radius:8px;border:1.5px solid #fca5a5;background:#fff5f5;cursor:pointer;font-size:.75rem;font-weight:700;color:var(--red)">✕</button>`:''}
-        </div>
-      </div>
-      <!-- FBA Template -->
-      <div style="background:var(--purple-soft);border:1.5px solid #c8b8f0;border-radius:10px;padding:12px 14px">
-        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px">
-          <div style="font-weight:700;font-size:.82rem;color:var(--purple)">🔍 FBA Template</div>
-          ${S._fbaTemplate?'<span style="font-size:.7rem;background:var(--purple);color:#fff;padding:2px 8px;border-radius:10px;font-weight:700">✓ Uploaded</span>':'<span style="font-size:.7rem;color:var(--muted)">Not uploaded</span>'}
-        </div>
-        ${S._fbaTemplate?`<div style="display:flex;align-items:center;gap:8px;font-size:.78rem;color:var(--text2);margin-bottom:8px">📄 ${esc(S._fbaTemplateName||'FBA Template')}</div>`:''}
-        <div style="display:flex;gap:6px">
-          <label style="flex:1;padding:7px 10px;border-radius:8px;border:1.5px solid #c8b8f0;background:#fff;cursor:pointer;text-align:center;font-size:.75rem;font-weight:700;color:var(--purple)">
-            ${S._fbaTemplate?'↑ Replace':'↑ Upload'} FBA Template
-            <input type="file" accept=".txt,.pdf,.doc,.docx" style="display:none" onchange="uploadTemplate(this,'fba')"/>
-          </label>
-          ${S._fbaTemplate?`<button onclick="clearTemplate('fba')" style="padding:7px 10px;border-radius:8px;border:1.5px solid #fca5a5;background:#fff5f5;cursor:pointer;font-size:.75rem;font-weight:700;color:var(--red)">✕</button>`:''}
-        </div>
-      </div>
+      ${renderTemplateCard('bip')}
+      ${renderTemplateCard('goal')}
+      ${renderTemplateCard('fba')}
     </div>
 
     <hr class="divider" style="margin:18px 0"/>
@@ -3507,13 +3495,13 @@ function buildFBA(){
       <div class="slabel" style="margin:0;color:var(--fba-dark)">✨ Generate Documents</div>
       <span style="font-size:.7rem;color:var(--fba-green);font-style:italic">Powered by AI · Uses your FBA data</span>
     </div>
-    <p style="font-size:.76rem;color:var(--text2);margin-bottom:14px;line-height:1.5">Generate a draft BIP or behavior goals using your Behaviorist observation data. ${S._bipTemplate||S._goalTemplate?'Your uploaded templates will guide the structure.':'Upload templates in ⚙️ Settings to match your district format.'}</p>
+    <p style="font-size:.76rem;color:var(--text2);margin-bottom:14px;line-height:1.5">Generate a draft BIP or behavior goals using your Behaviorist observation data. Student and staff names are de-identified and shown for your review before anything is sent. ${(S._bipTemplate||S._goalTemplate||S._fbaTemplate||S._distBipTemplate||S._distGoalTemplate||S._distFbaTemplate)?'Your district’s templates guide the structure.':'Upload templates in ⚙️ Settings to match your district format.'}</p>
     ${isBehaviorist()?`<div style="display:flex;flex-direction:column;gap:8px">
       <button onclick="generateFbaDoc('bip','${c.id}')" style="display:flex;align-items:center;gap:10px;padding:12px 14px;border-radius:11px;border:1.5px solid var(--fba-mid);background:#fff;cursor:pointer;text-align:left;transition:all .18s" onmouseover="this.style.background='var(--fba-mid)'" onmouseout="this.style.background='#fff'">
         <span style="font-size:1.4rem">📋</span>
         <div>
           <div style="font-weight:800;font-size:.85rem;color:var(--fba-dark)">Generate BIP Draft</div>
-          <div style="font-size:.72rem;color:var(--muted)">Behavior Intervention Plan · Based on behaviorist session data${S._bipTemplate?' + your template':''}</div>
+          <div style="font-size:.72rem;color:var(--muted)">Behavior Intervention Plan · Based on behaviorist session data${(S._bipTemplate||S._distBipTemplate)?' + template':''}</div>
         </div>
         <span style="margin-left:auto;font-size:.75rem;color:var(--fba-green);font-weight:700">→</span>
       </button>
@@ -3521,7 +3509,7 @@ function buildFBA(){
         <span style="font-size:1.4rem">🎯</span>
         <div>
           <div style="font-weight:800;font-size:.85rem;color:var(--accent)">Generate Behavior Goals</div>
-          <div style="font-size:.72rem;color:var(--muted)">Measurable IEP goals from observed behaviors${S._goalTemplate?' + your template':''}</div>
+          <div style="font-size:.72rem;color:var(--muted)">Measurable IEP goals from observed behaviors${(S._goalTemplate||S._distGoalTemplate)?' + template':''}</div>
         </div>
         <span style="margin-left:auto;font-size:.75rem;color:var(--accent);font-weight:700">→</span>
       </button>
@@ -3698,31 +3686,142 @@ function buildBarChartLight(data,yLabel){
 
 
 // ── TEMPLATE UPLOAD ────────────────────────────────────────────────────────
-function uploadTemplate(input, kind){
+// Lazy-load a CDN script once (templates only parse when online; generation
+// needs the network anyway, so this is never on the offline path).
+function _loadScript(src){
+  return new Promise((res,rej)=>{
+    if([...document.scripts].some(s=>s.src===src)) return res();
+    const el=document.createElement('script');
+    el.src=src; el.onload=()=>res(); el.onerror=()=>rej(new Error('Could not load parser ('+src+'). Check your connection.'));
+    document.head.appendChild(el);
+  });
+}
+
+// Extract PLAIN TEXT from a template file (.txt/.md/.docx/.pdf). District
+// templates are structure guides only — never student data.
+async function extractTemplateText(file){
+  const name=(file.name||'').toLowerCase();
+  if(/\.(txt|md)$/.test(name)) return (await file.text()).trim();
+  if(/\.docx$/.test(name)){
+    await _loadScript('https://cdnjs.cloudflare.com/ajax/libs/mammoth/1.6.0/mammoth.browser.min.js');
+    const r=await window.mammoth.extractRawText({arrayBuffer:await file.arrayBuffer()});
+    return ((r&&r.value)||'').trim();
+  }
+  if(/\.pdf$/.test(name)){
+    await _loadScript('https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js');
+    try{ window.pdfjsLib.GlobalWorkerOptions.workerSrc='https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js'; }catch(e){}
+    const pdf=await window.pdfjsLib.getDocument({data:await file.arrayBuffer()}).promise;
+    let text='';
+    for(let i=1;i<=pdf.numPages;i++){ const pg=await pdf.getPage(i); const ct=await pg.getTextContent(); text+=ct.items.map(it=>it.str).join(' ')+'\n'; }
+    return text.trim();
+  }
+  throw new Error('Unsupported file. Upload .txt, .pdf, or .docx (legacy .doc — re-save as .docx).');
+}
+
+// scope: 'personal' (this behaviorist's override, in user_data) or 'district'
+// (the shared default, in the district_templates table — admins/founder only).
+function uploadTemplate(input, kind, scope){
   const file = input.files[0];
   if(!file) return;
+  input.value=''; // allow re-selecting the same file later
   const keyMap={bip:['_bipTemplate','_bipTemplateName'],goal:['_goalTemplate','_goalTemplateName'],fba:['_fbaTemplate','_fbaTemplateName']};
   const keys=keyMap[kind]||keyMap.goal;
-  const reader = new FileReader();
-  reader.onload = function(e){
-    S[keys[0]] = e.target.result;
-    S[keys[1]] = file.name;
-    persist(); rerender();
-  };
-  if(file.name.match(/\.(txt|md)$/i)){
-    reader.readAsText(file);
-  } else {
-    S[keys[0]] = '[Binary template: '+file.name+']';
-    S[keys[1]] = file.name;
-    persist(); rerender();
-  }
+  S._tplBusy=(scope||'personal')+':'+kind; rerender();
+  extractTemplateText(file).then(text=>{
+    if(!text || text.length<20){
+      S._tplBusy=null; rerender();
+      alert('Could not read usable text from "'+file.name+'". A scanned/image-only PDF has no extractable text — paste the template into a .txt file instead.');
+      return;
+    }
+    if(scope==='district'){
+      saveDistrictTemplate(kind, text, file.name)
+        .then(()=>{ S._tplBusy=null; rerender(); })
+        .catch(e=>{ S._tplBusy=null; rerender(); alert('Could not save the district template: '+(e.message||e)); });
+    } else {
+      S[keys[0]]=text; S[keys[1]]=file.name; S._tplBusy=null; persist(); rerender();
+    }
+  }).catch(e=>{ S._tplBusy=null; rerender(); alert(e.message||'Could not read that file.'); });
 }
+
+// Save / clear / load the DISTRICT-wide template (shared via district_templates).
+async function saveDistrictTemplate(kind, content, fileName){
+  if(!S._district) throw new Error('Your account is not linked to a district.');
+  const {error}=await sb.from('district_templates').upsert(
+    {district_id:S._district, kind, content, file_name:fileName||null, updated_by:_currentUser.id, updated_at:new Date().toISOString()},
+    {onConflict:'district_id,kind'}
+  );
+  if(error) throw error;
+  const map={bip:['_distBipTemplate','_distBipTemplateName'],goal:['_distGoalTemplate','_distGoalTemplateName'],fba:['_distFbaTemplate','_distFbaTemplateName']};
+  const k=map[kind]||map.goal; S[k[0]]=content; S[k[1]]=fileName||'';
+}
+async function clearDistrictTemplate(kind){
+  if(!confirm('Remove the district-wide '+kind.toUpperCase()+' template for EVERYONE in your district?')) return;
+  const {error}=await sb.from('district_templates').delete().eq('district_id',S._district).eq('kind',kind);
+  if(error){ alert('Could not remove: '+error.message); return; }
+  const map={bip:['_distBipTemplate','_distBipTemplateName'],goal:['_distGoalTemplate','_distGoalTemplateName'],fba:['_distFbaTemplate','_distFbaTemplateName']};
+  const k=map[kind]||map.goal; S[k[0]]=null; S[k[1]]=null; rerender();
+}
+async function loadDistrictTemplates(){
+  if(!S._district) return;
+  try{
+    const {data,error}=await sb.from('district_templates').select('kind,content,file_name').eq('district_id',S._district);
+    if(error) throw error;
+    const map={bip:['_distBipTemplate','_distBipTemplateName'],goal:['_distGoalTemplate','_distGoalTemplateName'],fba:['_distFbaTemplate','_distFbaTemplateName']};
+    (data||[]).forEach(r=>{ const k=map[r.kind]; if(k){ S[k[0]]=r.content; S[k[1]]=r.file_name||''; } });
+  }catch(e){ console.warn('loadDistrictTemplates failed:',e); }
+}
+
 function clearTemplate(kind){
   if(!confirm('Remove this template?')) return;
   if(kind==='bip'){ S._bipTemplate=null; S._bipTemplateName=null; }
   else if(kind==='fba'){ S._fbaTemplate=null; S._fbaTemplateName=null; }
   else { S._goalTemplate=null; S._goalTemplateName=null; }
   persist(); rerender();
+}
+
+// Render one template card in Settings. Admins/founder manage the DISTRICT
+// default; specialists see the inherited district template + a personal override.
+function renderTemplateCard(kind){
+  const meta={
+    bip: {icon:'📋',label:'BIP Template', color:'var(--fba-dark)',border:'var(--fba-mid)',soft:'var(--fba-soft)',  badge:'var(--fba-green)'},
+    goal:{icon:'🎯',label:'Goal Template',color:'var(--accent)',  border:'#b8d8e8',      soft:'var(--accent-soft)',badge:'var(--accent)'},
+    fba: {icon:'🔍',label:'FBA Template', color:'var(--purple)',  border:'#c8b8f0',      soft:'var(--purple-soft)',badge:'var(--purple)'}
+  }[kind]||{};
+  const pKey={bip:['_bipTemplate','_bipTemplateName'],goal:['_goalTemplate','_goalTemplateName'],fba:['_fbaTemplate','_fbaTemplateName']}[kind];
+  const dKey={bip:['_distBipTemplate','_distBipTemplateName'],goal:['_distGoalTemplate','_distGoalTemplateName'],fba:['_distFbaTemplate','_distFbaTemplateName']}[kind];
+  const personal=S[pKey[0]] && !String(S[pKey[0]]).startsWith('[Binary');
+  const personalName=esc(S[pKey[1]]||'');
+  const dist=!!S[dKey[0]];
+  const distName=esc(S[dKey[1]]||'');
+  const accept='.txt,.md,.pdf,.docx';
+  const busyP=S._tplBusy==='personal:'+kind, busyD=S._tplBusy==='district:'+kind;
+  const spin='<span style="display:inline-block;animation:spin 1s linear infinite">⚙️</span> Reading…';
+  let body='';
+  if(isAdmin()||isFounder()){
+    body=`<div style="font-size:.72rem;color:var(--muted);margin-bottom:8px">Shared with every specialist in ${esc(S._districtName||'your district')}.</div>
+      ${dist?`<div style="display:flex;align-items:center;gap:8px;font-size:.78rem;color:var(--text2);margin-bottom:8px">📄 ${distName} <span style="font-size:.64rem;background:${meta.badge};color:#fff;padding:1px 7px;border-radius:9px;font-weight:700">DISTRICT-WIDE</span></div>`:`<div style="font-size:.76rem;color:var(--muted);margin-bottom:8px">No district template yet.</div>`}
+      <div style="display:flex;gap:6px">
+        <label style="flex:1;padding:7px 10px;border-radius:8px;border:1.5px solid ${meta.border};background:#fff;cursor:${busyD?'default':'pointer'};text-align:center;font-size:.75rem;font-weight:700;color:${meta.color}">
+          ${busyD?spin:(dist?'↑ Replace':'↑ Upload')+' (district)'}
+          <input type="file" accept="${accept}" ${busyD?'disabled':''} style="display:none" onchange="uploadTemplate(this,'${kind}','district')"/>
+        </label>
+        ${dist?`<button onclick="clearDistrictTemplate('${kind}')" style="padding:7px 10px;border-radius:8px;border:1.5px solid #fca5a5;background:#fff5f5;cursor:pointer;font-size:.75rem;font-weight:700;color:var(--red)">✕</button>`:''}
+      </div>`;
+  } else {
+    body=`<div style="font-size:.74rem;color:var(--text2);margin-bottom:8px">🏫 District default: ${dist?`<strong>${distName}</strong>`:'<span style="color:var(--muted)">none set</span>'}${personal?'<span style="color:var(--muted)"> · overridden by your upload</span>':(dist?'<span style="color:var(--green)"> · in use</span>':'')}</div>
+      ${personal?`<div style="display:flex;align-items:center;gap:8px;font-size:.78rem;color:var(--text2);margin-bottom:8px">📄 ${personalName} <span style="font-size:.64rem;background:${meta.badge};color:#fff;padding:1px 7px;border-radius:9px;font-weight:700">YOUR OVERRIDE</span></div>`:''}
+      <div style="display:flex;gap:6px">
+        <label style="flex:1;padding:7px 10px;border-radius:8px;border:1.5px solid ${meta.border};background:#fff;cursor:${busyP?'default':'pointer'};text-align:center;font-size:.75rem;font-weight:700;color:${meta.color}">
+          ${busyP?spin:(personal?'↑ Replace':'↑ Upload')+' personal'}
+          <input type="file" accept="${accept}" ${busyP?'disabled':''} style="display:none" onchange="uploadTemplate(this,'${kind}','personal')"/>
+        </label>
+        ${personal?`<button onclick="clearTemplate('${kind}')" style="padding:7px 10px;border-radius:8px;border:1.5px solid #fca5a5;background:#fff5f5;cursor:pointer;font-size:.75rem;font-weight:700;color:var(--red)">✕</button>`:''}
+      </div>`;
+  }
+  return `<div style="background:${meta.soft};border:1.5px solid ${meta.border};border-radius:10px;padding:12px 14px">
+    <div style="font-weight:700;font-size:.82rem;color:${meta.color};margin-bottom:8px">${meta.icon} ${meta.label}</div>
+    ${body}
+  </div>`;
 }
 
 // ── AI DOCUMENT GENERATION ─────────────────────────────────────────────────
@@ -3801,14 +3900,22 @@ ${hypotheses||'None recorded'}
 
 SUPPLEMENTAL DATA: ${suppSessions.length} additional sessions from other observation types available as reference.`;
 
-  const templateContext = docType==='bip' && S._bipTemplate && !S._bipTemplate.startsWith('[Binary')
-    ? '\n\nDISTRICT BIP TEMPLATE STRUCTURE TO FOLLOW:\n'+S._bipTemplate.slice(0,2000)
-    : docType==='goals' && S._goalTemplate && !S._goalTemplate.startsWith('[Binary')
-    ? '\n\nDISTRICT GOAL TEMPLATE STRUCTURE TO FOLLOW:\n'+S._goalTemplate.slice(0,2000)
+  // Template precedence: the behaviorist's PERSONAL upload overrides the
+  // district-wide default; otherwise fall back to the district template.
+  const _clean = v => (v && !v.startsWith('[Binary')) ? v : '';
+  const _tpl = {
+    bip:  { txt:_clean(S._bipTemplate)  || (S._distBipTemplate||''),  name:S._bipTemplateName  || S._distBipTemplateName  || '' },
+    goal: { txt:_clean(S._goalTemplate) || (S._distGoalTemplate||''), name:S._goalTemplateName || S._distGoalTemplateName || '' },
+    fba:  { txt:_clean(S._fbaTemplate)  || (S._distFbaTemplate||''),  name:S._fbaTemplateName  || S._distFbaTemplateName  || '' }
+  };
+  const _tplKey = docType==='bip' ? 'bip' : docType==='goals' ? 'goal' : docType==='summary' ? 'fba' : null;
+  const _active = _tplKey ? _tpl[_tplKey] : null;
+  const _label = {bip:'BIP', goal:'GOAL', fba:'FBA'}[_tplKey] || '';
+  const templateContext = (_active && _active.txt)
+    ? '\n\nDISTRICT '+_label+' TEMPLATE STRUCTURE TO FOLLOW:\n'+_active.txt.slice(0,8000)
     : '';
-
-  const templateNameHint = docType==='bip' && S._bipTemplateName ? ' Match the section structure of the uploaded template: '+S._bipTemplateName+'.'
-    : docType==='goals' && S._goalTemplateName ? ' Follow the format of the uploaded template: '+S._goalTemplateName+'.'
+  const templateNameHint = (_active && _active.name)
+    ? ' Match the section structure of the uploaded template: '+_active.name+'.'
     : '';
 
   const prompts = {
@@ -3830,11 +3937,11 @@ Write in standard IEP goal language. Base all baselines on the actual session da
 FBA DATA:
 ${dataContext}`,
 
-    summary: `You are a school behaviorist writing a professional FBA Summary narrative. Use the observation data below to write a clear, defensible FBA summary suitable for an IEP team.
+    summary: `You are a school behaviorist writing a professional FBA Summary narrative. Use the observation data below to write a clear, defensible FBA summary suitable for an IEP team.${templateNameHint}
 
 Include: (1) Reason for referral and assessment overview, (2) Assessment methods used, (3) Behavioral descriptions and patterns, (4) Antecedent and consequence analysis, (5) Hypothesized behavioral function(s) with rationale, (6) Summary and recommendations.
 
-Write in clear professional language accessible to parents and educators alike.
+Write in clear professional language accessible to parents and educators alike.${templateContext}
 
 FBA DATA:
 ${dataContext}`
@@ -3842,27 +3949,70 @@ ${dataContext}`
 
   const docLabels = {bip:'BIP Draft', goals:'Behavior Goals', summary:'FBA Summary'};
 
-  // ── PII redaction — the model never receives the student's or staff real names ──
-  // Names are replaced with placeholders before the API call and substituted back
-  // locally after generation, so only de-identified behavioral data leaves the app.
-  const _studentName = client.name || '';
-  const _redact = (txt) => {
-    let out = txt || '';
-    behaviorists.forEach(bn=>{ if(bn&&bn.trim()) out = out.split(bn).join('[BEHAVIORIST]'); });
-    if(_studentName.trim()){
-      out = out.split(_studentName).join('[STUDENT]');
-      const fn = _studentName.trim().split(/\s+/)[0];
-      if(fn.length>2 && fn!==_studentName) out = out.split(fn).join('[STUDENT]');
-    }
-    return out;
+  // ── PII de-identification (FERPA) ────────────────────────────────────────
+  // Build a redaction map from every KNOWN name: the target student, every
+  // OTHER student on the roster (peers are routinely named in free-text
+  // antecedents/notes), and all staff names on the sessions + the logged-in
+  // user. Each real name → a stable placeholder, matched case-insensitively on
+  // whole words. Redaction runs over the ENTIRE prompt; placeholders are
+  // substituted back locally after generation, so only de-identified text ever
+  // leaves the app. Names the app can't know (out-of-district peers, parents,
+  // other teachers typed free-hand) are the user's to scrub in the review step.
+  const _esc = s => s.replace(/[.*+?^${}()|[\]\\]/g,'\\$&');
+  const _rules = [];          // {re, token, len} applied to outgoing text
+  const _restoreMap = {};     // token -> real name, applied to returned text
+  const _addPerson = (fullName, token) => {
+    const nm = (fullName||'').trim();
+    if(!nm) return;
+    if(!_restoreMap[token]) _restoreMap[token] = nm;
+    const parts = nm.split(/\s+/).filter(p=>p.length>2);
+    const variants = [...new Set([nm, ...parts])];
+    variants.forEach(v=>_rules.push({re:new RegExp('\\b'+_esc(v)+'\\b','gi'), token, len:v.length}));
   };
-  const _restore = (txt) => (txt||'')
-    .split('[STUDENT]').join(_studentName||'the student')
-    .split('[BEHAVIORIST]').join(behaviorists.join(', ')||'the behaviorist');
-  const systemPrompt = 'You are an expert school behaviorist drafting professional special-education documents from DE-IDENTIFIED data. The student appears only as the placeholder [STUDENT] and staff as [BEHAVIORIST] — their real names were removed for privacy (FERPA). Write the placeholder [STUDENT] wherever the student would be named; it is substituted back to the real name locally after generation. Never invent, infer, or use any real name. Base everything strictly on the data provided.';
+  _addPerson(client.name, '[STUDENT]');
+  let _peerN = 2;
+  (S.clients||[]).forEach(c=>{ if(c.id!==clientId && c.name && c.name.trim()) _addPerson(c.name, '[STUDENT '+(_peerN++)+']'); });
+  const _staff = [...new Set(
+    [...behaviorists, ...fbaSessions.map(s=>s.fbaFlaggedBy||''), S._displayName||'']
+      .map(x=>(x||'').trim()).filter(Boolean)
+  )];
+  _staff.forEach(nm=>_addPerson(nm, '[BEHAVIORIST]'));
+  // Apply longest names first so "Marcus Lee" is redacted before "Marcus".
+  _rules.sort((a,b)=> b.len - a.len);
+  const _redact = (txt) => { let out = txt||''; _rules.forEach(r=>{ out = out.replace(r.re, r.token); }); return out; };
 
-  // Show a generating modal
-  S._modal = {type:'fbaGenerating', docType, clientId, label:docLabels[docType]};
+  const systemPrompt = 'You are an expert school behaviorist drafting professional special-education documents from DE-IDENTIFIED data. The student appears only as the placeholder [STUDENT] and staff as [BEHAVIORIST]; other students may appear as [STUDENT 2], [STUDENT 3], etc. Their real names were removed for privacy (FERPA). Write the placeholder [STUDENT] wherever the student would be named; it is substituted back to the real name locally after generation. Never invent, infer, or use any real name. Base everything strictly on the data provided.';
+
+  // Hand off to a human REVIEW step before anything is transmitted. The pending
+  // context (restore map + system prompt) is stashed; confirmFbaSend() reads the
+  // possibly-edited text from the modal and makes the actual API call.
+  S._fbaPending = { docType, clientId, label:docLabels[docType], systemPrompt, restoreMap:_restoreMap };
+  S._modal = {
+    type:'fbaReview', docType, clientId, label:docLabels[docType],
+    redacted: _redact(prompts[docType]),
+    studentCount: _peerN-1, staffCount: _staff.length
+  };
+  rerender();
+}
+
+// Restore placeholders → real names in returned text using a pending restore map.
+function _fbaRestore(txt, restoreMap){
+  let out = txt||'';
+  Object.keys(restoreMap||{}).forEach(tok=>{ out = out.split(tok).join(restoreMap[tok]); });
+  return out.split('[STUDENT]').join('the student').split('[BEHAVIORIST]').join('the behaviorist');
+}
+
+function cancelFbaSend(){ S._fbaPending=null; closeModal(); }
+
+// Called from the review modal — sends the (user-approved) de-identified text.
+function confirmFbaSend(){
+  const p = S._fbaPending;
+  if(!p){ closeModal(); return; }
+  const ta = document.getElementById('fba-review-text');
+  const content = ta ? ta.value : '';
+  if(!content.trim()){ alert('Nothing to send — the document text is empty.'); return; }
+
+  S._modal = {type:'fbaGenerating', docType:p.docType, clientId:p.clientId, label:p.label};
   rerender();
 
   fetch('/api/claude', {
@@ -3871,23 +4021,23 @@ ${dataContext}`
     body:JSON.stringify({
       model:'claude-opus-4-8',
       max_tokens:4000,
-      system: systemPrompt,
-      messages:[{role:'user',content: _redact(prompts[docType])}]
+      system: p.systemPrompt,
+      messages:[{role:'user', content}]
     })
   })
   .then(r=>r.json())
   .then(data=>{
     if(data.error){
-      S._modal={type:'fbaDocResult', docType, clientId, label:docLabels[docType], content:'Error: '+((data.error&&data.error.message)||data.error)+'. Please try again or contact support.'};
+      S._modal={type:'fbaDocResult', docType:p.docType, clientId:p.clientId, label:p.label, content:'Error: '+((data.error&&data.error.message)||data.error)+'. Please try again or contact support.'};
     } else {
-      const text = _restore((data.content||[]).map(b=>b.text||'').join(''));
-      S._modal={type:'fbaDocResult', docType, clientId, label:docLabels[docType], content:text};
+      const text = _fbaRestore((data.content||[]).map(b=>b.text||'').join(''), p.restoreMap);
+      S._modal={type:'fbaDocResult', docType:p.docType, clientId:p.clientId, label:p.label, content:text};
     }
-    rerender();
+    S._fbaPending=null; rerender();
   })
   .catch(err=>{
-    S._modal={type:'fbaDocResult', docType, clientId, label:docLabels[docType], content:'Network error: '+err.message};
-    rerender();
+    S._modal={type:'fbaDocResult', docType:p.docType, clientId:p.clientId, label:p.label, content:'Network error: '+err.message};
+    S._fbaPending=null; rerender();
   });
 }
 
@@ -7079,6 +7229,9 @@ async function boot(){
   // Cache role + district for offline use
   try{localStorage.setItem('bl_role',S._role);}catch(e){}
   try{localStorage.setItem('bl_district',S._districtName||'');}catch(e){}
+
+  // Load the district's shared BIP/FBA/Goal templates (inherited by specialists).
+  await loadDistrictTemplates();
 
   // Load cloud data
   stored = await loadFromCloud();
