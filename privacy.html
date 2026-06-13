@@ -37,7 +37,7 @@ tr:nth-child(even) td{background:#f4f2ee}
 </div>
 <div class="container">
 <a href="index.html" class="back">← Back to BehaviorLog Pro</a>
-<p class="meta">Effective Date: April 10, 2026 &nbsp;|&nbsp; Material update effective: July 10, 2026 &nbsp;|&nbsp; Last Updated: June 10, 2026</p>
+<p class="meta">Effective Date: April 10, 2026 &nbsp;|&nbsp; Material update effective: July 10, 2026 &nbsp;|&nbsp; Last Updated: June 13, 2026</p>
 
 <h2>1. Introduction</h2>
 <p>BehaviorLog Pro is a web-based behavior tracking and analysis application developed by Sure Step Education for use by special education professionals in K–12 school settings. The application enables teachers to record student behavioral data (frequency, duration, intensity) during classroom observations, and enables licensed behaviorists and school psychologists to conduct structured behavioral observations, administer functional assessment screening tools (QABF, FAST), score assessment results, manage behavioral goals, and generate Behavior Intervention Plans (BIP) and Functional Behavior Assessments (FBA). Access is organized by school district and by user role (teacher, behaviorist, school psychologist, district administrator, and Sure Step administrator), as described in §7.5–§7.6.</p>
@@ -95,7 +95,8 @@ tr:nth-child(even) td{background:#f4f2ee}
 <li>Recording and analyzing student behavioral data during classroom observations</li>
 <li>Conducting functional behavioral assessments and screening</li>
 <li>Scoring assessment instruments (QABF, FAST) to identify behavioral functions</li>
-<li>Generating Behavior Intervention Plans, Functional Behavior Assessments, and behavioral goals</li>
+<li>Generating Behavior Intervention Plans, Functional Behavior Assessments, and behavioral goals, using AI-assisted drafting on de-identified data as described in §7.3</li>
+<li>Allowing district administrators to upload standardized BIP, FBA, and goal document templates — containing formatting and section structure only, not student data — to guide AI-assisted document generation for specialists within their district</li>
 <li>Providing behaviorists with aggregated data visualizations and analytics</li>
 <li>Facilitating collaboration between teachers and specialists: a teacher may grant a behaviorist or school psychologist read access to a specific student, and those specialists may define behavior targets and operational definitions that the connected teacher then uses for that student</li>
 <li>Sending assessment forms to respondents (parents, teachers, staff) via email</li>
@@ -126,6 +127,7 @@ tr:nth-child(even) td{background:#f4f2ee}
 <li>Database and authentication: Supabase (AWS infrastructure, US regions)</li>
 <li>Application hosting and serverless functions: Vercel (US regions)</li>
 <li>A local copy of the signed-in user's own authorized data may be cached in browser local storage to enable offline use and faster loading; this cache is limited to that user's authorized data, remains on that device, and is intended to be cleared on sign-out</li>
+<li>District document templates: a district administrator may upload the district's standardized BIP, FBA, and goal document templates, which are stored as structure guides (section headings and formatting) shared with that district's specialists. Uploaded template files (.txt, .pdf, or .docx) are converted to plain text within the user's browser before storage; these templates are not pupil records and are not intended to contain student personally identifiable information</li>
 </ul>
 <h3>7.2 Security Measures</h3>
 <ul>
@@ -139,7 +141,10 @@ tr:nth-child(even) td{background:#f4f2ee}
 <li>Invite-based registration system preventing unauthorized account creation</li>
 </ul>
 <h3>7.3 AI-Powered Features</h3>
-<p>BehaviorLog Pro uses the Anthropic API (Claude) to generate draft BIP, FBA, and behavioral goal documents from scored assessment data. Student behavioral data is transmitted to Anthropic's API via a secure server-side proxy. Anthropic does not store or train on data submitted via their API. Generated documents are drafts requiring review and approval by a licensed behaviorist before use.</p>
+<p>BehaviorLog Pro uses the Anthropic API (Claude) to generate draft Behavior Intervention Plan (BIP), Functional Behavior Assessment (FBA), and behavioral goal documents from the behaviorist's own structured observation data for a student.</p>
+<p>Before any data is transmitted, BehaviorLog Pro de-identifies it within the user's browser: the student's name, the names of other students on the user's roster, and staff names known to the application are removed and replaced with neutral placeholders (for example, "[STUDENT]" and "[BEHAVIORIST]"). Only this de-identified text is sent to the Anthropic API through a secure server-side proxy. The real names are re-inserted locally, on the user's own device, after the draft is returned — they are not part of the transmitted request. The de-identified text is presented to the user for review and requires the user's explicit confirmation before any transmission occurs, and the user may edit that text to remove additional details at that point.</p>
+<p>This de-identification operates on the names known to the application and is not a guarantee that every possible identifier has been removed. Names of individuals who are not on the user's roster, or other identifying details typed into free-text notes, may remain unless the user removes them at the review step. Users are instructed to review the de-identified text and remove any remaining identifying details before sending.</p>
+<p>Anthropic does not train its models on, or retain, data submitted through its API for these requests. All generated documents are drafts that must be reviewed, edited, and approved by a licensed behaviorist before use in any official record.</p>
 <h3>7.4 Designated Responsible Individual</h3>
 <p><strong>Name:</strong> Nicholas Crabtree<br>
 <strong>Title:</strong> Co-Founder, Sure Step Education<br>
@@ -224,7 +229,7 @@ tr:nth-child(even) td{background:#f4f2ee}
 <tr><td>Google OAuth</td><td>Optional user sign-in (email/password, handled by Supabase Auth, is the alternative)</td><td>Email address, display name, profile avatar</td></tr>
 <tr><td>Vercel</td><td>Application hosting and serverless function execution</td><td>HTTP requests, environment variables (API keys)</td></tr>
 <tr><td>Resend</td><td>Transactional email delivery (assessment links, invites)</td><td>Recipient email address, email content</td></tr>
-<tr><td>Anthropic (Claude API)</td><td>AI-assisted report generation (BIP, FBA, Goals)</td><td>Anonymized behavioral data for document generation</td></tr>
+<tr><td>Anthropic (Claude API)</td><td>AI-assisted report generation (BIP, FBA, Goals)</td><td>De-identified behavioral data — student, peer, and staff names are removed and replaced with placeholders before transmission (see §7.3)</td></tr>
 </table>
 <p>Sure Step Education ensures that all third-party subprocessors maintain security practices consistent with the obligations described in this policy. No subprocessor is authorized to use student data for any purpose other than providing the specific service described above.</p>
 
